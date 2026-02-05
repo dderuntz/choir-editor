@@ -1,0 +1,32 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Run ChoirController",
+            "program": "${workspaceFolder}/.build/debug/ChoirController",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "swift-build"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:choir-editor}",
+            "name": "Debug ChoirController",
+            "program": "${workspaceFolder:choir-editor}/.build/debug/ChoirController",
+            "preLaunchTask": "swift: Build Debug ChoirController"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:choir-editor}",
+            "name": "Release ChoirController",
+            "program": "${workspaceFolder:choir-editor}/.build/release/ChoirController",
+            "preLaunchTask": "swift: Build Release ChoirController"
+        }
+    ]
+}

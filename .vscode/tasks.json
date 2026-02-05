@@ -1,0 +1,27 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "swift-build",
+            "type": "shell",
+            "command": "swift build",
+            "group": "build",
+            "problemMatcher": "$swiftc"
+        },
+        {
+            "label": "swift-run",
+            "type": "shell",
+            "command": "swift run",
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared"
+            }
+        }
+    ]
+}
