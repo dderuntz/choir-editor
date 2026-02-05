@@ -19,11 +19,11 @@ struct ContentView: View {
                     .padding(.top, 20) // Add extra top padding
                 
                 // Connection Status Display
-                if let selected = midiService.selectedOutput {
-                    Text("MIDI Output: \(selected.displayName)")
+                if let selected = midiService.selectedInput {
+                    Text("MIDI Destination: \(selected.displayName)")
                         .foregroundStyle(.green)
                 } else {
-                    Text("No MIDI Output Selected")
+                    Text("No MIDI Destination Selected")
                         .foregroundStyle(.orange)
                 }
                 

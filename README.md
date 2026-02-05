@@ -34,23 +34,26 @@ swift run
 ```
 *Note: The app includes a helper to ensure it activates as a foreground window when run from the CLI.*
 
-### 2. Connecting a Doll
+### 2. Connecting a Doll (One-Time Setup via MIDI Studio)
 
-1. **Wake the Doll**: Tap the doll's head or press its button to wake it up.
-2. **Enter Pairing Mode**:
-   - Press and **hold** the button on the doll (usually on the back or bottom module).
-   - Keep holding until the doll sings **"Searching for controller"**.
-3. **Connect in App**:
-   - In the Choir Controller app sidebar, click **Scan**.
-   - You should see the doll appear in the "Discovered" list (often named "TE-Choir" or similar).
-   - Click **Connect**.
-   - If prompted for a PIN, enter `000000`.
-   - The doll should sing **"Connected to the controller"**.
+Currently, Choir dolls must be paired through macOS **Audio MIDI Setup** before the app can control them. This is a one-time setup per doll.
+
+1. **Open Audio MIDI Setup**: Spotlight search "Audio MIDI Setup" or find it in `/Applications/Utilities/`.
+2. **Open MIDI Studio**: Menu bar → Window → Show MIDI Studio (or Cmd+2).
+3. **Open Bluetooth Configuration**: Click the Bluetooth icon in the toolbar.
+4. **Wake the Doll**: Press the button on the doll to wake it. The doll should start advertising.
+5. **Connect**: The doll should appear in the device list (e.g., "CH-8"). Click **Connect**.
+6. **Verify**: The doll should now appear in MIDI Studio's device list with up/down arrows indicating active ports.
+
+Once paired, the doll will appear as a MIDI destination that the Choir Controller app can use automatically.
+
+> **Note**: We plan to add direct BLE MIDI connection in a future update to eliminate this MIDI Studio step.
 
 ### 3. Playing
 
-- Click the piano keys to play notes.
-- Use the **"Local Audio Monitor"** toggle to hear a synthesized tone from your Mac speakers along with the doll.
+- Launch the app - it should auto-detect your paired Choir doll and show "MIDI Destination: CH-8" in green.
+- Click the piano keys to play notes on the doll.
+- Use the **"Local Audio Monitor"** toggle (off by default) to hear a synthesized tone from your Mac speakers.
 - The keyboard covers the full 88-key range (A0 to C8). Middle C is marked in **Yellow**.
 
 ## Architecture

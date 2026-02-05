@@ -22,3 +22,7 @@ alwaysApply: false
 - **Bluetooth -> MIDI**: Connect logic separate from Note sending.
 - **UI -> Service**: View triggers `midiService.sendNoteOn` & `audioMonitor.playNote`.
 - **Polyphony**: Max 16 voices. Round-robin or linear search allocation.
+
+## Known Limitations / Future Work
+- **BLE MIDI pairing requires MIDI Studio**: Currently, users must pair Choir dolls via macOS Audio MIDI Setup before the app can see them as MIDI endpoints. This is because `BluetoothMidiManager` (CoreBluetooth) and `MidiService` (CoreMIDI) are disconnected - CB connection doesn't auto-register a MIDI endpoint.
+- **Future fix**: Implement BLE MIDI protocol directly (discover MIDI characteristic, subscribe, send/receive raw BLE MIDI packets) OR find the API MIDI Studio uses to bridge BLE->CoreMIDI. Would eliminate the MIDI Studio step entirely.

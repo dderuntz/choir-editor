@@ -33,7 +33,15 @@ class BluetoothMidiManager: NSObject, ObservableObject {
     
     func connect(to peripheral: CBPeripheral) {
         print("Connecting to \(peripheral.name ?? "Unknown")...")
-        centralManager.connect(peripheral, options: nil)
+        // Best practice: Stop scanning before connecting to improve connection reliability
+        if isScanning {
+            stopScanning()
+        }
+        
+        // Connect with options helpful for MIDI
+        centralManager.connect(peripheral, options: [
+            CBConnectPeripheralOptionNotifyOnDisconnectionKey: true
+        ])
     }
     
     func disconnect(from peripheral: CBPeripheral) {
@@ -52,7 +60,7 @@ extension BluetoothMidiManager: CBCentralManagerDelegate {
             print("Bluetooth is powered off.")
             isScanning = false
         case .unauthorized:
-            print("Bluetooth is unauthorized.")
+            print("Bluetooth is unauthorized. Check Info.plist and System Settings.")
         case .unknown, .resetting, .unsupported:
             print("Bluetooth state is \(central.state).")
         @unknown default:
@@ -63,13 +71,13 @@ extension BluetoothMidiManager: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
         // Avoid duplicates
         if !discoveredPeripherals.contains(where: { $0.identifier == peripheral.identifier }) {
-            print("Discovered: \(peripheral.name ?? "Unknown")")
+            print("Discovered: \(peripheral.name ?? "Unknown") RSSI: \(RSSI)")
             discoveredPeripherals.append(peripheral)
         }
     }
     
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        print("Connected to \(peripheral.name ?? "Unknown")")
+        print("✅ BLE Link Connected to \(peripheral.name ?? "Unknown"). Starting Service Discovery...")
         
         // Remove from discovered list if present
         if let index = discoveredPeripherals.firstIndex(of: peripheral) {
@@ -84,7 +92,7 @@ extension BluetoothMidiManager: CBCentralManagerDelegate {
     }
     
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
-        print("Failed to connect to \(peripheral.name ?? "Unknown"): \(error?.localizedDescription ?? "No error info")")
+        print("❌ Failed to connect to \(peripheral.name ?? "Unknown"): \(error?.localizedDescription ?? "No error info")")
     }
     
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
@@ -92,8 +100,6 @@ extension BluetoothMidiManager: CBCentralManagerDelegate {
         if let index = connectedPeripherals.firstIndex(of: peripheral) {
             connectedPeripherals.remove(at: index)
         }
-        // Optionally move back to discovered if we are still scanning? 
-        // For now, just remove it.
     }
 }
 
@@ -104,11 +110,14 @@ extension BluetoothMidiManager: CBPeripheralDelegate {
             return
         }
         
-        guard let services = peripheral.services else { return }
+        guard let services = peripheral.services else {
+            print("No services found on \(peripheral.name ?? "Unknown")")
+            return 
+        }
         
         for service in services {
             if service.uuid == midiServiceUUID {
-                print("Discovered MIDI service for \(peripheral.name ?? "Unknown")")
+                print("✅ Discovered MIDI service for \(peripheral.name ?? "Unknown"). Discovering Characteristics...")
                 peripheral.discoverCharacteristics(nil, for: service)
             }
         }
@@ -120,16 +129,12 @@ extension BluetoothMidiManager: CBPeripheralDelegate {
             return
         }
         
-        // Once characteristics are discovered, CoreMIDI should pick it up automatically on macOS
-        // providing the device conforms to the BLE MIDI standard.
-        // We typically need to subscribe to the characteristic to enable notifications.
-        
         guard let characteristics = service.characteristics else { return }
         
         for characteristic in characteristics {
             // BLE MIDI characteristic UUID
             if characteristic.uuid.uuidString == "7772E5DB-3868-4112-A1A9-F2669D106BF3" {
-                 print("Found MIDI Characteristic. Subscribing...")
+                 print("✅ Found MIDI Characteristic. Subscribing to Notifications...")
                  peripheral.setNotifyValue(true, for: characteristic)
             }
         }
