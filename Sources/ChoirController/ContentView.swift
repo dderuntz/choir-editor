@@ -6,8 +6,8 @@ struct ContentView: View {
     
     var body: some View {
         HSplitView {
-            // Sidebar / Connection View
-            ConnectionView(bluetoothManager: bluetoothManager)
+            // Sidebar / Connection View (with Voice Controls)
+            ConnectionView(bluetoothManager: bluetoothManager, midiService: midiService)
                 .frame(minWidth: 200, maxWidth: 300)
                 .layoutPriority(1)
             
@@ -18,28 +18,22 @@ struct ContentView: View {
                     .padding()
                     .padding(.top, 20) // Add extra top padding
                 
-                // Connection Status Display
-                if let selected = midiService.selectedInput {
-                    Text("MIDI Destination: \(selected.displayName)")
-                        .foregroundStyle(.green)
-                } else {
-                    Text("No MIDI Destination Selected")
-                        .foregroundStyle(.orange)
-                }
+                // Haiku Sequencer
+                SequencerView(midiService: midiService)
+                    .frame(maxWidth: 500)
+                    .padding(.top)
                 
                 Spacer()
                 
                 // Piano Keyboard
                 KeyboardView(midiService: midiService)
-                    .frame(height: 150)
+                    .frame(height: 180)
                     .padding()
-                
-                Spacer()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(NSColor.windowBackgroundColor))
         }
-        .frame(minWidth: 800, minHeight: 500)
+        .frame(minWidth: 850, minHeight: 500)
         .onAppear {
             midiService.start()
         }

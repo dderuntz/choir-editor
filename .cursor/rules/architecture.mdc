@@ -26,3 +26,15 @@ alwaysApply: false
 ## Known Limitations / Future Work
 - **BLE MIDI pairing requires MIDI Studio**: Currently, users must pair Choir dolls via macOS Audio MIDI Setup before the app can see them as MIDI endpoints. This is because `BluetoothMidiManager` (CoreBluetooth) and `MidiService` (CoreMIDI) are disconnected - CB connection doesn't auto-register a MIDI endpoint.
 - **Future fix**: Implement BLE MIDI protocol directly (discover MIDI characteristic, subscribe, send/receive raw BLE MIDI packets) OR find the API MIDI Studio uses to bridge BLE->CoreMIDI. Would eliminate the MIDI Studio step entirely.
+
+## Phonetic Rules for Text-to-Choir
+When converting text to Choir syllables (for AI integration):
+
+1. **Trailing consonants** → add schwa (ə) or nasal vowel
+2. **Nasals (N, M)** → use "mmm" vowel for humming
+3. **Stop consonants (T, D, P, K)** at word end → optional/very short (natural cutoff)
+4. **Diphthongs (aɪ, eɪ)** → need longer duration to glide
+5. **Mid-word = quick, word-end = longer, line-end = longest**
+6. **Missing clusters (Spl, ps, nce)** → use closest approximation
+
+See `SequencerView.swift` HaikuData comments for full rules.

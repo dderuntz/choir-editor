@@ -3,6 +3,7 @@ import CoreBluetooth
 
 struct ConnectionView: View {
     @ObservedObject var bluetoothManager: BluetoothMidiManager
+    @ObservedObject var midiService: MidiService
     
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -63,7 +64,35 @@ struct ConnectionView: View {
                 }
             }
             .listStyle(.inset)
+            
+            Divider()
+                .padding(.horizontal)
+            
+            // MIDI Destination Status
+            VStack(alignment: .leading, spacing: 4) {
+                Text("MIDI Destination")
+                    .font(.headline)
+                if let selected = midiService.selectedInput {
+                    Text(selected.displayName)
+                        .foregroundStyle(.green)
+                        .font(.subheadline)
+                } else {
+                    Text("Not selected")
+                        .foregroundStyle(.orange)
+                        .font(.subheadline)
+                }
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            
+            Divider()
+                .padding(.horizontal)
+            
+            // Voice Controls (Vibrato, Reverb)
+            VoiceControlsView(midiService: midiService)
+                .padding(.horizontal)
+                .padding(.bottom)
         }
-        .frame(minWidth: 250, minHeight: 300)
+        .frame(minWidth: 250, minHeight: 450)
     }
 }

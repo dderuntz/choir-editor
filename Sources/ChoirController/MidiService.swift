@@ -16,6 +16,12 @@ class MidiService: ObservableObject {
     // Track if we are connected
     @Published var isConnected: Bool = false
     
+    // Voice parameters (CC values)
+    @Published var vibrato: UInt8 = ChoirDefaults.vibrato
+    @Published var reverb: UInt8 = ChoirDefaults.reverb
+    @Published var consonant: UInt8 = ChoirDefaults.consonant
+    @Published var vowel: UInt8 = ChoirDefaults.vowel
+    
     init() {
         // We need to defer notification handler setup or handle concurrency carefully
         // Since we are in init, self is not fully available/sendable yet in some contexts, 
@@ -89,6 +95,12 @@ class MidiService: ObservableObject {
             print("❌ MIDI: No output connection 'ChoirOutput' found!")
             return
         }
+        
+        // Send CC values BEFORE the note (Choir requires this)
+        sendCC(controller: ChoirCC.vibrato, value: vibrato, channel: channel)
+        sendCC(controller: ChoirCC.reverb, value: reverb, channel: channel)
+        sendCC(controller: ChoirCC.consonant, value: consonant, channel: channel)
+        sendCC(controller: ChoirCC.vowel, value: vowel, channel: channel)
         
         let noteOn = MIDIEvent.noteOn(
             UInt7(note),
