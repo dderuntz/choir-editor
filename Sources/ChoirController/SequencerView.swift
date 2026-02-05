@@ -42,6 +42,15 @@ struct Word: Identifiable {
     var allPhonemes: [Phoneme] { syllables.flatMap { $0.phonemes } }
 }
 
+/// A score - a complete piece with lines of words
+struct Score: Identifiable {
+    let id = UUID()
+    let title: String
+    let lines: [[Word]]
+    
+    var allWords: [Word] { lines.flatMap { $0 } }
+}
+
 /// Hardcoded haiku for testing
 /// "An old silent pond / A frog jumps into the pond / Splash! Silence again"
 /// Phonetically broken down with trailing consonants as short schwas
@@ -223,6 +232,98 @@ struct HaikuData {
     ]
     
     static let allWords: [Word] = line1 + line2 + line3
+    
+    static let haikuScore = Score(
+        title: "Haiku",
+        lines: [line1, line2, line3]
+    )
+}
+
+// MARK: - IDEO AI DAY Score
+
+struct IDEOData {
+    // Reuse consonant/vowel constants from HaikuData
+    static let C_NONE = HaikuData.C_NONE
+    static let C_D = HaikuData.C_D
+    
+    static let V_AI = HaikuData.V_AI      // aɪ (eye)
+    static let V_EE = HaikuData.V_EE      // iː (dee)
+    static let V_AW = HaikuData.V_AW      // oʊ-ish (oh)
+    static let V_AY = HaikuData.V_AY      // eɪ (ay/day)
+    
+    // "IDEO AI DAY"
+    // IDEO = eye-dee-oh (1 word, 3 syllables)
+    // AI = ay-eye (1 word, 2 syllables) 
+    // DAY = day (1 word, 1 syllable)
+    
+    static let V_EYE: UInt8 = 20      // aɪ (eye) - trying 20
+    
+    static let line1: [Word] = [
+        // IDEO (1 word, 3 syllables)
+        Word(syllables: [
+            Syllable(phonemes: [
+                Phoneme("I", c: C_NONE, v: V_EYE, note: 64, dur: 0.6)
+            ]),
+            Syllable(phonemes: [
+                Phoneme("DE", c: C_D, v: V_EE, note: 67, dur: 0.5)
+            ]),
+            Syllable(phonemes: [
+                Phoneme("O", c: C_NONE, v: V_AW, note: 72, dur: 0.6)
+            ])
+        ]),
+        // AI (1 word, 2 syllables: A, I)
+        Word(syllables: [
+            Syllable(phonemes: [
+                Phoneme("A", c: C_NONE, v: V_AY, note: 69, dur: 0.5)
+            ]),
+            Syllable(phonemes: [
+                Phoneme("I", c: C_NONE, v: V_EYE, note: 71, dur: 0.6)
+            ])
+        ]),
+        // DAY (1 word, 1 syllable)
+        Word(syllables: [
+            Syllable(phonemes: [
+                Phoneme("DAY", c: C_D, v: V_AY, note: 72, dur: 0.8)
+            ])
+        ])
+    ]
+    
+    static let ideoScore = Score(
+        title: "IDEO AI DAY",
+        lines: [line1]
+    )
+}
+
+// MARK: - All Scores
+
+struct Scores {
+    static let all: [Score] = [
+        HaikuData.haikuScore,
+        IDEOData.ideoScore
+    ]
+}
+
+// For tracking phoneme positions during drag
+struct PhonemeLocation: Equatable {
+    let frame: CGRect
+    let wordIndex: Int
+    let syllableIndex: Int
+    let phonemeIndex: Int
+    let phoneme: Phoneme
+    
+    static func == (lhs: PhonemeLocation, rhs: PhonemeLocation) -> Bool {
+        lhs.wordIndex == rhs.wordIndex &&
+        lhs.syllableIndex == rhs.syllableIndex &&
+        lhs.phonemeIndex == rhs.phonemeIndex &&
+        lhs.frame == rhs.frame
+    }
+}
+
+struct PhonemeFrameKey: PreferenceKey {
+    nonisolated(unsafe) static var defaultValue: [String: PhonemeLocation] = [:]
+    static func reduce(value: inout [String: PhonemeLocation], nextValue: () -> [String: PhonemeLocation]) {
+        value.merge(nextValue()) { $1 }
+    }
 }
 
 struct SequencerView: View {
@@ -230,7 +331,14 @@ struct SequencerView: View {
     
     @State private var isPlaying = false
     @State private var tempo: Double = 100
+    @State private var ccGap: Double = 0.001  // CC gap in seconds (default 1ms)
     @State private var timer: Timer?
+    
+    // Selected score (tab)
+    @State private var selectedScoreIndex = 0
+    
+    // Track phoneme frames for drag hit-testing
+    @State private var phonemeFrames: [String: PhonemeLocation] = [:]
     
     // Track current position: which word, syllable, phoneme
     @State private var currentWordIndex = 0
@@ -239,18 +347,46 @@ struct SequencerView: View {
     
     // For manual interaction
     @State private var isHolding = false
+    @State private var isSwitchingPhoneme = false  // Guard against race conditions during async switch
     @State private var holdingWordIndex: Int?
     @State private var holdingSyllableIndex: Int?
-    @State private var activeNote: UInt8?
+    @State private var holdingPhonemeIndex: Int?  // Track specific phoneme
+    @State private var currentHeldPhoneme: Phoneme?  // Track current phoneme for re-triggering
     
-    let words = HaikuData.allWords
+    // Note cache: tracks all notes we've turned on with whether they're chorus (harmony) notes
+    struct CachedNote: Equatable {
+        let note: UInt8
+        let isChorus: Bool  // true = harmony note (3rd/5th), false = root note
+    }
+    @State private var noteCache: [CachedNote] = []
+    
+    var currentScore: Score { Scores.all[selectedScoreIndex] }
+    var words: [Word] { currentScore.allWords }
     
     var beatDuration: Double { 60.0 / tempo }
     
     var body: some View {
-        VStack(spacing: 16) {
-            Text("Haiku Sequencer")
-                .font(.headline)
+        VStack(spacing: 12) {
+            // Tab bar for scores
+            HStack(spacing: 0) {
+                ForEach(Array(Scores.all.enumerated()), id: \.element.id) { idx, score in
+                    Button(action: { 
+                        if !isPlaying {
+                            selectedScoreIndex = idx 
+                            reset()
+                        }
+                    }) {
+                        Text(score.title)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 6)
+                            .background(selectedScoreIndex == idx ? Color.accentColor : Color.gray.opacity(0.3))
+                            .foregroundColor(selectedScoreIndex == idx ? .white : .primary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer()
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 6))
             
             // Display words with syllables
             wordDisplay
@@ -283,6 +419,19 @@ struct SequencerView: View {
                     .frame(width: 30)
             }
             .foregroundColor(.secondary)
+            
+            // CC Gap slider (time between phonemes for MIDI to process)
+            HStack {
+                Text("CC Gap:")
+                    .font(.caption)
+                Slider(value: $ccGap, in: 0.001...0.15, step: 0.005)
+                    .frame(width: 120)
+                Text("\(Int(ccGap * 1000))ms")
+                    .font(.caption)
+                    .monospacedDigit()
+                    .frame(width: 40)
+            }
+            .foregroundColor(.secondary)
         }
         .padding()
         .background(Color(NSColor.controlBackgroundColor))
@@ -291,16 +440,21 @@ struct SequencerView: View {
     
     var wordDisplay: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Line 1
-            lineView(HaikuData.line1, lineOffset: 0, showSlash: true)
-            // Line 2
-            lineView(HaikuData.line2, lineOffset: HaikuData.line1.count, showSlash: true)
-            // Line 3
-            lineView(HaikuData.line3, lineOffset: HaikuData.line1.count + HaikuData.line2.count, showSlash: false)
+            // Dynamic lines from current score
+            let lines = currentScore.lines
+            
+            ForEach(Array(lines.enumerated()), id: \.offset) { lineIdx, lineWords in
+                let offset = lines.prefix(lineIdx).flatMap { $0 }.count
+                let showSlash = lineIdx < lines.count - 1
+                lineView(lineWords, lineOffset: offset, showSlash: showSlash)
+            }
         }
         .padding()
         .background(Color(NSColor.textBackgroundColor))
         .cornerRadius(6)
+        .onPreferenceChange(PhonemeFrameKey.self) { frames in
+            phonemeFrames = frames
+        }
     }
     
     func lineView(_ lineWords: [Word], lineOffset: Int, showSlash: Bool) -> some View {
@@ -325,56 +479,41 @@ struct SequencerView: View {
     }
     
     func syllableButton(_ syllable: Syllable, wordIndex: Int, syllableIndex: Int) -> some View {
-        let isCurrentSyllable = (wordIndex == currentWordIndex && syllableIndex == currentSyllableIndex)
-        let isHoldingThis = (holdingWordIndex == wordIndex && holdingSyllableIndex == syllableIndex)
-        let isActive = isCurrentSyllable || isHoldingThis
-        
         // Alternate word colors
         let baseBg = wordIndex % 2 == 0 ? Color(white: 0.85) : Color(white: 0.70)
         
-        // Phonemes as connected segments within the syllable
+        // Phonemes as connected segments - each independently interactive
         return HStack(spacing: 0) {
             ForEach(Array(syllable.phonemes.enumerated()), id: \.element.id) { pIdx, phoneme in
                 phonemeSegment(phoneme, 
+                              wordIndex: wordIndex,
+                              syllableIndex: syllableIndex,
+                              phonemeIndex: pIdx,
                               isFirst: pIdx == 0, 
                               isLast: pIdx == syllable.phonemes.count - 1,
-                              isActive: isActive,
                               baseBg: baseBg)
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 5))
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    if !isHolding || holdingWordIndex != wordIndex || holdingSyllableIndex != syllableIndex {
-                        pressSyllable(wordIndex: wordIndex, syllableIndex: syllableIndex)
-                    }
-                }
-                .onEnded { _ in
-                    releaseSyllable(wordIndex: wordIndex, syllableIndex: syllableIndex)
-                }
-        )
-        .onHover { hovering in
-            if hovering {
-                NSCursor.pointingHand.push()
-            } else {
-                NSCursor.pop()
-                if isHolding && holdingWordIndex == wordIndex && holdingSyllableIndex == syllableIndex {
-                    releaseSyllable(wordIndex: wordIndex, syllableIndex: syllableIndex)
-                }
-            }
-        }
     }
     
-    func phonemeSegment(_ phoneme: Phoneme, isFirst: Bool, isLast: Bool, isActive: Bool, baseBg: Color) -> some View {
-        let bg = isActive ? Color.yellow : baseBg
+    func phonemeSegment(_ phoneme: Phoneme, wordIndex: Int, syllableIndex: Int, phonemeIndex: Int, isFirst: Bool, isLast: Bool, baseBg: Color) -> some View {
+        // Highlight if this specific phoneme is being held
+        let isActivePhoneme = isHolding && 
+            holdingWordIndex == wordIndex && 
+            holdingSyllableIndex == syllableIndex && 
+            holdingPhonemeIndex == phonemeIndex
+        let bg = isActivePhoneme ? Color.yellow : baseBg
+        
+        // Create a unique ID for this phoneme's location
+        let phonemeKey = "\(wordIndex)-\(syllableIndex)-\(phonemeIndex)"
         
         return HStack(spacing: 0) {
             Text(phoneme.text)
                 .fixedSize()
                 .padding(.horizontal, 6)
                 .padding(.vertical, 4)
-                .fontWeight(isActive ? .bold : .regular)
+                .fontWeight(isActivePhoneme ? .bold : .regular)
             
             // Separator line between phonemes (not after last)
             if !isLast {
@@ -385,26 +524,338 @@ struct SequencerView: View {
             }
         }
         .background(bg)
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(
+                    key: PhonemeFrameKey.self,
+                    value: [phonemeKey: PhonemeLocation(
+                        frame: geo.frame(in: .global),
+                        wordIndex: wordIndex,
+                        syllableIndex: syllableIndex,
+                        phonemeIndex: phonemeIndex,
+                        phoneme: phoneme
+                    )]
+                )
+            }
+        )
+        .gesture(
+            DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                .onChanged { value in
+                    // On initial press
+                    if !isHolding {
+                        handlePhonemePress(wordIndex: wordIndex, syllableIndex: syllableIndex, phonemeIndex: phonemeIndex, phoneme: phoneme)
+                    } else if !isSwitchingPhoneme {
+                        // During drag - but only if not in middle of async switch
+                        
+                        // First check if we moved to a different phoneme
+                        // (this handles shift state internally via switchToPhoneme)
+                        let movedToNewPhoneme = checkDragLocation(value.location)
+                        
+                        // Only handle shift changes if we DIDN'T move to a new phoneme
+                        // (if we did move, switchToPhoneme already handled shift state)
+                        if !movedToNewPhoneme {
+                            let shiftNow = NSEvent.modifierFlags.contains(.shift)
+                            let hasChorusNotes = noteCache.contains { $0.isChorus }
+                            
+                            if shiftNow && !hasChorusNotes, let phoneme = currentHeldPhoneme {
+                                // Shift pressed - add chorus notes
+                                addChorusNotes(for: phoneme)
+                            } else if !shiftNow && hasChorusNotes {
+                                // Shift released - remove chorus notes
+                                removeChorusNotes()
+                            }
+                        }
+                    }
+                }
+                .onEnded { _ in
+                    handlePhonemeRelease()
+                }
+        )
+        .onHover { hovering in
+            if hovering {
+                NSCursor.pointingHand.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
     }
     
-    // MARK: - Press/Release Interaction
+    // MARK: - Press/Release Interaction (Phoneme-level)
+    
+    /// Handle press on individual phoneme
+    func handlePhonemePress(wordIndex: Int, syllableIndex: Int, phonemeIndex: Int, phoneme: Phoneme) {
+        guard !isPlaying else { return }
+        
+        // If already holding this exact phoneme, do nothing
+        if isHolding && holdingWordIndex == wordIndex && holdingSyllableIndex == syllableIndex && holdingPhonemeIndex == phonemeIndex {
+            return
+        }
+        
+        // Stop any currently playing notes
+        stopAllCachedNotes()
+        
+        // Update state
+        isHolding = true
+        holdingWordIndex = wordIndex
+        holdingSyllableIndex = syllableIndex
+        holdingPhonemeIndex = phonemeIndex
+        currentWordIndex = wordIndex
+        currentSyllableIndex = syllableIndex
+        currentHeldPhoneme = phoneme
+        
+        // Check shift at moment of press
+        let shiftPressed = NSEvent.modifierFlags.contains(.shift)
+        
+        // Log FIRST
+        print("🎵 Press: '\(phoneme.text)' - C:\(phoneme.consonant) V:\(phoneme.vowel) \(shiftPressed ? "[CHORD]" : "")")
+        
+        // Set CCs for this phoneme
+        midiService.consonant = phoneme.consonant
+        midiService.vowel = phoneme.vowel
+        
+        // Play root note (always)
+        midiService.sendNoteOn(note: phoneme.note)
+        noteCache.append(CachedNote(note: phoneme.note, isChorus: false))
+        
+        // If shift held, also play chorus notes
+        if shiftPressed {
+            addChorusNotes(for: phoneme)
+        }
+    }
+    
+    /// Handle release - complete the rest of the word
+    func handlePhonemeRelease() {
+        guard isHolding else { return }
+        guard let wordIdx = holdingWordIndex, 
+              let sylIdx = holdingSyllableIndex,
+              let phonIdx = holdingPhonemeIndex else {
+            isHolding = false
+            stopAllCachedNotes()
+            return
+        }
+        
+        isHolding = false
+        
+        let word = words[wordIdx]
+        let syllable = word.syllables[sylIdx]
+        
+        // Get remaining phonemes in current syllable (after the one we're holding)
+        let remainingPhonemesInSyllable = Array(syllable.phonemes.dropFirst(phonIdx + 1))
+        
+        // Get remaining syllables in word
+        let remainingSyllables = Array(word.syllables.dropFirst(sylIdx + 1))
+        
+        // Small delay to ensure current phoneme is heard
+        DispatchQueue.main.asyncAfter(deadline: .now() + minSoundTime) { [self] in
+            // First complete the current syllable's remaining phonemes
+            if !remainingPhonemesInSyllable.isEmpty {
+                playRemainingPhonemesThenSyllables(remainingPhonemesInSyllable, thenSyllables: remainingSyllables)
+            } else if !remainingSyllables.isEmpty {
+                // No more phonemes in syllable, play remaining syllables
+                playRemainingSyllables(remainingSyllables, index: 0)
+            } else {
+                // Nothing left, just stop
+                stopAllCachedNotes()
+            }
+        }
+        
+        holdingWordIndex = nil
+        holdingSyllableIndex = nil
+        holdingPhonemeIndex = nil
+    }
+    
+    /// Play remaining phonemes in syllable, then remaining syllables
+    func playRemainingPhonemesThenSyllables(_ phonemes: [Phoneme], thenSyllables syllables: [Syllable]) {
+        playRemainingPhonemesSequence(phonemes, index: 0) { [self] in
+            if !syllables.isEmpty {
+                playRemainingSyllables(syllables, index: 0)
+            } else {
+                stopAllCachedNotes()
+            }
+        }
+    }
+    
+    func playRemainingPhonemesSequence(_ phonemes: [Phoneme], index: Int, completion: @escaping () -> Void) {
+        guard index < phonemes.count else {
+            completion()
+            return
+        }
+        
+        let phoneme = phonemes[index]
+        
+        // Stop previous
+        stopAllCachedNotes()
+        
+        // Check if shift is held for chord mode
+        let shiftHeld = NSEvent.modifierFlags.contains(.shift)
+        
+        // Small delay then play
+        DispatchQueue.main.asyncAfter(deadline: .now() + ccGap) { [self] in
+            playPhoneme(phoneme, asChord: shiftHeld)
+            
+            // Schedule next
+            let duration = max(phoneme.duration * beatDuration, ccGap * 2)
+            DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+                self.playRemainingPhonemesSequence(phonemes, index: index + 1, completion: completion)
+            }
+        }
+    }
+    
+    /// Check drag location and switch phoneme if over a different one
+    /// Returns true if we switched to a new phoneme
+    @discardableResult
+    func checkDragLocation(_ location: CGPoint) -> Bool {
+        // Find which phoneme the drag is over
+        for (_, phonemeLoc) in phonemeFrames {
+            if phonemeLoc.frame.contains(location) {
+                // If it's a different phoneme than we're holding, switch
+                if phonemeLoc.wordIndex != holdingWordIndex ||
+                   phonemeLoc.syllableIndex != holdingSyllableIndex ||
+                   phonemeLoc.phonemeIndex != holdingPhonemeIndex {
+                    switchToPhoneme(
+                        wordIndex: phonemeLoc.wordIndex,
+                        syllableIndex: phonemeLoc.syllableIndex,
+                        phonemeIndex: phonemeLoc.phonemeIndex,
+                        phoneme: phonemeLoc.phoneme
+                    )
+                    return true  // Did switch
+                }
+                return false  // Same phoneme, no switch
+            }
+        }
+        // Not over any phoneme - keep holding current
+        return false
+    }
+    
+    /// Switch to a different phoneme while dragging
+    func switchToPhoneme(wordIndex: Int, syllableIndex: Int, phonemeIndex: Int, phoneme: Phoneme) {
+        guard isHolding else { return }
+        guard !isSwitchingPhoneme else { return }  // Prevent re-entry during async
+        
+        // Check shift state NOW (before stopping notes)
+        let shiftNow = NSEvent.modifierFlags.contains(.shift)
+        
+        // Mark that we're switching (prevents race conditions)
+        isSwitchingPhoneme = true
+        
+        // Stop all current notes
+        stopAllCachedNotes()
+        
+        // Update tracking
+        holdingWordIndex = wordIndex
+        holdingSyllableIndex = syllableIndex
+        holdingPhonemeIndex = phonemeIndex
+        currentWordIndex = wordIndex
+        currentSyllableIndex = syllableIndex
+        currentHeldPhoneme = phoneme
+        
+        // Small gap then play new phoneme
+        DispatchQueue.main.asyncAfter(deadline: .now() + ccGap) { [self] in
+            guard isHolding else { 
+                isSwitchingPhoneme = false
+                return 
+            }
+            
+            // Log FIRST so we can see the order
+            print("🎵 Switch to: '\(phoneme.text)' - C:\(phoneme.consonant) V:\(phoneme.vowel) \(shiftNow ? "[CHORD]" : "")")
+            
+            // Set CCs
+            midiService.consonant = phoneme.consonant
+            midiService.vowel = phoneme.vowel
+            
+            // Play root note
+            midiService.sendNoteOn(note: phoneme.note)
+            noteCache.append(CachedNote(note: phoneme.note, isChorus: false))
+            
+            // If shift still held, add chorus notes
+            if shiftNow {
+                addChorusNotes(for: phoneme)
+            }
+            
+            // Done switching
+            isSwitchingPhoneme = false
+        }
+    }
+    
+    /// Add chorus notes (3rd and 5th) for the current phoneme
+    /// Sends CC values before each note to ensure each doll gets correct vowel/consonant
+    func addChorusNotes(for phoneme: Phoneme) {
+        let third = phoneme.note + 4
+        let fifth = phoneme.note + 7
+        
+        print("🎶 Adding chorus notes: \(third), \(fifth) for '\(phoneme.text)' C:\(phoneme.consonant) V:\(phoneme.vowel)")
+        
+        // Send CCs before each note (dolls are distributed, each needs CC)
+        midiService.consonant = phoneme.consonant
+        midiService.vowel = phoneme.vowel
+        midiService.sendNoteOn(note: third)
+        
+        midiService.consonant = phoneme.consonant
+        midiService.vowel = phoneme.vowel
+        midiService.sendNoteOn(note: fifth)
+        
+        noteCache.append(CachedNote(note: third, isChorus: true))
+        noteCache.append(CachedNote(note: fifth, isChorus: true))
+    }
+    
+    /// Remove only the chorus notes (when shift is released)
+    func removeChorusNotes() {
+        let chorusNotes = noteCache.filter { $0.isChorus }
+        for cached in chorusNotes {
+            midiService.sendNoteOff(note: cached.note)
+        }
+        noteCache.removeAll { $0.isChorus }
+        print("🎶 Removed chorus notes")
+    }
+    
+    /// Stop all notes in the cache
+    func stopAllCachedNotes() {
+        for cached in noteCache {
+            midiService.sendNoteOff(note: cached.note)
+        }
+        noteCache.removeAll()
+    }
+    
+    /// Play a single phoneme using the note cache
+    /// Sends CC values before each note to ensure each doll gets correct vowel/consonant
+    func playPhoneme(_ phoneme: Phoneme, asChord: Bool = false) {
+        let playAsChord = asChord || phoneme.isChord
+        
+        // Set CCs and play root note
+        midiService.consonant = phoneme.consonant
+        midiService.vowel = phoneme.vowel
+        midiService.sendNoteOn(note: phoneme.note)
+        noteCache.append(CachedNote(note: phoneme.note, isChorus: false))
+        
+        if playAsChord {
+            // Add chorus notes (3rd and 5th) - send CCs before each note
+            let chordNotes = phoneme.isChord ? HaikuData.splashChord : chordFromNote(phoneme.note)
+            // Skip root (already added), add harmony notes
+            for note in chordNotes.dropFirst() {
+                midiService.consonant = phoneme.consonant
+                midiService.vowel = phoneme.vowel
+                midiService.sendNoteOn(note: note)
+                noteCache.append(CachedNote(note: note, isChorus: true))
+            }
+        }
+        
+        print("🎵 Phoneme: '\(phoneme.text)' - C:\(phoneme.consonant) V:\(phoneme.vowel) \(playAsChord ? "[CHORD]" : "")")
+    }
+    
+    // MARK: - Legacy Syllable Interaction (for auto-playback)
     
     /// Press: Play through all phonemes in the syllable, hold the last one
-    func pressSyllable(wordIndex: Int, syllableIndex: Int) {
+    /// If asChord is true (shift held), play 3 notes instead of 1
+    func pressSyllable(wordIndex: Int, syllableIndex: Int, asChord: Bool = false) {
         guard !isPlaying else { return }
         
         // Stop any currently playing note
-        if let note = activeNote {
-            midiService.sendNoteOff(note: note)
-            // Also stop chord notes if applicable
-            for chordNote in HaikuData.splashChord {
-                midiService.sendNoteOff(note: chordNote)
-            }
-        }
+        stopAllCachedNotes()
         
         isHolding = true
         holdingWordIndex = wordIndex
         holdingSyllableIndex = syllableIndex
+        holdingPhonemeIndex = nil
         currentWordIndex = wordIndex
         currentSyllableIndex = syllableIndex
         
@@ -412,56 +863,76 @@ struct SequencerView: View {
         let syllable = word.syllables[syllableIndex]
         
         // Play through all phonemes in the syllable
-        playSyllablePhonemes(syllable)
+        playSyllablePhonemes(syllable, asChord: asChord)
     }
     
     /// Play all phonemes in a syllable sequentially, hold the last one
-    func playSyllablePhonemes(_ syllable: Syllable) {
+    func playSyllablePhonemes(_ syllable: Syllable, asChord: Bool = false) {
         guard !syllable.phonemes.isEmpty else { return }
         
         // For simplicity, play through each phoneme with timing, hold the last
-        playPhonemeSequence(syllable.phonemes, index: 0)
+        playPhonemeSequence(syllable.phonemes, index: 0, needsGap: false, forceChord: asChord)
     }
     
-    func playPhonemeSequence(_ phonemes: [Phoneme], index: Int) {
+    // Use ccGap state variable for minimum time between phonemes
+    
+    // Build chord from a root note (root, +4 semitones, +7 semitones = major chord)
+    func chordFromNote(_ root: UInt8) -> [UInt8] {
+        return [root, root + 4, root + 7]
+    }
+    
+    func playPhonemeSequence(_ phonemes: [Phoneme], index: Int, needsGap: Bool = false, forceChord: Bool = false) {
         guard index < phonemes.count else { return }
         guard isHolding else { return }  // Stop if released
         
         let phoneme = phonemes[index]
         let isLast = index == phonemes.count - 1
+        let playAsChord = forceChord || phoneme.isChord  // Shift OR marked as chord
         
-        // Stop previous note
-        if let note = activeNote {
-            midiService.sendNoteOff(note: note)
-        }
+        // Only add gap BETWEEN phonemes (not before the first one)
+        let gapDelay = needsGap ? ccGap : 0
         
-        // Set CCs and play
-        midiService.consonant = phoneme.consonant
-        midiService.vowel = phoneme.vowel
+        // Stop previous notes
+        stopAllCachedNotes()
         
-        if phoneme.isChord {
-            for note in HaikuData.splashChord {
-                midiService.sendNoteOn(note: note)
-            }
-            activeNote = HaikuData.splashChord[0]
-        } else {
+        // Delay only if needed (between phonemes, not before first)
+        DispatchQueue.main.asyncAfter(deadline: .now() + gapDelay) { [self] in
+            guard isHolding else { return }  // Check still holding after delay
+            
+            // Set CCs and play root note
+            midiService.consonant = phoneme.consonant
+            midiService.vowel = phoneme.vowel
             midiService.sendNoteOn(note: phoneme.note)
-            activeNote = phoneme.note
-        }
-        
-        print("🎵 Phoneme: '\(phoneme.text)' - C:\(phoneme.consonant) V:\(phoneme.vowel)")
-        
-        // If not last, schedule next phoneme
-        if !isLast {
-            let duration = phoneme.duration * beatDuration
-            DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [self] in
-                playPhonemeSequence(phonemes, index: index + 1)
+            noteCache.append(CachedNote(note: phoneme.note, isChorus: false))
+            
+            if playAsChord {
+                // Add chorus notes - send CCs before each note (distributed across dolls)
+                let chordNotes = phoneme.isChord ? HaikuData.splashChord : chordFromNote(phoneme.note)
+                for note in chordNotes.dropFirst() {
+                    midiService.consonant = phoneme.consonant
+                    midiService.vowel = phoneme.vowel
+                    midiService.sendNoteOn(note: note)
+                    noteCache.append(CachedNote(note: note, isChorus: true))
+                }
             }
+            
+            print("🎵 Phoneme: '\(phoneme.text)' - C:\(phoneme.consonant) V:\(phoneme.vowel) \(playAsChord ? "[CHORD]" : "")")
+            
+            // If not last, schedule next phoneme (with gap)
+            if !isLast {
+                let duration = max(phoneme.duration * beatDuration, ccGap * 2)
+                DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [self] in
+                    playPhonemeSequence(phonemes, index: index + 1, needsGap: true, forceChord: forceChord)
+                }
+            }
+            // If last, keep holding until release
         }
-        // If last, keep holding until release
     }
     
     /// Release: Play remaining syllables in the word, then stop
+    /// Ensures at least a minimum sound time even on quick clicks
+    let minSoundTime: Double = 0.15  // 150ms minimum to hear something
+    
     func releaseSyllable(wordIndex: Int, syllableIndex: Int) {
         guard isHolding else { return }
         
@@ -470,12 +941,15 @@ struct SequencerView: View {
         let word = words[wordIndex]
         let remainingSyllables = Array(word.syllables.dropFirst(syllableIndex + 1))
         
-        if remainingSyllables.isEmpty {
-            // No more syllables, just stop
-            stopAllNotes()
-        } else {
-            // Play remaining syllables then stop
-            playRemainingSyllables(remainingSyllables, index: 0)
+        // Small delay to ensure the current phoneme is heard even on quick click
+        DispatchQueue.main.asyncAfter(deadline: .now() + minSoundTime) { [self] in
+            if remainingSyllables.isEmpty {
+                // No more syllables, just stop
+                stopAllCachedNotes()
+            } else {
+                // Play remaining syllables then stop
+                playRemainingSyllables(remainingSyllables, index: 0)
+            }
         }
         
         holdingWordIndex = nil
@@ -484,7 +958,7 @@ struct SequencerView: View {
     
     func playRemainingSyllables(_ syllables: [Syllable], index: Int) {
         guard index < syllables.count else {
-            stopAllNotes()
+            stopAllCachedNotes()
             return
         }
         
@@ -503,33 +977,45 @@ struct SequencerView: View {
         
         let phoneme = phonemes[phonemeIndex]
         
-        // Stop previous
-        if let note = activeNote {
-            midiService.sendNoteOff(note: note)
-        }
+        // Stop previous notes
+        stopAllCachedNotes()
         
-        // Play this phoneme
-        midiService.consonant = phoneme.consonant
-        midiService.vowel = phoneme.vowel
-        midiService.sendNoteOn(note: phoneme.note)
-        activeNote = phoneme.note
+        // Check if shift is still held (for chord mode during word completion)
+        let shiftHeld = NSEvent.modifierFlags.contains(.shift)
         
-        // Schedule next
-        let duration = phoneme.duration * beatDuration
-        DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
-            self.playRemainingSyllablePhonemes(phonemes, phonemeIndex: phonemeIndex + 1, completion: completion)
+        // Small delay after note off for Choir to process
+        DispatchQueue.main.asyncAfter(deadline: .now() + ccGap) { [self] in
+            // Set CCs and play root note
+            midiService.consonant = phoneme.consonant
+            midiService.vowel = phoneme.vowel
+            midiService.sendNoteOn(note: phoneme.note)
+            noteCache.append(CachedNote(note: phoneme.note, isChorus: false))
+            
+            // If shift still held, add chorus - send CCs before each note
+            if shiftHeld {
+                let third = phoneme.note + 4
+                let fifth = phoneme.note + 7
+                
+                midiService.consonant = phoneme.consonant
+                midiService.vowel = phoneme.vowel
+                midiService.sendNoteOn(note: third)
+                
+                midiService.consonant = phoneme.consonant
+                midiService.vowel = phoneme.vowel
+                midiService.sendNoteOn(note: fifth)
+                
+                noteCache.append(CachedNote(note: third, isChorus: true))
+                noteCache.append(CachedNote(note: fifth, isChorus: true))
+            }
+            
+            // Schedule next with minimum duration
+            let duration = max(phoneme.duration * beatDuration, ccGap * 2)
+            DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+                self.playRemainingSyllablePhonemes(phonemes, phonemeIndex: phonemeIndex + 1, completion: completion)
+            }
         }
     }
     
-    func stopAllNotes() {
-        if let note = activeNote {
-            midiService.sendNoteOff(note: note)
-        }
-        for note in HaikuData.splashChord {
-            midiService.sendNoteOff(note: note)
-        }
-        activeNote = nil
-    }
     
     // MARK: - Playback Controls
     
@@ -559,6 +1045,7 @@ struct SequencerView: View {
         guard isPlaying else { return }
         guard index < phonemes.count else {
             // Done
+            stopAllCachedNotes()
             isPlaying = false
             currentWordIndex = 0
             currentSyllableIndex = 0
@@ -567,32 +1054,37 @@ struct SequencerView: View {
         
         let phoneme = phonemes[index]
         
-        // Stop previous
-        if let note = activeNote {
-            midiService.sendNoteOff(note: note)
-        }
+        // Stop previous notes
+        stopAllCachedNotes()
         
         // Update position tracking (approximate)
         updatePositionForPhonemeIndex(index)
         
-        // Play
-        midiService.consonant = phoneme.consonant
-        midiService.vowel = phoneme.vowel
-        
-        if phoneme.isChord {
-            for note in HaikuData.splashChord {
-                midiService.sendNoteOn(note: note)
-            }
-            activeNote = HaikuData.splashChord[0]
-        } else {
+        // Small delay after note off for Choir to process CC changes
+        DispatchQueue.main.asyncAfter(deadline: .now() + ccGap) { [self] in
+            guard isPlaying else { return }
+            
+            // Set CCs and play root note
+            midiService.consonant = phoneme.consonant
+            midiService.vowel = phoneme.vowel
             midiService.sendNoteOn(note: phoneme.note)
-            activeNote = phoneme.note
-        }
-        
-        // Schedule next
-        let duration = phoneme.duration * beatDuration
-        DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
-            self.playAllPhonemes(phonemes, index: index + 1)
+            noteCache.append(CachedNote(note: phoneme.note, isChorus: false))
+            
+            // If marked as chord phoneme, add the chord notes - send CCs before each
+            if phoneme.isChord {
+                for note in HaikuData.splashChord.dropFirst() {
+                    midiService.consonant = phoneme.consonant
+                    midiService.vowel = phoneme.vowel
+                    midiService.sendNoteOn(note: note)
+                    noteCache.append(CachedNote(note: note, isChorus: true))
+                }
+            }
+            
+            // Schedule next with minimum duration
+            let duration = max(phoneme.duration * beatDuration, ccGap * 2)
+            DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+                self.playAllPhonemes(phonemes, index: index + 1)
+            }
         }
     }
     
@@ -616,7 +1108,7 @@ struct SequencerView: View {
         isPlaying = false
         timer?.invalidate()
         timer = nil
-        stopAllNotes()
+        stopAllCachedNotes()
     }
     
     func reset() {

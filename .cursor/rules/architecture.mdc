@@ -38,3 +38,21 @@ When converting text to Choir syllables (for AI integration):
 6. **Missing clusters (Spl, ps, nce)** → use closest approximation
 
 See `SequencerView.swift` HaikuData comments for full rules.
+
+## Future UI Modes
+
+### Easy Mode (current)
+- Text-first view with syllables as buttons
+- App makes musical decisions (notes, timing)
+- Good for quick testing and simple playback
+
+### Advanced Mode (planned)
+- Piano roll style editor (like DAW MIDI editor)
+- Notes/keys on vertical axis, time on horizontal
+- Syllables as draggable blocks:
+  - Drag vertical = change pitch
+  - Drag horizontal = change timing/duration
+  - Duration affects the "hold" on last phoneme
+  - Click to edit phonemes within syllable
+- Syllable = phoneme bundle that stays together as a unit
+- Natural fit for Logic Pro plugin integration
