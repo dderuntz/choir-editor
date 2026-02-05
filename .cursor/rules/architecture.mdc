@@ -1,0 +1,24 @@
+---
+description: Architecture patterns for Bluetooth MIDI, Audio Engine, and Data Flow
+globs: Sources/**/*.swift
+alwaysApply: false
+---
+
+# Architecture Patterns
+
+## Services
+- **MidiService**: Handles all MIDI I/O. Uses MIDIKit. `@MainActor` isolated.
+- **BluetoothMidiManager**: Scans/Connects BLE peripherals. ObservableObject.
+- **AudioMonitorService**: Local audio synthesis. Thread-safe (no locks/classes in render block).
+
+## Audio Engine
+- **AVAudioSourceNode**: Use for synthesis to avoid obscure SoundFont deps.
+- **Real-time Safety**: 
+  - NO `NSLock` or Swift Classes in render block.
+  - Use `UnsafeMutablePointer<VoiceData>` for shared state.
+  - Capture constants locally before entering block.
+
+## Data Flow
+- **Bluetooth -> MIDI**: Connect logic separate from Note sending.
+- **UI -> Service**: View triggers `midiService.sendNoteOn` & `audioMonitor.playNote`.
+- **Polyphony**: Max 16 voices. Round-robin or linear search allocation.

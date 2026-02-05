@@ -1,0 +1,22 @@
+---
+description: SwiftUI coding standards and View structure
+globs: Sources/**/*.swift
+alwaysApply: false
+---
+
+# SwiftUI Patterns
+
+## View Structure
+1. **Environment**: Inject `MidiService`, `BluetoothMidiManager` via `.environmentObject`.
+2. **Layout**: Prefer custom layouts (e.g. `PianoKeyboardLayout`) over complex `ZStack` hacks.
+3. **Scroll**: Use `ScrollViewReader` with "Ghost Track" (invisible HStack) for precise scrolling.
+
+## State Management
+- **@ObservedObject**: For Services passed into subviews.
+- **@StateObject**: Only in App/Root.
+- **@State**: UI-local state (e.g. `isPressed`).
+
+## Components
+- **PianoKey**: Handle touch logic internally. Use `DragGesture(minimumDistance: 0)`.
+- **Styling**: Middle C (60) is Yellow.
+- **Resizability**: Support dynamic window sizing where possible.

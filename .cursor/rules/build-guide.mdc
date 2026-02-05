@@ -1,0 +1,20 @@
+---
+description: Build, Run, and Debug guidelines
+globs: ["**/*.swift", "Package.swift", ".vscode/*.json"]
+alwaysApply: true
+---
+
+# Build & Run
+
+## Execution
+- **Method**: Use VS Code "Run and Debug" (CMD+Shift+D) -> "Run ChoirController".
+- **CLI**: `swift run` (App activates via `NSApp.activate` hack in init).
+
+## Dependencies
+- **MIDIKit**: Core MIDI handling.
+- **CoreBluetooth**: Native BLE scanning.
+- **AVFoundation**: Local audio synthesis.
+
+## Debugging
+- **Audio Hangs**: If app freezes on note press, check `AudioMonitorService` for locks/allocations in render block.
+- **BLE**: Needs "Bluetooth" permission in Info.plist (handled by ad-hoc signing usually, or `entitlements` if bundled).
