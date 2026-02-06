@@ -2,8 +2,9 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var bluetoothManager: BluetoothMidiManager
-    @EnvironmentObject var midiService: MidiService
+    var midiService: MidiService // Passed explicitly, not observed (prevents redraw loop)
     @State private var showSettings = false
+    @State private var selectedTab = 0  // 0 = Sequencer, 1 = Sound Pad
     
     var body: some View {
         ZStack(alignment: .leading) {
@@ -26,6 +27,16 @@ struct ContentView: View {
                     
                     Spacer()
                     
+                    // Tab switcher
+                    Picker("", selection: $selectedTab) {
+                        Text("Sequencer").tag(0)
+                        Text("Sound Pad").tag(1)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 200)
+                    
+                    Spacer()
+                    
                     // Connection status indicator
                     ConnectionStatusView(midiService: midiService)
                 }
@@ -35,12 +46,18 @@ struct ContentView: View {
                 
                 Divider()
                 
-                // Main content
+                // Main content based on tab
                 VStack {
-                    // Sequencer
-                    SequencerView(midiService: midiService)
-                        .frame(maxWidth: 550)
-                        .padding(.top, 20)
+                    if selectedTab == 0 {
+                        // Sequencer
+                        SequencerView(midiService: midiService)
+                            .frame(maxWidth: 550)
+                            .padding(.top, 20)
+                    } else {
+                        // Sound Pad
+                        SoundPadView(midiService: midiService)
+                            .padding(.top, 20)
+                    }
                     
                     Spacer()
                     
@@ -132,6 +149,44 @@ struct SettingsPanelView: View {
             
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    // Sequencer Settings
+                    GroupBox("Sequencer Settings") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            // Tempo
+                            HStack {
+                                Text("Tempo:")
+                                    .font(.caption)
+                                    .frame(width: 80, alignment: .leading)
+                                Slider(value: $midiService.tempo, in: 40...200, step: 5)
+                                Text("\(Int(midiService.tempo))")
+                                    .font(.caption).monospacedDigit()
+                                    .frame(width: 30)
+                            }
+                            
+                            // Min Note
+                            HStack {
+                                Text("Min Note:")
+                                    .font(.caption)
+                                    .frame(width: 80, alignment: .leading)
+                                Slider(value: $midiService.minNoteDuration, in: 0.01...0.5, step: 0.01)
+                                Text("\(Int(midiService.minNoteDuration * 1000))ms")
+                                    .font(.caption).monospacedDigit()
+                                    .frame(width: 40)
+                            }
+                            
+                            // Consonant Length
+                            HStack {
+                                Text("Consonant:")
+                                    .font(.caption)
+                                    .frame(width: 80, alignment: .leading)
+                                Slider(value: $midiService.consonantDuration, in: 0.05...0.6, step: 0.05)
+                                Text("\(midiService.consonantDuration, specifier: "%.2f")b")
+                                    .font(.caption).monospacedDigit()
+                                    .frame(width: 40)
+                            }
+                        }
+                    }
+                    
                     // Voice Controls
                     GroupBox("Voice Controls") {
                         VoiceControlsView(midiService: midiService)

@@ -22,6 +22,11 @@ class MidiService: ObservableObject {
     @Published var consonant: UInt8 = ChoirDefaults.consonant
     @Published var vowel: UInt8 = ChoirDefaults.vowel
     
+    // Global Sequencer Settings
+    @Published var tempo: Double = 100
+    @Published var consonantDuration: Double = 0.15
+    @Published var minNoteDuration: Double = 0.28
+    
     init() {
         // We need to defer notification handler setup or handle concurrency carefully
         // Since we are in init, self is not fully available/sendable yet in some contexts, 
@@ -116,12 +121,12 @@ class MidiService: ObservableObject {
         }
     }
     
-    func sendNoteOff(note: UInt8, channel: UInt4 = 0) {
+    func sendNoteOff(note: UInt8, velocity: UInt8 = 0, channel: UInt4 = 0) {
         guard let connection = midiManager.managedOutputConnections["ChoirOutput"] else { return }
         
         let noteOff = MIDIEvent.noteOff(
             UInt7(note),
-            velocity: .midi1(0),
+            velocity: .midi1(UInt7(velocity)),
             channel: channel
         )
         
@@ -146,6 +151,88 @@ class MidiService: ObservableObject {
             try connection.send(event: cc)
         } catch {
             print("Error sending CC: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Send pitch bend. Value range: 0-16383, center (no bend) = 8192
+    func sendPitchBend(value: UInt16, channel: UInt4 = 0) {
+        guard let connection = midiManager.managedOutputConnections["ChoirOutput"] else { return }
+        
+        // MIDIKit uses UInt14 for pitch bend (0-16383)
+        let clampedValue = min(value, 16383)
+        let pitchBend = MIDIEvent.pitchBend(value: .midi1(UInt14(clampedValue)), channel: channel)
+        
+        do {
+            try connection.send(event: pitchBend)
+            print("🎹 MIDI Sent: Pitch Bend \(clampedValue) ch:\(channel)")
+        } catch {
+            print("❌ MIDI Error sending Pitch Bend: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Send channel aftertouch (pressure). Value range: 0-127
+    func sendAftertouch(pressure: UInt8, channel: UInt4 = 0) {
+        guard let connection = midiManager.managedOutputConnections["ChoirOutput"] else { return }
+        
+        let aftertouch = MIDIEvent.pressure(amount: .midi1(UInt7(min(pressure, 127))), channel: channel)
+        
+        do {
+            try connection.send(event: aftertouch)
+            print("🎹 MIDI Sent: Aftertouch \(pressure) ch:\(channel)")
+        } catch {
+            print("❌ MIDI Error sending Aftertouch: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Send program change. Value range: 0-127
+    func sendProgramChange(program: UInt8, channel: UInt4 = 0) {
+        guard let connection = midiManager.managedOutputConnections["ChoirOutput"] else { return }
+        
+        let pc = MIDIEvent.programChange(program: UInt7(min(program, 127)), channel: channel)
+        
+        do {
+            try connection.send(event: pc)
+            print("🎹 MIDI Sent: Program Change \(program) ch:\(channel)")
+        } catch {
+            print("❌ MIDI Error sending Program Change: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Send NRPN (Non-Registered Parameter Number)
+    /// Parameter range: 0-16383, Value range: 0-16383
+    func sendNRPN(parameter: UInt16, value: UInt16, channel: UInt4 = 0) {
+        // NRPN uses 4 CC messages:
+        // CC99 = parameter MSB (high 7 bits)
+        // CC98 = parameter LSB (low 7 bits)
+        // CC6 = value MSB (high 7 bits)
+        // CC38 = value LSB (low 7 bits) - optional for fine control
+        
+        let paramMSB = UInt8((parameter >> 7) & 0x7F)
+        let paramLSB = UInt8(parameter & 0x7F)
+        let valueMSB = UInt8((value >> 7) & 0x7F)
+        let valueLSB = UInt8(value & 0x7F)
+        
+        sendCC(controller: 99, value: paramMSB, channel: channel)
+        sendCC(controller: 98, value: paramLSB, channel: channel)
+        sendCC(controller: 6, value: valueMSB, channel: channel)
+        sendCC(controller: 38, value: valueLSB, channel: channel)
+        
+        print("🎹 MIDI Sent: NRPN param=\(parameter) value=\(value) ch:\(channel)")
+    }
+    
+    /// Send Song Select (0-127)
+    func sendSongSelect(song: UInt8, channel: UInt4 = 0) {
+        guard let connection = midiManager.managedOutputConnections["ChoirOutput"] else { return }
+        
+        let songSelect = MIDIEvent.songSelect(
+            number: UInt7(min(song, 127))
+        )
+        
+        do {
+            try connection.send(event: songSelect)
+            print("🎹 MIDI Sent: Song Select \(song)")
+        } catch {
+            print("❌ MIDI Error sending Song Select: \(error.localizedDescription)")
         }
     }
 }

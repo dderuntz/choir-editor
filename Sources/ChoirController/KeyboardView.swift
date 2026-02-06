@@ -1,13 +1,13 @@
 import SwiftUI
 
 struct KeyboardView: View {
-    @ObservedObject var midiService: MidiService
+    var midiService: MidiService // Not observed
     @StateObject private var audioMonitor = AudioMonitorService()
     @State private var localAudioEnabled = false  // Default OFF
     
-    // Full 88-key piano range: A0 (21) to C8 (108)
-    let startNote = 21
-    let endNote = 108
+    // Choir vocal range: E2 (40) to A5 (81)
+    let startNote = 40  // E2 - Bogdan (bass) lowest
+    let endNote = 81    // A5 - Leila (soprano) highest
     let middleC = 60
     
     var body: some View {
@@ -67,7 +67,7 @@ struct KeyboardView: View {
 struct PianoKeyboardLayout: View {
     let startNote: Int
     let endNote: Int
-    @ObservedObject var midiService: MidiService
+    var midiService: MidiService // Not observed
     @ObservedObject var audioMonitor: AudioMonitorService
     let localAudioEnabled: Bool
     
@@ -123,7 +123,7 @@ struct PianoKeyboardLayout: View {
 struct PianoKey: View {
     let note: UInt8
     let isBlack: Bool
-    @ObservedObject var midiService: MidiService
+    var midiService: MidiService // Don't observe, just reference to call methods
     @ObservedObject var audioMonitor: AudioMonitorService
     let localAudioEnabled: Bool
     @State private var isPressed = false

@@ -27,13 +27,32 @@ alwaysApply: false
 - **BLE MIDI pairing requires MIDI Studio**: Currently, users must pair Choir dolls via macOS Audio MIDI Setup before the app can see them as MIDI endpoints. This is because `BluetoothMidiManager` (CoreBluetooth) and `MidiService` (CoreMIDI) are disconnected - CB connection doesn't auto-register a MIDI endpoint.
 - **Future fix**: Implement BLE MIDI protocol directly (discover MIDI characteristic, subscribe, send/receive raw BLE MIDI packets) OR find the API MIDI Studio uses to bridge BLE->CoreMIDI. Would eliminate the MIDI Studio step entirely.
 
+## Choir MIDI Timing Rules
+From Choirama docs and testing:
+
+1. **CC values must be set BEFORE NoteOn** - they won't change mid-note
+2. **CC gap can be ~1ms** - Choir processes CC→NoteOn quickly in same BLE packet
+3. **Minimum note duration ~250-300ms** - Any triggered note needs this time to be heard/processed. This is like human speech - utterances have a minimum duration. Beyond this minimum, notes can be stopped instantly.
+4. **NoteOff required for sound change** - Can't just retrigger with new CC; must stop the note first
+5. **Gap between NoteOff and next NoteOn can be 0ms** - Transition can be instant once first note has played its minimum duration
+6. **Velocity controls volume** - Standard MIDI velocity (0-127) controls note loudness, not related to vowel/consonant behavior
+7. **Vowel CC ranges are identical** - Values within a vowel's CC range (e.g., 16-22 for aɪ) all produce the same sound. The range is just tolerance/flexibility, not variation.
+11. **Parameters are LOCKED at NoteOn** - Sending new CC values (Vowel/Consonant) *during* a note has NO EFFECT. You cannot "animate" the sound manually.
+12. **Diphthongs & Duration** (Official): "diphthongs are stretched out to the maximum duration of a note... because we can't know ahead of time what the actual duration of a realtime midi note will be."
+13. **Pure Consonants** (Vowel=None/121) work well for voiced/unvoiced stops (g, t, k) without an "uh" sound.
+14. **Consonant Clusters** (e.g. "ckt") require rapid-fire sequencing of individual pure consonants.
+   - In practice: They glide after ~4.5s.
+   - **Goal:** Find a hidden CC that acts as a "Duration Hint" to speed this up.
+9. **Aftertouch does nothing** - Channel pressure has no effect on Choir
+10. **Program Change does nothing** - No alternate voice modes/patches
+
 ## Phonetic Rules for Text-to-Choir
 When converting text to Choir syllables (for AI integration):
 
 1. **Trailing consonants** → add schwa (ə) or nasal vowel
 2. **Nasals (N, M)** → use "mmm" vowel for humming
 3. **Stop consonants (T, D, P, K)** at word end → optional/very short (natural cutoff)
-4. **Diphthongs (aɪ, eɪ)** → need longer duration to glide
+4. **Diphthongs (aɪ, eɪ)** → auto-glide at ~4.5s hold time
 5. **Mid-word = quick, word-end = longer, line-end = longest**
 6. **Missing clusters (Spl, ps, nce)** → use closest approximation
 

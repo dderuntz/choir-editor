@@ -23,7 +23,7 @@ struct ChoirControllerApp: App {
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(midiService: midiService)
                 .environmentObject(bluetoothManager)
                 .environmentObject(midiService)
         }
