@@ -115,7 +115,7 @@ class MidiService: ObservableObject {
         
         do {
             try connection.send(event: noteOn)
-            print("🎹 MIDI Sent: Note On \(note) ch:\(channel)")
+            // print("🎹 MIDI Sent: Note On \(note) ch:\(channel)")
         } catch {
             print("❌ MIDI Error: \(error.localizedDescription)")
         }
@@ -132,7 +132,7 @@ class MidiService: ObservableObject {
         
         do {
             try connection.send(event: noteOff)
-            print("🎹 MIDI Sent: Note Off \(note) ch:\(channel)")
+            // print("🎹 MIDI Sent: Note Off \(note) ch:\(channel)")
         } catch {
             print("❌ MIDI Error sending Note Off: \(error.localizedDescription)")
         }

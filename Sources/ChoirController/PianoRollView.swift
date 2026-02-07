@@ -72,6 +72,7 @@ struct PianoRollView: View {
             // 3. Notes on top
             notesLayer
         }
+        .coordinateSpace(name: "pianoGrid")
     }
     
     // MARK: - Piano Key Labels
@@ -247,12 +248,15 @@ struct NoteRectView: View {
     var onDragStart: ((UInt8) -> Void)?
     var onDragEnd: ((UInt8) -> Void)?
     
-    @State private var isDragging = false
-    @State private var isResizing = false
-    @State private var dragStartBeat: Double = 0
-    @State private var dragStartPitch: UInt8 = 0
+    // Visual-only offsets (no model mutation during drag = no flicker)
+    @State private var dragOffset = CGSize.zero
+    @State private var resizeOffset: CGFloat = 0
+    
+    @State private var hasFiredDragStart = false
     @State private var lastDragPitch: UInt8 = 0
-    @State private var dragStartDuration: Double = 0
+    
+    private var isDragging: Bool { dragOffset != .zero }
+    private var isResizing: Bool { resizeOffset != 0 }
     
     private var noteColor: Color {
         if isSelected { return .accentColor }
@@ -266,12 +270,15 @@ struct NoteRectView: View {
     private var noteWidth: CGFloat { CGFloat(note.duration) * PianoRollLayout.beatWidth }
     private var noteHeight: CGFloat { PianoRollLayout.rowHeight }
     
+    // Visual width includes resize offset (applied via @GestureState)
+    private var visualWidth: CGFloat { max(noteWidth + resizeOffset, 6) }
+    
     var body: some View {
         noteBody
-            .frame(width: max(noteWidth, 6), height: noteHeight - 2)
-            .position(
-                x: x + noteWidth / 2,
-                y: y + noteHeight / 2
+            .frame(width: visualWidth, height: noteHeight - 2)
+            .offset(
+                x: x + dragOffset.width,
+                y: y + 1 + dragOffset.height
             )
             .zIndex(isSelected ? 10 : (isDragging ? 5 : 1))
     }
@@ -298,20 +305,17 @@ struct NoteRectView: View {
                     if inside { NSCursor.resizeLeftRight.push() }
                     else { NSCursor.pop() }
                 }
-                .gesture(resizeGesture)
+                .highPriorityGesture(resizeGesture)
         }
         .contentShape(Rectangle())
-        .gesture(moveGesture)
-        .onTapGesture {
-            onSelect()
-        }
+        .highPriorityGesture(moveGesture)
     }
     
     // MARK: - Label
     
     @ViewBuilder
     private var noteLabel: some View {
-        if noteWidth > 28 {
+        if visualWidth > 28 {
             Text(phonemeLabel)
                 .font(.system(size: 8))
                 .foregroundColor(.white)
@@ -330,55 +334,79 @@ struct NoteRectView: View {
     }
     
     // MARK: - Move Gesture
+    // Uses @GestureState for visual offset; only commits to model on .onEnded
     
     private var moveGesture: some Gesture {
-        DragGesture(minimumDistance: 4)
+        DragGesture(minimumDistance: 0, coordinateSpace: .named("pianoGrid"))
             .onChanged { value in
-                if !isDragging {
-                    isDragging = true
-                    dragStartBeat = note.startBeat
-                    dragStartPitch = note.pitch
+                let dist = sqrt(value.translation.width * value.translation.width + value.translation.height * value.translation.height)
+                // Only start visual drag after threshold (tap detection)
+                guard dist > 4 else { return }
+                
+                // Update visual offset (no model mutation = no flicker)
+                dragOffset = value.translation
+                
+                // Fire drag start callback once
+                if !hasFiredDragStart {
+                    hasFiredDragStart = true
                     lastDragPitch = note.pitch
+                    print("🎯 DRAG START: note=\(note.pitch) beat=\(note.startBeat)")
                     onDragStart?(note.pitch)
                 }
                 
-                let beatDelta = PianoRollLayout.beatForX(value.translation.width)
-                let newBeat = max(0, dragStartBeat + beatDelta)
+                print("🔄 t=(\(String(format: "%.1f", value.translation.width)), \(String(format: "%.1f", value.translation.height))) loc=(\(String(format: "%.1f", value.location.x)), \(String(format: "%.1f", value.location.y))) start=(\(String(format: "%.1f", value.startLocation.x)), \(String(format: "%.1f", value.startLocation.y))) id=\(note.id.uuidString.prefix(4))")
                 
+                // Live MIDI preview: compute pitch from offset, no model mutation
                 let pitchDelta = -Int(round(value.translation.height / PianoRollLayout.rowHeight))
-                let rawPitch = Int(dragStartPitch) + pitchDelta
+                let rawPitch = Int(note.pitch) + pitchDelta
                 let newPitch = PitchConstants.clampPitch(UInt8(clamping: max(0, rawPitch)))
                 
-                onMove(newBeat, newPitch)
-                
-                // MIDI preview on pitch change
                 if newPitch != lastDragPitch {
                     onDragPitchChange?(lastDragPitch, newPitch)
                     lastDragPitch = newPitch
                 }
             }
-            .onEnded { _ in
-                isDragging = false
-                onDragEnd?(lastDragPitch)
+            .onEnded { value in
+                let dist = sqrt(value.translation.width * value.translation.width + value.translation.height * value.translation.height)
+                
+                if dist <= 4 {
+                    // Tap -- select the note
+                    print("🎯 TAP SELECT: note=\(note.pitch)")
+                    onSelect()
+                } else {
+                    // Drag -- commit final position to model
+                    let beatDelta = PianoRollLayout.beatForX(value.translation.width)
+                    let newBeat = max(0, note.startBeat + beatDelta)
+                    
+                    let pitchDelta = -Int(round(value.translation.height / PianoRollLayout.rowHeight))
+                    let rawPitch = Int(note.pitch) + pitchDelta
+                    let newPitch = PitchConstants.clampPitch(UInt8(clamping: max(0, rawPitch)))
+                    
+                    print("🎯 DRAG END: t=(\(String(format: "%.1f", value.translation.width)), \(String(format: "%.1f", value.translation.height))) newBeat=\(String(format: "%.2f", newBeat)) newPitch=\(newPitch)")
+                    
+                    onMove(newBeat, newPitch)
+                    onDragEnd?(newPitch)
+                }
+                
+                // Reset
+                dragOffset = .zero
+                hasFiredDragStart = false
             }
     }
     
     // MARK: - Resize Gesture
+    // Uses @GestureState for visual width offset; only commits to model on .onEnded
     
     private var resizeGesture: some Gesture {
-        DragGesture(minimumDistance: 2)
+        DragGesture(minimumDistance: 2, coordinateSpace: .named("pianoGrid"))
             .onChanged { value in
-                if !isResizing {
-                    isResizing = true
-                    dragStartDuration = note.duration
-                }
-                
-                let beatDelta = PianoRollLayout.beatForX(value.translation.width)
-                let newDuration = max(GridConstants.minDuration, dragStartDuration + beatDelta)
-                onResize(newDuration)
+                resizeOffset = value.translation.width
             }
-            .onEnded { _ in
-                isResizing = false
+            .onEnded { value in
+                let beatDelta = PianoRollLayout.beatForX(value.translation.width)
+                let newDuration = max(GridConstants.minDuration, note.duration + beatDelta)
+                resizeOffset = 0
+                onResize(newDuration)
             }
     }
 }
