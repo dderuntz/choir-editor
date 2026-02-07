@@ -96,22 +96,16 @@ class MidiService: ObservableObject {
     }
     
     func sendNoteOn(note: UInt8, velocity: UInt8 = 100, channel: UInt4 = 0) {
-        // Snapshot CC values NOW before any SwiftUI re-render can clobber them
-        let ccVibrato = vibrato
-        let ccReverb = reverb
-        let ccConsonant = consonant
-        let ccVowel = vowel
-        
         guard let connection = midiManager.managedOutputConnections["ChoirOutput"] else {
             print("❌ MIDI: No output connection 'ChoirOutput' found!")
             return
         }
         
         // Send CC values BEFORE the note (Choir requires this)
-        sendCC(controller: ChoirCC.vibrato, value: ccVibrato, channel: channel)
-        sendCC(controller: ChoirCC.reverb, value: ccReverb, channel: channel)
-        sendCC(controller: ChoirCC.consonant, value: ccConsonant, channel: channel)
-        sendCC(controller: ChoirCC.vowel, value: ccVowel, channel: channel)
+        sendCC(controller: ChoirCC.vibrato, value: vibrato, channel: channel)
+        sendCC(controller: ChoirCC.reverb, value: reverb, channel: channel)
+        sendCC(controller: ChoirCC.consonant, value: consonant, channel: channel)
+        sendCC(controller: ChoirCC.vowel, value: vowel, channel: channel)
         
         let noteOn = MIDIEvent.noteOn(
             UInt7(note),
@@ -121,7 +115,7 @@ class MidiService: ObservableObject {
         
         do {
             try connection.send(event: noteOn)
-            print("🎹 MIDI Sent: Note On \(note) C:\(ccConsonant) V:\(ccVowel) ch:\(channel)")
+            print("🎹 MIDI Sent: Note On \(note) ch:\(channel)")
         } catch {
             print("❌ MIDI Error: \(error.localizedDescription)")
         }
@@ -155,8 +149,6 @@ class MidiService: ObservableObject {
         
         do {
             try connection.send(event: cc)
-            // Log every CC at the wire level
-            print("  📡 CC WIRE: cc\(controller)=\(value) ch:\(channel)")
         } catch {
             print("Error sending CC: \(error.localizedDescription)")
         }
