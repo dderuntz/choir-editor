@@ -51,7 +51,6 @@ struct ContentView: View {
                     if selectedTab == 0 {
                         // Sequencer
                         SequencerView(midiService: midiService)
-                            .frame(maxWidth: 550)
                             .padding(.top, 20)
                     } else {
                         // Sound Pad
