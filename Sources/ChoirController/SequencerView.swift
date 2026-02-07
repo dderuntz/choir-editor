@@ -4,6 +4,12 @@ struct SequencerView: View {
     var midiService: MidiService
     @EnvironmentObject var model: SequencerModel
     
+    // Playback timer
+    @State private var playbackTimer: Timer? = nil
+    @State private var lastTickTime: Date? = nil
+    
+    // Scroll sync between scrub zone and piano roll grid
+    @StateObject private var scrollSync = ScrollSyncManager()
     
     var body: some View {
         VStack(spacing: 0) {
@@ -12,12 +18,18 @@ struct SequencerView: View {
             
             Divider()
             
+            // Transport bar (play button + scrub zone)
+            transportBar
+            
+            Divider()
+            
             // Piano Roll
             PianoRollView(
                 model: model,
                 onNotePreview: { note in
                     playNoteForDuration(note)
-                }
+                },
+                scrollSync: scrollSync
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             
@@ -50,6 +62,9 @@ struct SequencerView: View {
         .animation(.easeInOut(duration: 0.15), value: model.selectedNoteId)
         .onDeleteCommand {
             model.deleteSelectedNote()
+        }
+        .onDisappear {
+            stopPlayback()
         }
     }
     
@@ -117,9 +132,240 @@ struct SequencerView: View {
         .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
     }
     
-    // MARK: - MIDI Preview
+    // MARK: - Transport Bar
     
+    private var transportBar: some View {
+        HStack(spacing: 0) {
+            // Play/Stop button (aligned with piano key column)
+            Button(action: { togglePlayback() }) {
+                Image(systemName: model.isPlaying ? "stop.fill" : "play.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(model.isPlaying ? .red : .green)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .help(model.isPlaying ? "Stop" : "Play")
+            .frame(width: PianoRollLayout.pianoKeyWidth)
+            
+            Divider().frame(height: 24)
+            
+            // Scrub zone (same width as the grid, scrolls in sync)
+            ScrollView(.horizontal, showsIndicators: false) {
+                ZStack(alignment: .topLeading) {
+                    // Beat markers
+                    scrubBackground
+                    
+                    // Playhead line
+                    Rectangle()
+                        .fill(Color.green)
+                        .frame(width: 2, height: 28)
+                        .offset(x: PianoRollLayout.xForBeat(model.playheadBeat))
+                        .allowsHitTesting(false)
+                        .animation(nil, value: model.playheadBeat)
+                }
+                .frame(
+                    width: PianoRollLayout.gridWidth(beats: model.totalBeats),
+                    height: 28
+                )
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            let beat = PianoRollLayout.beatForX(value.location.x)
+                            scrubTo(beat: beat)
+                        }
+                        .onEnded { _ in
+                            if !model.isPlaying {
+                                stopAllActiveNotes()
+                            }
+                        }
+                )
+                .background {
+                    ScrollSyncHelper(id: "scrub", manager: scrollSync)
+                }
+            }
+        }
+        .frame(height: 28)
+        .background(Color.green.opacity(0.08))
+    }
     
+    private var scrubBackground: some View {
+        Canvas { context, size in
+            let totalBeats = model.totalBeats
+            guard totalBeats > 0 else { return }
+            let bw = PianoRollLayout.beatWidth
+            
+            // Beat lines + measure numbers
+            for beat in 0...totalBeats {
+                let x = CGFloat(beat) * bw
+                let isMeasure = beat % 4 == 0
+                var path = Path()
+                path.move(to: CGPoint(x: x, y: 0))
+                path.addLine(to: CGPoint(x: x, y: size.height))
+                context.stroke(
+                    path,
+                    with: .color(.gray.opacity(isMeasure ? 0.5 : 0.2)),
+                    lineWidth: isMeasure ? 1 : 0.5
+                )
+                
+                if isMeasure && beat < totalBeats {
+                    let bar = (beat / 4) + 1
+                    let text = Text("\(bar)").font(.system(size: 9, weight: .medium)).foregroundColor(.secondary)
+                    context.draw(text, at: CGPoint(x: x + 8, y: size.height / 2))
+                }
+            }
+        }
+        .frame(
+            width: PianoRollLayout.gridWidth(beats: model.totalBeats),
+            height: 28
+        )
+    }
+    
+    // MARK: - Playback Engine
+    
+    private func togglePlayback() {
+        if model.isPlaying {
+            stopPlayback()
+        } else {
+            startPlayback()
+        }
+    }
+    
+    private func startPlayback() {
+        model.isPlaying = true
+        lastTickTime = Date()
+        
+        playbackTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { _ in
+            Task { @MainActor in
+                self.playbackTick()
+            }
+        }
+    }
+    
+    private func stopPlayback() {
+        model.isPlaying = false
+        playbackTimer?.invalidate()
+        playbackTimer = nil
+        lastTickTime = nil
+        stopAllActiveNotes()
+    }
+    
+    private func playbackTick() {
+        guard model.isPlaying else { return }
+        
+        let now = Date()
+        guard let lastTime = lastTickTime else {
+            lastTickTime = now
+            return
+        }
+        
+        let dt = now.timeIntervalSince(lastTime)
+        lastTickTime = now
+        
+        let beatsPerSecond = model.tempo / 60.0
+        let beatDelta = beatsPerSecond * dt
+        let previousBeat = model.playheadBeat
+        let newBeat = previousBeat + beatDelta
+        
+        // Check if we've reached the end
+        if newBeat >= Double(model.totalBeats) {
+            // Trigger any remaining notes in the final slice
+            triggerNotes(from: previousBeat, to: Double(model.totalBeats))
+            stopPlayback()
+            model.playheadBeat = 0
+            return
+        }
+        
+        model.playheadBeat = newBeat
+        triggerNotes(from: previousBeat, to: newBeat)
+    }
+    
+    /// Scrub the playhead to a specific beat, triggering notes at that position
+    private func scrubTo(beat: Double) {
+        let previousBeat = model.playheadBeat
+        let clampedBeat = max(0, min(beat, Double(model.totalBeats)))
+        model.playheadBeat = clampedBeat
+        
+        // Turn off notes that are no longer under the playhead
+        let toDeactivate = model.activeNoteIDs.filter { id in
+            guard let note = model.notes.first(where: { $0.id == id }) else { return true }
+            let noteEnd = note.startBeat + note.duration
+            return clampedBeat < note.startBeat || clampedBeat >= noteEnd
+        }
+        for id in toDeactivate {
+            if let note = model.notes.first(where: { $0.id == id }) {
+                midiService.sendNoteOff(note: note.pitch)
+                model.activeNoteIDs.remove(id)
+            }
+        }
+        
+        // If scrubbing forward, trigger notes whose start beat we crossed
+        if clampedBeat > previousBeat {
+            triggerNotes(from: previousBeat, to: clampedBeat)
+        } else if clampedBeat < previousBeat {
+            // Scrubbing backward -- trigger notes at the current position
+            // (only if their start beat is at this position)
+            let snapBeat = model.snap(clampedBeat)
+            let notesAtPosition = model.notes.filter { note in
+                abs(note.startBeat - snapBeat) < GridConstants.snapResolution &&
+                !model.activeNoteIDs.contains(note.id)
+            }
+            activateNotes(notesAtPosition)
+        }
+    }
+    
+    /// Check for notes to trigger between previousBeat and newBeat
+    private func triggerNotes(from previousBeat: Double, to newBeat: Double) {
+        // NoteOn: notes whose startBeat is in (previousBeat, newBeat]
+        let notesToStart = model.notes.filter { note in
+            note.startBeat > previousBeat && note.startBeat <= newBeat &&
+            !model.activeNoteIDs.contains(note.id)
+        }
+        activateNotes(notesToStart)
+        
+        // NoteOff: active notes whose end (startBeat + duration) is in (previousBeat, newBeat]
+        let toStop = model.activeNoteIDs.filter { id in
+            guard let note = model.notes.first(where: { $0.id == id }) else { return true }
+            let noteEnd = note.startBeat + note.duration
+            return noteEnd > previousBeat && noteEnd <= newBeat
+        }
+        for id in toStop {
+            if let note = model.notes.first(where: { $0.id == id }) {
+                midiService.sendNoteOff(note: note.pitch)
+            }
+            model.activeNoteIDs.remove(id)
+        }
+    }
+    
+    /// Activate up to 8 notes (first 8 by ascending pitch)
+    private func activateNotes(_ notes: [SequencerNote]) {
+        guard !notes.isEmpty else { return }
+        
+        // 8-poly limit: first 8 by ascending pitch
+        let sorted = notes.sorted { $0.pitch < $1.pitch }
+        let toPlay = sorted.prefix(8)
+        
+        for note in toPlay {
+            // Set CC values then NoteOn
+            midiService.consonant = note.consonant
+            midiService.vowel = note.vowel
+            midiService.vibrato = note.vibrato
+            midiService.reverb = note.reverb
+            midiService.sendNoteOn(note: note.pitch, velocity: note.velocity)
+            model.activeNoteIDs.insert(note.id)
+        }
+    }
+    
+    private func stopAllActiveNotes() {
+        for id in model.activeNoteIDs {
+            if let note = model.notes.first(where: { $0.id == id }) {
+                midiService.sendNoteOff(note: note.pitch)
+            }
+        }
+        model.activeNoteIDs.removeAll()
+    }
+    
+    // MARK: - MIDI Preview (tap/click on notes)
     
     private func playNoteForDuration(_ note: SequencerNote) {
         let pitch = note.pitch
