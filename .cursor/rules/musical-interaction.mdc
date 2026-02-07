@@ -1,0 +1,62 @@
+---
+description: Musical interaction patterns - mouse down triggers, not release
+globs: "**/*.swift"
+alwaysApply: false
+---
+
+# Musical Interaction Pattern
+
+This is a musical application. All sound-triggering interactions must follow musical instrument conventions:
+
+## Core Principle
+
+**Mouse/touch DOWN = sound starts immediately**
+**Mouse/touch UP = sound stops**
+
+This mirrors how real instruments work - you don't wait for key release to hear a piano note.
+
+## Implementation
+
+Use `DragGesture(minimumDistance: 0)` instead of `Button` or `onTapGesture`:
+
+```swift
+// ❌ BAD - triggers on release
+Button(action: { playSound() }) {
+    Text("Play")
+}
+
+// ❌ BAD - triggers on release
+.onTapGesture { playSound() }
+
+// ✅ GOOD - triggers on press, stops on release
+.gesture(
+    DragGesture(minimumDistance: 0)
+        .onChanged { _ in
+            if !isPlaying {
+                startSound()
+            }
+        }
+        .onEnded { _ in
+            stopSound()
+        }
+)
+```
+
+## Guard Against Re-triggering
+
+The `onChanged` handler fires continuously during drag. Always guard against re-triggering:
+
+```swift
+.onChanged { _ in
+    if !isPlaying {  // Only trigger once
+        startSound()
+    }
+}
+```
+
+## Applies To
+
+- Piano keyboard keys
+- Sound pad buttons
+- Phoneme/syllable segments in sequencer
+- Any UI element that produces sound

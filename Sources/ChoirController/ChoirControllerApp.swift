@@ -11,6 +11,7 @@ struct ChoirControllerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var bluetoothManager = BluetoothMidiManager()
     @StateObject private var midiService = MidiService()
+    @StateObject private var sequencerModel = SequencerModel()
     
     init() {
         // Ensure the app activates properly when run from command line
@@ -23,10 +24,75 @@ struct ChoirControllerApp: App {
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(midiService: midiService)
                 .environmentObject(bluetoothManager)
                 .environmentObject(midiService)
+                .environmentObject(sequencerModel)
         }
         .windowResizability(.contentSize)
+        .commands {
+            FileCommands(model: sequencerModel)
+            ViewCommands()
+            MidiCommands(midiService: midiService)
+        }
+    }
+}
+
+// MARK: - View Menu Commands
+
+struct ViewCommands: Commands {
+    @AppStorage("showKeyboard") private var showKeyboard = true
+    @AppStorage("localAudioEnabled") private var localAudioEnabled = false
+    
+    var body: some Commands {
+        CommandGroup(after: .toolbar) {
+            Toggle("Show Keyboard", isOn: $showKeyboard)
+                .keyboardShortcut("k", modifiers: [.command, .shift])
+            
+            Divider()
+            
+            Toggle("Local Audio Monitor", isOn: $localAudioEnabled)
+        }
+    }
+}
+
+// MARK: - MIDI Menu Commands
+
+struct MidiCommands: Commands {
+    @ObservedObject var midiService: MidiService
+    
+    var body: some Commands {
+        CommandMenu("MIDI") {
+            Button("All Notes Off") { midiService.panicAllNotesOff() }
+                .keyboardShortcut(".", modifiers: [.command, .shift])
+            
+            Divider()
+            
+            Button("Reconnect") { midiService.reconnect() }
+        }
+    }
+}
+
+// MARK: - File Menu Commands
+
+struct FileCommands: Commands {
+    @ObservedObject var model: SequencerModel
+    
+    var body: some Commands {
+        CommandGroup(replacing: .newItem) {
+            Button("New") { model.newDocument() }
+                .keyboardShortcut("n", modifiers: .command)
+            
+            Button("Open...") { model.showOpenDialog() }
+                .keyboardShortcut("o", modifiers: .command)
+            
+            Divider()
+            
+            Button("Save") { model.saveCurrentOrPrompt() }
+                .keyboardShortcut("s", modifiers: .command)
+            
+            Button("Save As...") { model.showSaveDialog() }
+                .keyboardShortcut("s", modifiers: [.command, .shift])
+        }
     }
 }

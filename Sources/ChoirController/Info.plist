@@ -5,7 +5,7 @@
     <key>CFBundleIdentifier</key>
     <string>com.ideo.ChoirController</string>
     <key>CFBundleName</key>
-    <string>ChoirController</string>
+    <string>Choir Arranger</string>
     <key>NSBluetoothAlwaysUsageDescription</key>
     <string>This app uses Bluetooth to connect to Teenage Engineering Choir dolls for MIDI control.</string>
     <key>NSBluetoothPeripheralUsageDescription</key>
