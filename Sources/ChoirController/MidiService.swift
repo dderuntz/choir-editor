@@ -115,7 +115,7 @@ class MidiService: ObservableObject {
         
         do {
             try connection.send(event: noteOn)
-            // print("🎹 MIDI Sent: Note On \(note) ch:\(channel)")
+            print("🎹 MIDI Sent: Note On \(note) ch:\(channel)")
         } catch {
             print("❌ MIDI Error: \(error.localizedDescription)")
         }
@@ -132,9 +132,37 @@ class MidiService: ObservableObject {
         
         do {
             try connection.send(event: noteOff)
-            // print("🎹 MIDI Sent: Note Off \(note) ch:\(channel)")
+            print("🎹 MIDI Sent: Note Off \(note) ch:\(channel)")
         } catch {
             print("❌ MIDI Error sending Note Off: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Send All Notes Off (CC 123) + All Sound Off (CC 120) on all channels
+    func panicAllNotesOff() {
+        print("🚨 MIDI PANIC: All Notes Off")
+        for ch: UInt8 in 0...15 {
+            let channel = UInt4(ch)
+            sendCC(controller: 120, value: 0, channel: channel) // All Sound Off
+            sendCC(controller: 123, value: 0, channel: channel) // All Notes Off
+        }
+        // Also send explicit NoteOff for all notes on channel 0
+        for note: UInt8 in 0...127 {
+            sendNoteOff(note: note, velocity: 0, channel: 0)
+        }
+    }
+    
+    /// Disconnect and reconnect MIDI
+    func reconnect() {
+        print("🔄 MIDI Reconnect: dropping connection...")
+        midiManager.remove(.outputConnection, .withTag("ChoirOutput"))
+        isConnected = false
+        selectedInput = nil
+        
+        // Re-scan and reconnect after a short delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
+            print("🔄 MIDI Reconnect: re-scanning endpoints...")
+            updateEndpoints()
         }
     }
     

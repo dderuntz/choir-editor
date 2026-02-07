@@ -3,7 +3,7 @@ import SwiftUI
 struct SequencerView: View {
     var midiService: MidiService
     @EnvironmentObject var model: SequencerModel
-    @State private var previewingNotePitch: UInt8? = nil
+    
     
     var body: some View {
         VStack(spacing: 0) {
@@ -16,13 +16,7 @@ struct SequencerView: View {
             PianoRollView(
                 model: model,
                 onNotePreview: { note in
-                    previewNote(note)
-                },
-                onNotePitchChange: { oldPitch, newPitch in
-                    handlePitchChange(oldPitch: oldPitch, newPitch: newPitch)
-                },
-                onNotePreviewStop: { pitch in
-                    stopPreview(pitch: pitch)
+                    playNoteForDuration(note)
                 }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -125,80 +119,33 @@ struct SequencerView: View {
     
     // MARK: - MIDI Preview
     
-    private func previewNote(_ note: SequencerNote) {
-        // Stop any currently previewing note
-        if let currentPitch = previewingNotePitch {
-            midiService.sendNoteOff(note: currentPitch)
-        }
-        
-        // Set CC values for this note
-        midiService.consonant = note.consonant
-        midiService.vowel = note.vowel
-        midiService.vibrato = note.vibrato
-        midiService.reverb = note.reverb
-        
-        // Send NoteOn
-        midiService.sendNoteOn(note: note.pitch, velocity: note.velocity)
-        previewingNotePitch = note.pitch
-        
-        // Auto-stop after a short preview (~400ms)
-        let pitch = note.pitch
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-            if previewingNotePitch == pitch {
-                midiService.sendNoteOff(note: pitch)
-                previewingNotePitch = nil
-            }
-        }
-    }
     
-    private func handlePitchChange(oldPitch: UInt8, newPitch: UInt8) {
-        // NoteOff old, NoteOn new (same CC values)
-        midiService.sendNoteOff(note: oldPitch)
-        midiService.sendNoteOn(note: newPitch, velocity: model.selectedNote?.velocity ?? 100)
-        previewingNotePitch = newPitch
-    }
-    
-    private func stopPreview(pitch: UInt8) {
-        midiService.sendNoteOff(note: pitch)
-        if previewingNotePitch == pitch {
-            previewingNotePitch = nil
-        }
-    }
     
     private func playNoteForDuration(_ note: SequencerNote) {
-        // Stop any current preview
-        if let currentPitch = previewingNotePitch {
-            midiService.sendNoteOff(note: currentPitch)
-        }
-        
-        // Set CC values
-        midiService.consonant = note.consonant
-        midiService.vowel = note.vowel
-        midiService.vibrato = note.vibrato
-        midiService.reverb = note.reverb
-        
-        // Play for the note's full duration (convert beats to seconds using tempo)
+        let pitch = note.pitch
         let beatsPerSecond = model.tempo / 60.0
         let durationSeconds = note.duration / beatsPerSecond
         
-        midiService.sendNoteOn(note: note.pitch, velocity: note.velocity)
-        previewingNotePitch = note.pitch
+        // Stop any currently playing note first
+        midiService.sendNoteOff(note: pitch)
         
-        let pitch = note.pitch
-        DispatchQueue.main.asyncAfter(deadline: .now() + durationSeconds) {
+        // Set CC values then play
+        midiService.consonant = note.consonant
+        midiService.vowel = note.vowel
+        midiService.vibrato = note.vibrato
+        midiService.reverb = note.reverb
+        midiService.sendNoteOn(note: pitch, velocity: note.velocity)
+        
+        print("🔊 play pitch=\(pitch) for \(String(format: "%.2f", durationSeconds))s")
+        
+        // Schedule stop
+        DispatchQueue.main.asyncAfter(deadline: .now() + durationSeconds) { [self] in
+            print("🔊 stop pitch=\(pitch)")
             midiService.sendNoteOff(note: pitch)
-            if previewingNotePitch == pitch {
-                previewingNotePitch = nil
-            }
         }
     }
     
     private func clearAll() {
-        // Stop any preview
-        if let pitch = previewingNotePitch {
-            midiService.sendNoteOff(note: pitch)
-            previewingNotePitch = nil
-        }
         model.notes.removeAll()
         model.selectedNoteId = nil
     }

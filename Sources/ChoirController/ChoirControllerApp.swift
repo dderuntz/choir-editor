@@ -33,6 +33,7 @@ struct ChoirControllerApp: App {
         .commands {
             FileCommands(model: sequencerModel)
             ViewCommands()
+            MidiCommands(midiService: midiService)
         }
     }
 }
@@ -51,6 +52,23 @@ struct ViewCommands: Commands {
             Divider()
             
             Toggle("Local Audio Monitor", isOn: $localAudioEnabled)
+        }
+    }
+}
+
+// MARK: - MIDI Menu Commands
+
+struct MidiCommands: Commands {
+    @ObservedObject var midiService: MidiService
+    
+    var body: some Commands {
+        CommandMenu("MIDI") {
+            Button("All Notes Off") { midiService.panicAllNotesOff() }
+                .keyboardShortcut(".", modifiers: [.command, .shift])
+            
+            Divider()
+            
+            Button("Reconnect") { midiService.reconnect() }
         }
     }
 }
