@@ -1,6 +1,96 @@
 import SwiftUI
 import AppKit
 
+// MARK: - Scroll Sync (bidirectional NSScrollView sync)
+
+@MainActor
+class ScrollSyncManager: ObservableObject {
+    private var scrollViews: [String: NSScrollView] = [:]
+    private var activeScroller: String? = nil
+    
+    func register(_ id: String, scrollView: NSScrollView) {
+        scrollViews[id] = scrollView
+    }
+    
+    func handleScroll(from id: String, offset: CGFloat) {
+        // Prevent re-entry: if another scroller is active, ignore
+        guard activeScroller == nil || activeScroller == id else { return }
+        activeScroller = id
+        for (key, sv) in scrollViews where key != id {
+            let current = sv.contentView.bounds.origin.x
+            if abs(current - offset) > 0.5 {
+                sv.contentView.setBoundsOrigin(NSPoint(x: offset, y: sv.contentView.bounds.origin.y))
+            }
+        }
+        DispatchQueue.main.async { [weak self] in
+            self?.activeScroller = nil
+        }
+    }
+}
+
+/// Drop this inside a ScrollView to register it for bidirectional horizontal scroll sync.
+struct ScrollSyncHelper: NSViewRepresentable {
+    let id: String
+    let manager: ScrollSyncManager
+    
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .init(x: 0, y: 0, width: 1, height: 1))
+        // Find parent NSScrollView on next runloop (after view is in hierarchy)
+        DispatchQueue.main.async {
+            guard let sv = Self.findScrollView(of: view) else { return }
+            context.coordinator.scrollView = sv
+            sv.contentView.postsBoundsChangedNotifications = true
+            NotificationCenter.default.addObserver(
+                context.coordinator,
+                selector: #selector(Coordinator.boundsChanged(_:)),
+                name: NSView.boundsDidChangeNotification,
+                object: sv.contentView
+            )
+            Task { @MainActor in
+                manager.register(id, scrollView: sv)
+            }
+        }
+        return view
+    }
+    
+    func updateNSView(_ nsView: NSView, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(id: id, manager: manager)
+    }
+    
+    static func findScrollView(of view: NSView) -> NSScrollView? {
+        var current: NSView? = view
+        while let parent = current?.superview {
+            if let sv = parent as? NSScrollView { return sv }
+            current = parent
+        }
+        return nil
+    }
+    
+    @MainActor
+    class Coordinator: NSObject {
+        let id: String
+        let manager: ScrollSyncManager
+        var scrollView: NSScrollView?
+        
+        init(id: String, manager: ScrollSyncManager) {
+            self.id = id
+            self.manager = manager
+        }
+        
+        @objc func boundsChanged(_ notification: Notification) {
+            guard let clipView = notification.object as? NSClipView else { return }
+            let offset = clipView.bounds.origin.x
+            manager.handleScroll(from: id, offset: offset)
+        }
+        
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+        }
+    }
+}
+
 // MARK: - Layout Constants
 
 enum PianoRollLayout {
@@ -34,6 +124,7 @@ enum PianoRollLayout {
 struct PianoRollView: View {
     @ObservedObject var model: SequencerModel
     var onNotePreview: ((SequencerNote) -> Void)?
+    var scrollSync: ScrollSyncManager? = nil
     
     var body: some View {
         // Vertical scroll wraps both piano keys and grid together
@@ -52,6 +143,11 @@ struct PianoRollView: View {
                             width: PianoRollLayout.gridWidth(beats: model.totalBeats),
                             height: PianoRollLayout.gridHeight()
                         )
+                        .background {
+                            if let sync = scrollSync {
+                                ScrollSyncHelper(id: "grid", manager: sync)
+                            }
+                        }
                 }
             }
         }
@@ -69,8 +165,23 @@ struct PianoRollView: View {
             
             // 3. Notes on top
             notesLayer
+            
+            // 4. Playhead line (green, full height)
+            playheadLine
         }
         .coordinateSpace(name: "pianoGrid")
+    }
+    
+    // MARK: - Playhead Line
+    
+    private var playheadLine: some View {
+        let xPos = PianoRollLayout.xForBeat(model.playheadBeat)
+        return Rectangle()
+            .fill(Color.green)
+            .frame(width: 2, height: PianoRollLayout.gridHeight())
+            .offset(x: xPos)
+            .allowsHitTesting(false)
+            .animation(nil, value: model.playheadBeat)
     }
     
     // MARK: - Piano Key Labels

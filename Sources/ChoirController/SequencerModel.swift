@@ -67,6 +67,12 @@ class SequencerModel: ObservableObject {
     @Published var totalBeats: Int = 16
     @Published var tempo: Double = 100
     
+    // Playback state
+    @Published var playheadBeat: Double = 0
+    @Published var isPlaying: Bool = false
+    /// IDs of notes currently sounding via playback/scrub
+    var activeNoteIDs: Set<UUID> = []
+    
     // File state
     @Published var currentFileURL: URL? = nil
     @Published var hasUnsavedChanges: Bool = false
