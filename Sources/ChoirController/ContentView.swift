@@ -2,8 +2,11 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var bluetoothManager: BluetoothMidiManager
-    @EnvironmentObject var midiService: MidiService
+    var midiService: MidiService // Passed explicitly, not observed (prevents redraw loop)
     @State private var showSettings = false
+    @State private var showSoundPad = false
+    @AppStorage("showKeyboard") private var showKeyboardStorage = true
+    @State private var showKeyboard = true
     
     var body: some View {
         ZStack(alignment: .leading) {
@@ -20,11 +23,29 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                     .help("Toggle Settings Panel")
                     
-                    Text("Choir Controller")
+                    Text("Choir Arranger")
                         .font(.title2)
                         .fontWeight(.semibold)
                     
                     Spacer()
+                    
+                    // Sound Pad (test/browser tool)
+                    Button(action: { showSoundPad = true }) {
+                        Image(systemName: "waveform")
+                            .font(.title2)
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Sound Pad")
+                    
+                    // Keyboard toggle
+                    Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showKeyboard.toggle(); showKeyboardStorage = showKeyboard } }) {
+                        Image(systemName: "pianokeys")
+                            .font(.title2)
+                            .foregroundColor(showKeyboard ? .accentColor : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Toggle Keyboard")
                     
                     // Connection status indicator
                     ConnectionStatusView(midiService: midiService)
@@ -35,19 +56,19 @@ struct ContentView: View {
                 
                 Divider()
                 
-                // Main content
-                VStack {
-                    // Sequencer
+                // Sequencer fills available space, keyboard is collapsible pane below
+                ZStack(alignment: .bottom) {
                     SequencerView(midiService: midiService)
-                        .frame(maxWidth: 550)
-                        .padding(.top, 20)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(.bottom, showKeyboard ? 150 : 0)
                     
-                    Spacer()
-                    
-                    // Piano Keyboard
-                    KeyboardView(midiService: midiService)
-                        .frame(height: 180)
-                        .padding()
+                    if showKeyboard {
+                        KeyboardView(midiService: midiService)
+                            .frame(height: 150)
+                            .background(Color(NSColor.windowBackgroundColor))
+                            .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: -4)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -71,7 +92,34 @@ struct ContentView: View {
         }
         .frame(minWidth: 650, minHeight: 500)
         .onAppear {
+            showKeyboard = showKeyboardStorage
             midiService.start()
+        }
+        .onChange(of: showKeyboardStorage) { newValue in
+            withAnimation(.easeInOut(duration: 0.2)) { showKeyboard = newValue }
+        }
+        .onChange(of: showKeyboard) { newValue in
+            showKeyboardStorage = newValue
+        }
+        .sheet(isPresented: $showSoundPad) {
+            VStack(spacing: 0) {
+                // Sheet header with close button
+                HStack {
+                    Text("Sound Pad")
+                        .font(.headline)
+                    Spacer()
+                    Button("Done") { showSoundPad = false }
+                        .keyboardShortcut(.defaultAction)
+                }
+                .padding()
+                
+                Divider()
+                
+                ScrollView {
+                    SoundPadView(midiService: midiService)
+                }
+            }
+            .frame(minWidth: 700, minHeight: 500)
         }
     }
 }
@@ -111,6 +159,7 @@ struct SettingsPanelView: View {
     @ObservedObject var bluetoothManager: BluetoothMidiManager
     @ObservedObject var midiService: MidiService
     @Binding var showSettings: Bool
+    @AppStorage("localAudioEnabled") private var localAudioEnabled = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -132,6 +181,44 @@ struct SettingsPanelView: View {
             
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    // Sequencer Settings
+                    GroupBox("Sequencer Settings") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            // Tempo
+                            HStack {
+                                Text("Tempo:")
+                                    .font(.caption)
+                                    .frame(width: 80, alignment: .leading)
+                                Slider(value: $midiService.tempo, in: 40...200, step: 5)
+                                Text("\(Int(midiService.tempo))")
+                                    .font(.caption).monospacedDigit()
+                                    .frame(width: 30)
+                            }
+                            
+                            // Min Note
+                            HStack {
+                                Text("Min Note:")
+                                    .font(.caption)
+                                    .frame(width: 80, alignment: .leading)
+                                Slider(value: $midiService.minNoteDuration, in: 0.01...0.5, step: 0.01)
+                                Text("\(Int(midiService.minNoteDuration * 1000))ms")
+                                    .font(.caption).monospacedDigit()
+                                    .frame(width: 40)
+                            }
+                            
+                            // Consonant Length
+                            HStack {
+                                Text("Consonant:")
+                                    .font(.caption)
+                                    .frame(width: 80, alignment: .leading)
+                                Slider(value: $midiService.consonantDuration, in: 0.05...0.6, step: 0.05)
+                                Text("\(midiService.consonantDuration, specifier: "%.2f")b")
+                                    .font(.caption).monospacedDigit()
+                                    .frame(width: 40)
+                            }
+                        }
+                    }
+                    
                     // Voice Controls
                     GroupBox("Voice Controls") {
                         VoiceControlsView(midiService: midiService)
@@ -202,6 +289,15 @@ struct SettingsPanelView: View {
                                     }
                                 }
                             }
+                        }
+                    }
+                    
+                    // Audio
+                    GroupBox("Audio") {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Toggle("Local Audio Monitor", isOn: $localAudioEnabled)
+                                .toggleStyle(.checkbox)
+                                .font(.caption)
                         }
                     }
                     

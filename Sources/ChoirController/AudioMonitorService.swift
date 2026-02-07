@@ -22,9 +22,10 @@ enum EnvelopeState: Int32 {
 }
 
 class AudioMonitorService: ObservableObject {
-    private var engine: AVAudioEngine
-    private var sourceNode: AVAudioSourceNode!
+    private var engine: AVAudioEngine?
+    private var sourceNode: AVAudioSourceNode?
     private var sampleRate: Double = 44100.0
+    private var isSetUp = false
     
     @Published var isMuted: Bool = false
     
@@ -39,16 +40,30 @@ class AudioMonitorService: ObservableObject {
     private let releaseDuration: Double = 0.5
     
     init() {
-        engine = AVAudioEngine()
-        
         // Allocate raw memory for voices
         voicesPointer = UnsafeMutablePointer<VoiceData>.allocate(capacity: maxVoices)
         // Initialize with empty data
         for i in 0..<maxVoices {
             voicesPointer[i] = VoiceData(note: 0, phase: 0, isActive: false, envelopeState: 4, envelopeValue: 0, stateTime: 0, releaseLevel: 0)
         }
-        
+        // Audio engine is NOT started until needed
+    }
+    
+    /// Call to ensure the audio engine is running (lazy setup)
+    func ensureStarted() {
+        guard !isSetUp else { return }
         setupAudio()
+    }
+    
+    /// Tear down the engine when local audio is disabled
+    func tearDown() {
+        engine?.stop()
+        if let node = sourceNode {
+            engine?.detach(node)
+        }
+        sourceNode = nil
+        engine = nil
+        isSetUp = false
     }
     
     deinit {
@@ -56,7 +71,10 @@ class AudioMonitorService: ObservableObject {
     }
     
     private func setupAudio() {
-        let inputFormat = engine.outputNode.inputFormat(forBus: 0)
+        let newEngine = AVAudioEngine()
+        self.engine = newEngine
+        
+        let inputFormat = newEngine.outputNode.inputFormat(forBus: 0)
         sampleRate = inputFormat.sampleRate
         
         // Capture parameters locally to avoid self capture in block
@@ -156,11 +174,12 @@ class AudioMonitorService: ObservableObject {
             return noErr
         }
         
-        engine.attach(sourceNode)
-        engine.connect(sourceNode, to: engine.mainMixerNode, format: inputFormat)
+        newEngine.attach(sourceNode!)
+        newEngine.connect(sourceNode!, to: newEngine.mainMixerNode, format: inputFormat)
         
         do {
-            try engine.start()
+            try newEngine.start()
+            isSetUp = true
         } catch {
             print("Audio Engine failed to start: \(error)")
         }
@@ -168,6 +187,7 @@ class AudioMonitorService: ObservableObject {
     
     func playNote(note: UInt8, velocity: UInt8 = 100) {
         if isMuted { return }
+        ensureStarted()
         
         // Find a free voice or steal one
         // Simple linear search for now
