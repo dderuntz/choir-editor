@@ -1,129 +1,112 @@
 import SwiftUI
 
 struct KeyboardView: View {
-    var midiService: MidiService // Not observed
+    var midiService: MidiService
     @StateObject private var audioMonitor = AudioMonitorService()
-    @State private var localAudioEnabled = false  // Default OFF
+    @AppStorage("localAudioEnabled") private var localAudioEnabled = false
     
-    // Choir vocal range: E2 (40) to A5 (81)
-    let startNote = 40  // E2 - Bogdan (bass) lowest
-    let endNote = 81    // A5 - Leila (soprano) highest
+    // Choir vocal range
+    let startNote = 40  // E2
+    let endNote = 81    // A5
     let middleC = 60
     
+    // Minimum white key width before scrolling kicks in
+    static let minWhiteKeyWidth: CGFloat = 28
+    static let keyboardHeight: CGFloat = 140
+    
+    var whiteKeyCount: Int {
+        (startNote...endNote).filter { !isBlackKey($0) }.count
+    }
+    
     var body: some View {
-        VStack(spacing: 8) {
-            // Local audio toggle
-            HStack {
-                Spacer()
-                Toggle("Local Audio Monitor", isOn: $localAudioEnabled)
-                    .toggleStyle(.checkbox)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .padding(.horizontal)
+        GeometryReader { geo in
+            let availableWidth = geo.size.width
+            let naturalKeyWidth = availableWidth / CGFloat(whiteKeyCount)
+            let whiteKeyWidth = max(naturalKeyWidth, Self.minWhiteKeyWidth)
+            let needsScroll = naturalKeyWidth < Self.minWhiteKeyWidth
             
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: true) {
-                    ZStack(alignment: .leading) {
-                        // "Ghost" track for robust scrolling
-                        HStack(spacing: 0) {
-                            ForEach(startNote...endNote, id: \.self) { note in
-                                if !isBlackKey(note) {
-                                    Color.clear
-                                        .frame(width: 40, height: 1)
-                                        .id(note) // ID on linear layout element
-                                }
+            Group {
+                if needsScroll {
+                    ScrollViewReader { proxy in
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            keyboardContent(whiteKeyWidth: whiteKeyWidth, height: geo.size.height)
+                        }
+                        .onAppear {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                withAnimation { proxy.scrollTo(middleC, anchor: .center) }
                             }
                         }
-                        
-                        // Actual Piano Layout
-                        PianoKeyboardLayout(startNote: startNote, endNote: endNote, midiService: midiService, audioMonitor: audioMonitor, localAudioEnabled: localAudioEnabled)
                     }
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 20)
+                } else {
+                    keyboardContent(whiteKeyWidth: whiteKeyWidth, height: geo.size.height)
                 }
-                .background(Color.gray.opacity(0.2))
-                .cornerRadius(8)
-                .onAppear {
-                    // Scroll to Middle C
-                    // We scroll to note 60 (Middle C) which is a white key and exists in the Ghost HStack
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        withAnimation {
-                            proxy.scrollTo(middleC, anchor: .center)
-                        }
-                    }
+            }
+            .onChange(of: localAudioEnabled) { enabled in
+                if enabled {
+                    audioMonitor.ensureStarted()
+                } else {
+                    audioMonitor.tearDown()
                 }
             }
         }
     }
     
-    // Helper to identify black keys for the ghost track loop logic
-    func isBlackKey(_ note: Int) -> Bool {
-        let noteInOctave = note % 12
-        return [1, 3, 6, 8, 10].contains(noteInOctave)
-    }
-}
-
-struct PianoKeyboardLayout: View {
-    let startNote: Int
-    let endNote: Int
-    var midiService: MidiService // Not observed
-    @ObservedObject var audioMonitor: AudioMonitorService
-    let localAudioEnabled: Bool
-    
-    let whiteKeyWidth: CGFloat = 40
-    let blackKeyWidth: CGFloat = 24
-    let whiteKeyHeight: CGFloat = 120
-    let blackKeyHeight: CGFloat = 80
-    
-    var body: some View {
-        ZStack(alignment: .topLeading) {
-            // Draw all keys
+    private func keyboardContent(whiteKeyWidth: CGFloat, height: CGFloat) -> some View {
+        let blackKeyWidth = whiteKeyWidth * 0.6
+        let whiteKeyHeight = max(height, 80)
+        let blackKeyHeight = whiteKeyHeight * 0.6
+        let totalWidth = CGFloat(whiteKeyCount) * whiteKeyWidth
+        
+        return ZStack(alignment: .topLeading) {
             ForEach(startNote...endNote, id: \.self) { note in
                 let isBlack = isBlackKey(note)
-                let xPos = xPosition(for: note)
+                let xPos = xPosition(for: note, whiteKeyWidth: whiteKeyWidth, blackKeyWidth: blackKeyWidth)
                 
-                PianoKey(note: UInt8(note), isBlack: isBlack, midiService: midiService, audioMonitor: audioMonitor, localAudioEnabled: localAudioEnabled)
-                    .frame(width: isBlack ? blackKeyWidth : whiteKeyWidth, height: isBlack ? blackKeyHeight : whiteKeyHeight)
-                    .offset(x: xPos)
-                    .zIndex(isBlack ? 1 : 0) // Black keys on top
-                    .id(note) // Important for ScrollViewReader
+                PianoKey(
+                    note: UInt8(note),
+                    isBlack: isBlack,
+                    midiService: midiService,
+                    audioMonitor: audioMonitor,
+                    localAudioEnabled: localAudioEnabled
+                )
+                .frame(
+                    width: isBlack ? blackKeyWidth : whiteKeyWidth,
+                    height: isBlack ? blackKeyHeight : whiteKeyHeight
+                )
+                .offset(x: xPos)
+                .zIndex(isBlack ? 1 : 0)
+                .id(note)
             }
         }
-        .frame(width: totalWidth(), height: whiteKeyHeight, alignment: .leading)
+        .frame(width: totalWidth, height: whiteKeyHeight, alignment: .leading)
     }
     
     func isBlackKey(_ note: Int) -> Bool {
-        let noteInOctave = note % 12
-        return [1, 3, 6, 8, 10].contains(noteInOctave)
+        let pc = note % 12
+        return [1, 3, 6, 8, 10].contains(pc)
     }
     
-    func totalWidth() -> CGFloat {
-        let whiteKeyCount = (startNote...endNote).filter { !isBlackKey($0) }.count
-        return CGFloat(whiteKeyCount) * whiteKeyWidth
-    }
-    
-    func xPosition(for note: Int) -> CGFloat {
-        // Count white keys before this note
+    func xPosition(for note: Int, whiteKeyWidth: CGFloat, blackKeyWidth: CGFloat) -> CGFloat {
         var whiteKeyIndex = 0
         for n in startNote..<note {
             if !isBlackKey(n) {
                 whiteKeyIndex += 1
             }
         }
-        
         if !isBlackKey(note) {
             return CGFloat(whiteKeyIndex) * whiteKeyWidth
         } else {
-            return (CGFloat(whiteKeyIndex) * whiteKeyWidth) - (blackKeyWidth / 2)
+            return CGFloat(whiteKeyIndex) * whiteKeyWidth - blackKeyWidth / 2
         }
     }
 }
 
+// MARK: - Piano Key
+
 struct PianoKey: View {
     let note: UInt8
     let isBlack: Bool
-    var midiService: MidiService // Don't observe, just reference to call methods
+    var midiService: MidiService
     @ObservedObject var audioMonitor: AudioMonitorService
     let localAudioEnabled: Bool
     @State private var isPressed = false
@@ -131,8 +114,20 @@ struct PianoKey: View {
     var body: some View {
         Rectangle()
             .fill(keyColor)
-            .border(Color.black, width: isBlack ? 0 : 1)
-            .cornerRadius(isBlack ? 2 : 4)
+            .overlay(
+                // Stroke only sides and bottom, not the top edge
+                GeometryReader { geo in
+                    Path { path in
+                        let w = geo.size.width
+                        let h = geo.size.height
+                        path.move(to: CGPoint(x: 0, y: 0))
+                        path.addLine(to: CGPoint(x: 0, y: h))
+                        path.addLine(to: CGPoint(x: w, y: h))
+                        path.addLine(to: CGPoint(x: w, y: 0))
+                    }
+                    .stroke(keyBorderColor, lineWidth: 1)
+                }
+            )
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { _ in
@@ -156,12 +151,13 @@ struct PianoKey: View {
     
     var keyColor: Color {
         if isPressed {
-            return isBlack ? Color.gray : Color.gray.opacity(0.5)
-        } else {
-            if note == 60 { // Middle C
-                return .yellow
-            }
-            return isBlack ? .black : .white
+            return isBlack ? Color(white: 0.35) : Color.gray.opacity(0.4)
         }
+        if note == 60 { return .yellow }
+        return isBlack ? Color(white: 0.15) : .white
+    }
+    
+    var keyBorderColor: Color {
+        Color.gray.opacity(0.3)
     }
 }

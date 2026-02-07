@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SequencerView: View {
     var midiService: MidiService
-    @StateObject private var model = SequencerModel()
+    @EnvironmentObject var model: SequencerModel
     @State private var previewingNotePitch: UInt8? = nil
     
     var body: some View {
@@ -62,10 +62,19 @@ struct SequencerView: View {
     // MARK: - Toolbar
     
     private var sequencerToolbar: some View {
-        HStack(spacing: 12) {
-            Text("Piano Roll")
-                .font(.caption)
-                .foregroundColor(.secondary)
+        HStack(spacing: 8) {
+            // Document name
+            HStack(spacing: 4) {
+                Text(model.documentName)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                if model.hasUnsavedChanges {
+                    Circle()
+                        .fill(Color.orange)
+                        .frame(width: 6, height: 6)
+                        .help("Unsaved changes")
+                }
+            }
             
             Divider().frame(height: 16)
             
@@ -169,7 +178,7 @@ struct SequencerView: View {
         midiService.reverb = note.reverb
         
         // Play for the note's full duration (convert beats to seconds using tempo)
-        let beatsPerSecond = midiService.tempo / 60.0
+        let beatsPerSecond = model.tempo / 60.0
         let durationSeconds = note.duration / beatsPerSecond
         
         midiService.sendNoteOn(note: note.pitch, velocity: note.velocity)

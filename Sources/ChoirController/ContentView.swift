@@ -4,7 +4,9 @@ struct ContentView: View {
     @EnvironmentObject var bluetoothManager: BluetoothMidiManager
     var midiService: MidiService // Passed explicitly, not observed (prevents redraw loop)
     @State private var showSettings = false
-    @State private var selectedTab = 0  // 0 = Sequencer, 1 = Sound Pad
+    @State private var showSoundPad = false
+    @AppStorage("showKeyboard") private var showKeyboardStorage = true
+    @State private var showKeyboard = true
     
     var body: some View {
         ZStack(alignment: .leading) {
@@ -21,21 +23,29 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                     .help("Toggle Settings Panel")
                     
-                    Text("Choir Controller")
+                    Text("Choir Arranger")
                         .font(.title2)
                         .fontWeight(.semibold)
                     
                     Spacer()
                     
-                    // Tab switcher
-                    Picker("", selection: $selectedTab) {
-                        Text("Sequencer").tag(0)
-                        Text("Sound Pad").tag(1)
+                    // Sound Pad (test/browser tool)
+                    Button(action: { showSoundPad = true }) {
+                        Image(systemName: "waveform")
+                            .font(.title2)
+                            .foregroundColor(.secondary)
                     }
-                    .pickerStyle(.segmented)
-                    .frame(width: 200)
+                    .buttonStyle(.plain)
+                    .help("Sound Pad")
                     
-                    Spacer()
+                    // Keyboard toggle
+                    Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showKeyboard.toggle(); showKeyboardStorage = showKeyboard } }) {
+                        Image(systemName: "pianokeys")
+                            .font(.title2)
+                            .foregroundColor(showKeyboard ? .accentColor : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Toggle Keyboard")
                     
                     // Connection status indicator
                     ConnectionStatusView(midiService: midiService)
@@ -46,24 +56,19 @@ struct ContentView: View {
                 
                 Divider()
                 
-                // Main content based on tab
-                VStack {
-                    if selectedTab == 0 {
-                        // Sequencer
-                        SequencerView(midiService: midiService)
-                            .padding(.top, 20)
-                    } else {
-                        // Sound Pad
-                        SoundPadView(midiService: midiService)
-                            .padding(.top, 20)
+                // Sequencer fills available space, keyboard is collapsible pane below
+                ZStack(alignment: .bottom) {
+                    SequencerView(midiService: midiService)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(.bottom, showKeyboard ? 150 : 0)
+                    
+                    if showKeyboard {
+                        KeyboardView(midiService: midiService)
+                            .frame(height: 150)
+                            .background(Color(NSColor.windowBackgroundColor))
+                            .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: -4)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
-                    
-                    Spacer()
-                    
-                    // Piano Keyboard
-                    KeyboardView(midiService: midiService)
-                        .frame(height: 180)
-                        .padding()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -87,7 +92,34 @@ struct ContentView: View {
         }
         .frame(minWidth: 650, minHeight: 500)
         .onAppear {
+            showKeyboard = showKeyboardStorage
             midiService.start()
+        }
+        .onChange(of: showKeyboardStorage) { newValue in
+            withAnimation(.easeInOut(duration: 0.2)) { showKeyboard = newValue }
+        }
+        .onChange(of: showKeyboard) { newValue in
+            showKeyboardStorage = newValue
+        }
+        .sheet(isPresented: $showSoundPad) {
+            VStack(spacing: 0) {
+                // Sheet header with close button
+                HStack {
+                    Text("Sound Pad")
+                        .font(.headline)
+                    Spacer()
+                    Button("Done") { showSoundPad = false }
+                        .keyboardShortcut(.defaultAction)
+                }
+                .padding()
+                
+                Divider()
+                
+                ScrollView {
+                    SoundPadView(midiService: midiService)
+                }
+            }
+            .frame(minWidth: 700, minHeight: 500)
         }
     }
 }
@@ -127,6 +159,7 @@ struct SettingsPanelView: View {
     @ObservedObject var bluetoothManager: BluetoothMidiManager
     @ObservedObject var midiService: MidiService
     @Binding var showSettings: Bool
+    @AppStorage("localAudioEnabled") private var localAudioEnabled = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -256,6 +289,15 @@ struct SettingsPanelView: View {
                                     }
                                 }
                             }
+                        }
+                    }
+                    
+                    // Audio
+                    GroupBox("Audio") {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Toggle("Local Audio Monitor", isOn: $localAudioEnabled)
+                                .toggleStyle(.checkbox)
+                                .font(.caption)
                         }
                     }
                     

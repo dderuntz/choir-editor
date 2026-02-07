@@ -1,0 +1,64 @@
+---
+description: Pattern for sharing app settings between macOS menu bar, toolbar, and views using @AppStorage with animated @State bridging
+alwaysApply: true
+---
+
+# App Settings Pattern
+
+## Problem
+`@AppStorage` updates bypass SwiftUI's animation system, causing UI to snap/blink instead of animating when toggled from the macOS menu bar.
+
+## Solution: @AppStorage + @State Bridge
+
+When a setting needs to be:
+1. Toggled from the **macOS menu bar** (via `Commands`)
+2. Toggled from **toolbar buttons** in views
+3. Read by **multiple views** that aren't parent/child
+
+Use `@AppStorage` as the source of truth, bridged to a local `@State` for animation:
+
+```swift
+// In the view that renders the animated content:
+@AppStorage("showKeyboard") private var showKeyboardStorage = true
+@State private var showKeyboard = true
+
+// Sync on appear
+.onAppear { showKeyboard = showKeyboardStorage }
+
+// Storage -> State (animate when menu bar changes it)
+.onChange(of: showKeyboardStorage) { newValue in
+    withAnimation(.easeInOut(duration: 0.2)) { showKeyboard = newValue }
+}
+
+// State -> Storage (persist when toolbar button changes it)
+.onChange(of: showKeyboard) { newValue in
+    showKeyboardStorage = newValue
+}
+
+// Toolbar button animates directly via @State:
+Button(action: {
+    withAnimation(.easeInOut(duration: 0.2)) {
+        showKeyboard.toggle()
+        showKeyboardStorage = showKeyboard
+    }
+})
+```
+
+In the menu bar `Commands` struct, use `@AppStorage` directly:
+
+```swift
+struct ViewCommands: Commands {
+    @AppStorage("showKeyboard") private var showKeyboard = true
+    var body: some Commands {
+        CommandGroup(after: .toolbar) {
+            Toggle("Show Keyboard", isOn: $showKeyboard)
+        }
+    }
+}
+```
+
+## Key Rules
+- **`@AppStorage`** = persistence + menu bar access (no animation)
+- **`@State`** = animation driver in the rendering view
+- **`.onChange`** bridges the two, wrapping in `withAnimation`
+- Simple toggles (no animation needed) can use `@AppStorage` alone (e.g. `localAudioEnabled`)
