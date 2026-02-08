@@ -11,7 +11,7 @@ Built on protocol research from [jetztgradnet/Choirama](https://github.com/jetzt
 - **Scrub Zone**: Click or drag the transport bar to scrub through your arrangement. The scrub zone scrolls in sync with the piano roll grid.
 - **Scale Helper**: Toggle an overlay that highlights in-key vs. out-of-key rows. Supports major, minor, harmonic minor, dorian, mixolydian, and pentatonic scales.
 - **File Persistence**: Save and load sequences as `.choir` files (JSON). Recent files are tracked and the last opened file auto-loads on launch.
-- **Bluetooth MIDI**: Scan, discover, and connect to Choir dolls and other BLE MIDI devices.
+- **Bluetooth MIDI**: Connect to Choir dolls and other BLE MIDI devices. (Note: the in-app BLE scanner is not yet functional -- use macOS Audio MIDI Setup to pair dolls for now.)
 - **Virtual Keyboard**: Interactive piano keyboard with Middle C highlighted. Pressing a key scrolls the grid to that pitch and highlights the row.
 - **Local Audio Monitor**: Optional built-in synthesizer to hear playback without a connected doll.
 
