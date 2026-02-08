@@ -72,14 +72,15 @@ class MidiService: ObservableObject {
         
         // Auto-select if we find a Teenage Engineering device or just the first one if none selected
         if self.selectedInput == nil {
-            self.selectedInput = self.availableInputs.first(where: { $0.displayName.contains("CH-8") || $0.displayName.contains("Choir") || $0.displayName.contains("TE") }) 
+            let newSelection = self.availableInputs.first(where: { $0.displayName.contains("CH-8") || $0.displayName.contains("Choir") || $0.displayName.contains("TE") }) 
                 ?? self.availableInputs.first
+            
+            if let input = newSelection {
+                self.selectedInput = input
+                self.setupConnection(to: input)
+            }
         }
-        
-        // If we have a selection, ensure connection is set up
-        if let input = self.selectedInput {
-            self.setupConnection(to: input)
-        }
+        // If already connected, don't re-create the connection on every notification
     }
     
     func selectInput(_ endpoint: MIDIInputEndpoint) {
