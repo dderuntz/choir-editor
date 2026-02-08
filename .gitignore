@@ -3,3 +3,7 @@
 /Packages
 /*.xcodeproj
 /*.xcworkspace
+*.xcuserdata
+DerivedData/
+ChoirController.app/
+*.choir
