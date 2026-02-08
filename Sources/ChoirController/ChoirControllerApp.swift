@@ -83,6 +83,11 @@ struct EditCommands: Commands {
     
     var body: some Commands {
         CommandGroup(after: .pasteboard) {
+            Button(model.isPlaying ? "Stop" : "Play") {
+                model.togglePlaybackTrigger += 1
+            }
+            .keyboardShortcut(.space, modifiers: [])
+            
             Button("Delete Note") { model.deleteSelectedNote() }
                 .keyboardShortcut(.delete, modifiers: [])
                 .disabled(model.selectedNoteId == nil)
