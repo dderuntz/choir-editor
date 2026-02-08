@@ -117,6 +117,7 @@ class SequencerModel: ObservableObject {
     
     @Published var notes: [SequencerNote] = []
     @Published var selectedNoteId: UUID? = nil
+    @Published var selectedNoteIds: Set<UUID> = []
     @Published var totalBeats: Int = 16
     @Published var tempo: Double = 100
     
@@ -155,6 +156,48 @@ class SequencerModel: ObservableObject {
         return notes.first { $0.id == id }
     }
     
+    // MARK: - Selection
+    
+    /// Single select (click without shift)
+    func selectNote(_ id: UUID) {
+        selectedNoteId = id
+        selectedNoteIds = [id]
+    }
+    
+    /// Toggle note in multi-select (shift-click)
+    func toggleNoteInSelection(_ id: UUID) {
+        if selectedNoteIds.contains(id) {
+            selectedNoteIds.remove(id)
+            // Update primary to another selected note, or nil
+            selectedNoteId = selectedNoteIds.first
+        } else {
+            selectedNoteIds.insert(id)
+            selectedNoteId = id
+        }
+    }
+    
+    /// Move all selected notes by a delta
+    func moveSelectedNotes(beatDelta: Double, pitchDelta: Int) {
+        for id in selectedNoteIds {
+            guard let index = notes.firstIndex(where: { $0.id == id }) else { continue }
+            let newBeat = max(0, notes[index].startBeat + beatDelta)
+            notes[index].startBeat = snap(newBeat)
+            let rawPitch = Int(notes[index].pitch) + pitchDelta
+            notes[index].pitch = PitchConstants.clampPitch(UInt8(clamping: max(0, rawPitch)))
+        }
+        // Inherit phonemes at landing positions
+        for id in selectedNoteIds {
+            guard let index = notes.firstIndex(where: { $0.id == id }) else { continue }
+            inheritPhoneme(into: &notes[index])
+        }
+        markDirty()
+    }
+    
+    func clearSelection() {
+        selectedNoteId = nil
+        selectedNoteIds.removeAll()
+    }
+    
     // MARK: - CRUD
     
     @discardableResult
@@ -169,22 +212,27 @@ class SequencerModel: ObservableObject {
         // Inherit consonant/vowel from any existing note at the same beat
         inheritPhoneme(into: &note)
         notes.append(note)
-        selectedNoteId = note.id
+        selectNote(note.id)
         markDirty()
         return note
     }
     
     func deleteNote(id: UUID) {
         notes.removeAll { $0.id == id }
+        selectedNoteIds.remove(id)
         if selectedNoteId == id {
-            selectedNoteId = nil
+            selectedNoteId = selectedNoteIds.first
         }
         markDirty()
     }
     
     func deleteSelectedNote() {
-        guard let id = selectedNoteId else { return }
-        deleteNote(id: id)
+        guard !selectedNoteIds.isEmpty else { return }
+        for id in selectedNoteIds {
+            notes.removeAll { $0.id == id }
+        }
+        clearSelection()
+        markDirty()
     }
     
     func moveNote(id: UUID, toBeat beat: Double, pitch: UInt8) {
@@ -252,7 +300,7 @@ class SequencerModel: ObservableObject {
     
     func newDocument() {
         notes.removeAll()
-        selectedNoteId = nil
+        clearSelection()
         totalBeats = 16
         tempo = 100
         currentFileURL = nil
@@ -283,7 +331,7 @@ class SequencerModel: ObservableObject {
         notes = doc.notes
         totalBeats = doc.totalBeats
         tempo = doc.tempo
-        selectedNoteId = nil
+        clearSelection()
         currentFileURL = url
         hasUnsavedChanges = false
         Self.addToRecentFiles(url)

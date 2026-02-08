@@ -90,7 +90,7 @@ struct EditCommands: Commands {
             
             Button("Delete Note") { model.deleteSelectedNote() }
                 .keyboardShortcut(.delete, modifiers: [])
-                .disabled(model.selectedNoteId == nil)
+                .disabled(model.selectedNoteIds.isEmpty)
         }
     }
 }

@@ -4,9 +4,11 @@ struct ContentView: View {
     @EnvironmentObject var bluetoothManager: BluetoothMidiManager
     @EnvironmentObject var model: SequencerModel
     var midiService: MidiService // Passed explicitly, not observed (prevents redraw loop)
+    @StateObject private var audioMonitor = AudioMonitorService()
     @State private var showSettings = false
     @State private var showSoundPad = false
     @AppStorage("showKeyboard") private var showKeyboardStorage = true
+    @AppStorage("localAudioEnabled") private var localAudioEnabled = false
     @State private var showKeyboard = true
     
     var body: some View {
@@ -59,12 +61,12 @@ struct ContentView: View {
                 
                 // Sequencer fills available space, keyboard is collapsible pane below
                 ZStack(alignment: .bottom) {
-                    SequencerView(midiService: midiService)
+                    SequencerView(midiService: midiService, audioMonitor: audioMonitor)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .padding(.bottom, showKeyboard ? 150 : 0)
                     
                     if showKeyboard {
-                        KeyboardView(midiService: midiService)
+                        KeyboardView(midiService: midiService, audioMonitor: audioMonitor)
                             .frame(height: 150)
                             .background(Color(NSColor.windowBackgroundColor))
                             .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: -4)
@@ -102,6 +104,13 @@ struct ContentView: View {
         }
         .onChange(of: showKeyboard) { newValue in
             showKeyboardStorage = newValue
+        }
+        .onChange(of: localAudioEnabled) { enabled in
+            if enabled {
+                audioMonitor.ensureStarted()
+            } else {
+                audioMonitor.tearDown()
+            }
         }
         .sheet(isPresented: $showSoundPad) {
             VStack(spacing: 0) {
@@ -161,7 +170,6 @@ struct SettingsPanelView: View {
     @ObservedObject var bluetoothManager: BluetoothMidiManager
     @ObservedObject var midiService: MidiService
     @Binding var showSettings: Bool
-    @AppStorage("localAudioEnabled") private var localAudioEnabled = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -291,15 +299,6 @@ struct SettingsPanelView: View {
                                     }
                                 }
                             }
-                        }
-                    }
-                    
-                    // Audio
-                    GroupBox("Audio") {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Toggle("Local Audio Monitor", isOn: $localAudioEnabled)
-                                .toggleStyle(.checkbox)
-                                .font(.caption)
                         }
                     }
                     
