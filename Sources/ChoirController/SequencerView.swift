@@ -120,6 +120,39 @@ struct SequencerView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             
+            Divider().frame(height: 16)
+            
+            // Scale helper controls
+            HStack(spacing: 4) {
+                Toggle(isOn: $model.showScaleHelper) {
+                    Image(systemName: "music.note.list")
+                        .font(.caption)
+                }
+                .toggleStyle(.checkbox)
+                .controlSize(.small)
+                .help("Show scale helper")
+                
+                if model.showScaleHelper {
+                    Picker("", selection: $model.musicalKey) {
+                        ForEach(MusicalKey.allCases) { key in
+                            Text(key.name).tag(key)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 50)
+                    .controlSize(.small)
+                    
+                    Picker("", selection: $model.scaleType) {
+                        ForEach(ScaleType.allCases) { scale in
+                            Text(scale.rawValue).tag(scale)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 110)
+                    .controlSize(.small)
+                }
+            }
+            
             Spacer()
             
             Text("\(model.notes.count) notes")
@@ -232,6 +265,9 @@ struct SequencerView: View {
     }
     
     private func startPlayback() {
+        // Rolling start: nudge playhead slightly before current position
+        // so notes exactly at the start beat get triggered on the first tick
+        model.playheadBeat = max(model.playheadBeat - 0.001, -0.001)
         model.isPlaying = true
         lastTickTime = Date()
         
@@ -316,14 +352,7 @@ struct SequencerView: View {
     
     /// Check for notes to trigger between previousBeat and newBeat
     private func triggerNotes(from previousBeat: Double, to newBeat: Double) {
-        // NoteOn: notes whose startBeat is in (previousBeat, newBeat]
-        let notesToStart = model.notes.filter { note in
-            note.startBeat > previousBeat && note.startBeat <= newBeat &&
-            !model.activeNoteIDs.contains(note.id)
-        }
-        activateNotes(notesToStart)
-        
-        // NoteOff: active notes whose end (startBeat + duration) is in (previousBeat, newBeat]
+        // NoteOff FIRST: so back-to-back same-pitch notes work correctly
         let toStop = model.activeNoteIDs.filter { id in
             guard let note = model.notes.first(where: { $0.id == id }) else { return true }
             let noteEnd = note.startBeat + note.duration
@@ -335,6 +364,13 @@ struct SequencerView: View {
             }
             model.activeNoteIDs.remove(id)
         }
+        
+        // NoteOn SECOND: new notes start after old ones have been released
+        let notesToStart = model.notes.filter { note in
+            note.startBeat > previousBeat && note.startBeat <= newBeat &&
+            !model.activeNoteIDs.contains(note.id)
+        }
+        activateNotes(notesToStart)
     }
     
     /// Activate up to 8 notes (first 8 by ascending pitch)
@@ -411,6 +447,7 @@ struct NoteInspectorView: View {
     @State private var velocity: Double = 100
     @State private var vibrato: Double = 64
     @State private var reverb: Double = 32
+    @State private var isSyncing = false
     
     var body: some View {
         HStack(spacing: 16) {
@@ -536,11 +573,14 @@ struct NoteInspectorView: View {
     }
     
     private func syncFromNote() {
+        isSyncing = true
         consonant = note.consonant
         vowel = note.vowel
         velocity = Double(note.velocity)
         vibrato = Double(note.vibrato)
         reverb = Double(note.reverb)
+        // Defer clearing the flag so all onChange handlers see isSyncing = true
+        DispatchQueue.main.async { isSyncing = false }
     }
     
     private func currentNote() -> SequencerNote {
@@ -554,6 +594,7 @@ struct NoteInspectorView: View {
     }
     
     private func pushUpdate() {
+        guard !isSyncing else { return }
         onUpdate(currentNote())
     }
 }
