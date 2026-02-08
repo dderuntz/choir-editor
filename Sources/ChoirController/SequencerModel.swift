@@ -159,11 +159,13 @@ class SequencerModel: ObservableObject {
     func addNote(atBeat beat: Double, pitch: UInt8, duration: Double = 1.0) -> SequencerNote {
         let snappedBeat = snap(beat)
         let clampedPitch = PitchConstants.clampPitch(pitch)
-        let note = SequencerNote(
+        var note = SequencerNote(
             pitch: clampedPitch,
             startBeat: snappedBeat,
             duration: max(duration, GridConstants.minDuration)
         )
+        // Inherit consonant/vowel from any existing note at the same beat
+        inheritPhoneme(into: &note)
         notes.append(note)
         selectedNoteId = note.id
         markDirty()
@@ -187,6 +189,8 @@ class SequencerModel: ObservableObject {
         guard let index = notes.firstIndex(where: { $0.id == id }) else { return }
         notes[index].startBeat = snap(beat)
         notes[index].pitch = PitchConstants.clampPitch(pitch)
+        // Inherit consonant/vowel from notes already at the landing beat
+        inheritPhoneme(into: &notes[index])
         markDirty()
     }
     
@@ -198,7 +202,14 @@ class SequencerModel: ObservableObject {
     
     func updateNote(id: UUID, _ transform: (inout SequencerNote) -> Void) {
         guard let index = notes.firstIndex(where: { $0.id == id }) else { return }
+        let oldConsonant = notes[index].consonant
+        let oldVowel = notes[index].vowel
         transform(&notes[index])
+        // If consonant or vowel changed, propagate to all notes at the same beat
+        let note = notes[index]
+        if note.consonant != oldConsonant || note.vowel != oldVowel {
+            propagatePhoneme(from: note)
+        }
         markDirty()
     }
     
@@ -206,6 +217,24 @@ class SequencerModel: ObservableObject {
     
     func snap(_ value: Double) -> Double {
         (value / GridConstants.snapResolution).rounded() * GridConstants.snapResolution
+    }
+    
+    /// Inherit consonant/vowel from an existing note at the same start beat (Choir constraint)
+    private func inheritPhoneme(into note: inout SequencerNote) {
+        if let sibling = notes.first(where: { $0.id != note.id && $0.startBeat == note.startBeat }) {
+            note.consonant = sibling.consonant
+            note.vowel = sibling.vowel
+        }
+    }
+    
+    /// Propagate consonant/vowel from a note to all other notes at the same start beat
+    private func propagatePhoneme(from source: SequencerNote) {
+        for i in notes.indices {
+            if notes[i].id != source.id && notes[i].startBeat == source.startBeat {
+                notes[i].consonant = source.consonant
+                notes[i].vowel = source.vowel
+            }
+        }
     }
     
     /// Check if clicking at a beat/pitch hits an existing note
@@ -367,5 +396,30 @@ class SequencerModel: ObservableObject {
     
     func markDirty() {
         hasUnsavedChanges = true
+        scheduleAutoSave()
+    }
+    
+    // MARK: - Auto Save
+    
+    private var autoSaveWork: DispatchWorkItem? = nil
+    
+    private func scheduleAutoSave() {
+        autoSaveWork?.cancel()
+        guard currentFileURL != nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            self?.autoSave()
+        }
+        autoSaveWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: work)
+    }
+    
+    private func autoSave() {
+        guard let url = currentFileURL else { return }
+        do {
+            try save(to: url)
+            print("Auto-saved to \(url.lastPathComponent)")
+        } catch {
+            print("Auto-save failed: \(error)")
+        }
     }
 }
