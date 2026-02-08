@@ -2,8 +2,8 @@ import SwiftUI
 
 struct KeyboardView: View {
     var midiService: MidiService
+    @ObservedObject var audioMonitor: AudioMonitorService
     @EnvironmentObject var model: SequencerModel
-    @StateObject private var audioMonitor = AudioMonitorService()
     @AppStorage("localAudioEnabled") private var localAudioEnabled = false
     
     // Choir vocal range
@@ -42,13 +42,7 @@ struct KeyboardView: View {
                     keyboardContent(whiteKeyWidth: whiteKeyWidth, height: geo.size.height)
                 }
             }
-            .onChange(of: localAudioEnabled) { enabled in
-                if enabled {
-                    audioMonitor.ensureStarted()
-                } else {
-                    audioMonitor.tearDown()
-                }
-            }
+            // Audio setup/teardown handled by ContentView
         }
     }
     

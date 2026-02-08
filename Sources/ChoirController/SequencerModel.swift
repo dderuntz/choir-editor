@@ -117,12 +117,15 @@ class SequencerModel: ObservableObject {
     
     @Published var notes: [SequencerNote] = []
     @Published var selectedNoteId: UUID? = nil
+    @Published var selectedNoteIds: Set<UUID> = []
     @Published var totalBeats: Int = 16
     @Published var tempo: Double = 100
     
     // Playback state
     @Published var playheadBeat: Double = 0
     @Published var isPlaying: Bool = false
+    /// Incremented to signal play/stop toggle from menu bar
+    @Published var togglePlaybackTrigger: Int = 0
     /// IDs of notes currently sounding via playback/scrub
     var activeNoteIDs: Set<UUID> = []
     
@@ -153,40 +156,91 @@ class SequencerModel: ObservableObject {
         return notes.first { $0.id == id }
     }
     
+    // MARK: - Selection
+    
+    /// Single select (click without shift)
+    func selectNote(_ id: UUID) {
+        selectedNoteId = id
+        selectedNoteIds = [id]
+    }
+    
+    /// Toggle note in multi-select (shift-click)
+    func toggleNoteInSelection(_ id: UUID) {
+        if selectedNoteIds.contains(id) {
+            selectedNoteIds.remove(id)
+            // Update primary to another selected note, or nil
+            selectedNoteId = selectedNoteIds.first
+        } else {
+            selectedNoteIds.insert(id)
+            selectedNoteId = id
+        }
+    }
+    
+    /// Move all selected notes by a delta
+    func moveSelectedNotes(beatDelta: Double, pitchDelta: Int) {
+        for id in selectedNoteIds {
+            guard let index = notes.firstIndex(where: { $0.id == id }) else { continue }
+            let newBeat = max(0, notes[index].startBeat + beatDelta)
+            notes[index].startBeat = snap(newBeat)
+            let rawPitch = Int(notes[index].pitch) + pitchDelta
+            notes[index].pitch = PitchConstants.clampPitch(UInt8(clamping: max(0, rawPitch)))
+        }
+        // Inherit phonemes at landing positions
+        for id in selectedNoteIds {
+            guard let index = notes.firstIndex(where: { $0.id == id }) else { continue }
+            inheritPhoneme(into: &notes[index])
+        }
+        markDirty()
+    }
+    
+    func clearSelection() {
+        selectedNoteId = nil
+        selectedNoteIds.removeAll()
+    }
+    
     // MARK: - CRUD
     
     @discardableResult
     func addNote(atBeat beat: Double, pitch: UInt8, duration: Double = 1.0) -> SequencerNote {
         let snappedBeat = snap(beat)
         let clampedPitch = PitchConstants.clampPitch(pitch)
-        let note = SequencerNote(
+        var note = SequencerNote(
             pitch: clampedPitch,
             startBeat: snappedBeat,
             duration: max(duration, GridConstants.minDuration)
         )
+        // Inherit consonant/vowel from any existing note at the same beat
+        inheritPhoneme(into: &note)
         notes.append(note)
-        selectedNoteId = note.id
+        selectNote(note.id)
         markDirty()
         return note
     }
     
     func deleteNote(id: UUID) {
         notes.removeAll { $0.id == id }
+        selectedNoteIds.remove(id)
         if selectedNoteId == id {
-            selectedNoteId = nil
+            selectedNoteId = selectedNoteIds.first
         }
         markDirty()
     }
     
     func deleteSelectedNote() {
-        guard let id = selectedNoteId else { return }
-        deleteNote(id: id)
+        guard !selectedNoteIds.isEmpty else { return }
+        for id in selectedNoteIds {
+            notes.removeAll { $0.id == id }
+        }
+        clearSelection()
+        markDirty()
     }
     
     func moveNote(id: UUID, toBeat beat: Double, pitch: UInt8) {
         guard let index = notes.firstIndex(where: { $0.id == id }) else { return }
         notes[index].startBeat = snap(beat)
         notes[index].pitch = PitchConstants.clampPitch(pitch)
+        // Inherit consonant/vowel from notes already at the landing beat
+        inheritPhoneme(into: &notes[index])
         markDirty()
     }
     
@@ -198,7 +252,14 @@ class SequencerModel: ObservableObject {
     
     func updateNote(id: UUID, _ transform: (inout SequencerNote) -> Void) {
         guard let index = notes.firstIndex(where: { $0.id == id }) else { return }
+        let oldConsonant = notes[index].consonant
+        let oldVowel = notes[index].vowel
         transform(&notes[index])
+        // If consonant or vowel changed, propagate to all notes at the same beat
+        let note = notes[index]
+        if note.consonant != oldConsonant || note.vowel != oldVowel {
+            propagatePhoneme(from: note)
+        }
         markDirty()
     }
     
@@ -206,6 +267,24 @@ class SequencerModel: ObservableObject {
     
     func snap(_ value: Double) -> Double {
         (value / GridConstants.snapResolution).rounded() * GridConstants.snapResolution
+    }
+    
+    /// Inherit consonant/vowel from an existing note at the same start beat (Choir constraint)
+    private func inheritPhoneme(into note: inout SequencerNote) {
+        if let sibling = notes.first(where: { $0.id != note.id && $0.startBeat == note.startBeat }) {
+            note.consonant = sibling.consonant
+            note.vowel = sibling.vowel
+        }
+    }
+    
+    /// Propagate consonant/vowel from a note to all other notes at the same start beat
+    private func propagatePhoneme(from source: SequencerNote) {
+        for i in notes.indices {
+            if notes[i].id != source.id && notes[i].startBeat == source.startBeat {
+                notes[i].consonant = source.consonant
+                notes[i].vowel = source.vowel
+            }
+        }
     }
     
     /// Check if clicking at a beat/pitch hits an existing note
@@ -221,7 +300,7 @@ class SequencerModel: ObservableObject {
     
     func newDocument() {
         notes.removeAll()
-        selectedNoteId = nil
+        clearSelection()
         totalBeats = 16
         tempo = 100
         currentFileURL = nil
@@ -252,7 +331,7 @@ class SequencerModel: ObservableObject {
         notes = doc.notes
         totalBeats = doc.totalBeats
         tempo = doc.tempo
-        selectedNoteId = nil
+        clearSelection()
         currentFileURL = url
         hasUnsavedChanges = false
         Self.addToRecentFiles(url)
@@ -367,5 +446,30 @@ class SequencerModel: ObservableObject {
     
     func markDirty() {
         hasUnsavedChanges = true
+        scheduleAutoSave()
+    }
+    
+    // MARK: - Auto Save
+    
+    private var autoSaveWork: DispatchWorkItem? = nil
+    
+    private func scheduleAutoSave() {
+        autoSaveWork?.cancel()
+        guard currentFileURL != nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            self?.autoSave()
+        }
+        autoSaveWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: work)
+    }
+    
+    private func autoSave() {
+        guard let url = currentFileURL else { return }
+        do {
+            try save(to: url)
+            print("Auto-saved to \(url.lastPathComponent)")
+        } catch {
+            print("Auto-save failed: \(error)")
+        }
     }
 }

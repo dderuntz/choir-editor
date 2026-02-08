@@ -34,6 +34,7 @@ struct ChoirControllerApp: App {
         .windowResizability(.contentSize)
         .commands {
             FileCommands(model: sequencerModel)
+            EditCommands(model: sequencerModel)
             ViewCommands()
             MidiCommands(midiService: midiService)
         }
@@ -71,6 +72,25 @@ struct MidiCommands: Commands {
             Divider()
             
             Button("Reconnect") { midiService.reconnect() }
+        }
+    }
+}
+
+// MARK: - Edit Menu Commands
+
+struct EditCommands: Commands {
+    @ObservedObject var model: SequencerModel
+    
+    var body: some Commands {
+        CommandGroup(after: .pasteboard) {
+            Button(model.isPlaying ? "Stop" : "Play") {
+                model.togglePlaybackTrigger += 1
+            }
+            .keyboardShortcut(.space, modifiers: [])
+            
+            Button("Delete Note") { model.deleteSelectedNote() }
+                .keyboardShortcut(.delete, modifiers: [])
+                .disabled(model.selectedNoteIds.isEmpty)
         }
     }
 }
