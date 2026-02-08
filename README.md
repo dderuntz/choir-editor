@@ -1,74 +1,83 @@
-# Choir Controller
+# Choir Arranger
 
-A native macOS application for controlling [Teenage Engineering's Choir dolls](https://teenage.engineering/products/choir) via Bluetooth MIDI.
+A native macOS sequencer for arranging and performing with [Teenage Engineering's Choir dolls](https://teenage.engineering/products/choir) via Bluetooth MIDI.
 
-![Choir App Screenshot](https://via.placeholder.com/800x400?text=App+Screenshot+Placeholder)
+Built on protocol research from [jetztgradnet/Choirama](https://github.com/jetztgradnet/Choirama).
 
 ## Features
 
-- **Bluetooth MIDI Connectivity**: Scan, discover, and connect to Choir dolls (and other BLE MIDI devices).
-- **Virtual Keyboard**: Full 88-key piano interface to play notes on the dolls.
-- **Local Audio Monitor**: Built-in square wave synthesizer to hear what you play locally (useful for debugging or playing without the doll).
-- **Ghost Track Scrolling**: Auto-scrolls to Middle C on startup.
+- **Piano Roll Sequencer**: Add, drag, and resize MIDI notes on a grid. Each note carries pitch, velocity, and Choir-specific phoneme controls (consonant, vowel, vibrato, reverb).
+- **Playback Engine**: Play arrangements at a configurable tempo with a green playhead. Supports up to 8-voice polyphony. Notes trigger on playhead contact and release when the playhead passes the note end.
+- **Scrub Zone**: Click or drag the transport bar to scrub through your arrangement. The scrub zone scrolls in sync with the piano roll grid.
+- **Scale Helper**: Toggle an overlay that highlights in-key vs. out-of-key rows. Supports major, minor, harmonic minor, dorian, mixolydian, and pentatonic scales.
+- **File Persistence**: Save and load sequences as `.choir` files (JSON). Recent files are tracked and the last opened file auto-loads on launch.
+- **Bluetooth MIDI**: Scan, discover, and connect to Choir dolls and other BLE MIDI devices.
+- **Virtual Keyboard**: Interactive piano keyboard with Middle C highlighted. Pressing a key scrolls the grid to that pitch and highlights the row.
+- **Local Audio Monitor**: Optional built-in synthesizer to hear playback without a connected doll.
 
 ## Prerequisites
 
 - macOS 13.0 or later
 - Xcode 15+ (for building)
-- A Teenage Engineering Choir doll (for full testing)
+- A Teenage Engineering Choir doll (for full MIDI testing)
 
 ## Getting Started
 
-### 1. Build and Run
+### Build and Run
 
-You can run the app directly from the command line or VS Code.
-
-**Option A: VS Code (Recommended)**
-1. Open the "Run and Debug" sidebar (Cmd+Shift+D).
+**Option A: VS Code / Cursor (Recommended)**
+1. Open "Run and Debug" (Cmd+Shift+D).
 2. Select **"Run ChoirController"**.
-3. Click the green Play button (▶).
+3. Click Play.
 
 **Option B: Terminal**
 ```bash
 swift run
 ```
-*Note: The app includes a helper to ensure it activates as a foreground window when run from the CLI.*
 
-### 2. Connecting a Doll (One-Time Setup via MIDI Studio)
+**Option C: Bundled App**
+```bash
+make bundle
+open ChoirController.app
+```
 
-Currently, Choir dolls must be paired through macOS **Audio MIDI Setup** before the app can control them. This is a one-time setup per doll.
+### Connecting a Doll
 
-1. **Open Audio MIDI Setup**: Spotlight search "Audio MIDI Setup" or find it in `/Applications/Utilities/`.
-2. **Open MIDI Studio**: Menu bar → Window → Show MIDI Studio (or Cmd+2).
-3. **Open Bluetooth Configuration**: Click the Bluetooth icon in the toolbar.
-4. **Wake the Doll**: Press the button on the doll to wake it. The doll should start advertising.
-5. **Connect**: The doll should appear in the device list (e.g., "CH-8"). Click **Connect**.
-6. **Verify**: The doll should now appear in MIDI Studio's device list with up/down arrows indicating active ports.
+Choir dolls must be paired through macOS **Audio MIDI Setup** before the app can control them (one-time setup per doll):
 
-Once paired, the doll will appear as a MIDI destination that the Choir Controller app can use automatically.
+1. Open **Audio MIDI Setup** (Spotlight or `/Applications/Utilities/`).
+2. Menu bar: Window > Show MIDI Studio (Cmd+2).
+3. Click the Bluetooth icon in the toolbar.
+4. Wake the doll (press its button).
+5. Click **Connect** when it appears (e.g., "CH-8").
 
-> **Note**: We plan to add direct BLE MIDI connection in a future update to eliminate this MIDI Studio step.
+Once paired, the doll appears as a MIDI destination that Choir Arranger detects automatically.
 
-### 3. Playing
+### Using the Sequencer
 
-- Launch the app - it should auto-detect your paired Choir doll and show "MIDI Destination: CH-8" in green.
-- Click the piano keys to play notes on the doll.
-- Use the **"Local Audio Monitor"** toggle (off by default) to hear a synthesized tone from your Mac speakers.
-- The keyboard covers the full 88-key range (A0 to C8). Middle C is marked in **Yellow**.
+- Click the grid to add notes. Drag to reposition, drag the right edge to resize.
+- Use the bottom inspector to set consonant, vowel, velocity, vibrato, and reverb per note.
+- Press Play or use the scrub zone to hear your arrangement.
+- Save your work as a `.choir` file (Cmd+S). Open Recent is in the File menu.
+- Toggle the scale helper in the toolbar to visualize notes in your chosen key.
 
 ## Architecture
 
-- **MidiService**: Handles CoreMIDI integration and message sending.
-- **BluetoothMidiManager**: Manages CoreBluetooth scanning and peripheral connections.
-- **AudioMonitorService**: A custom thread-safe audio engine using `AVAudioSourceNode` for local synthesis.
+| Component | Role |
+|---|---|
+| `SequencerModel` | Data model for notes, playback state, file I/O, and scale helper |
+| `SequencerView` | Transport bar, playback timer, MIDI triggering engine |
+| `PianoRollView` | Grid rendering, note display, drag/resize gestures, playhead line |
+| `MidiService` | CoreMIDI integration via MIDIKit, NoteOn/NoteOff/CC messaging |
+| `BluetoothMidiManager` | CoreBluetooth scanning and peripheral connections |
+| `AudioMonitorService` | AVAudioEngine-based local synthesizer |
+| `KeyboardView` | Interactive piano keyboard with pitch highlighting |
 
-## Development
+## Dependencies
 
-This project uses **Swift Package Manager**.
-- **Linting**: Run `swift build` to check for errors.
-- **Rules**: Check `.cursor/rules` for coding standards.
+- [MIDIKit](https://github.com/orchetect/MIDIKit) -- MIDI I/O for Swift
 
 ## Credits
 
-- Built for the Teenage Engineering Choir series.
-- Protocol research based on [jetztgradnet/Choirama](https://github.com/jetztgradnet/Choirama).
+- Protocol research: [jetztgradnet/Choirama](https://github.com/jetztgradnet/Choirama)
+- Hardware: [Teenage Engineering Choir](https://teenage.engineering/products/choir)
