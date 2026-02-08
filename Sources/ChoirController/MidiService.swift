@@ -60,6 +60,16 @@ class MidiService: ObservableObject {
             print("   - Name: '\(input.name)', DisplayName: '\(input.displayName)', ID: \(input.uniqueID)")
         }
         
+        // Check if our selected endpoint has disappeared
+        if let selected = self.selectedInput {
+            let stillAvailable = self.availableInputs.contains(where: { $0.uniqueID == selected.uniqueID })
+            if !stillAvailable {
+                print("⚠️ MIDI device disconnected: \(selected.displayName)")
+                self.selectedInput = nil
+                self.isConnected = false
+            }
+        }
+        
         // Auto-select if we find a Teenage Engineering device or just the first one if none selected
         if self.selectedInput == nil {
             self.selectedInput = self.availableInputs.first(where: { $0.displayName.contains("CH-8") || $0.displayName.contains("Choir") || $0.displayName.contains("TE") }) 
@@ -167,7 +177,10 @@ class MidiService: ObservableObject {
     }
     
     func sendCC(controller: UInt8, value: UInt8, channel: UInt4 = 0) {
-        guard let connection = midiManager.managedOutputConnections["ChoirOutput"] else { return }
+        guard let connection = midiManager.managedOutputConnections["ChoirOutput"] else {
+            print("❌ CC: No output connection")
+            return
+        }
         
         let cc = MIDIEvent.cc(
             UInt7(controller),
@@ -177,8 +190,9 @@ class MidiService: ObservableObject {
         
         do {
             try connection.send(event: cc)
+            print("🎛️ CC\(controller)=\(value) ch:\(channel)")
         } catch {
-            print("Error sending CC: \(error.localizedDescription)")
+            print("❌ CC Error: \(error.localizedDescription)")
         }
     }
     
