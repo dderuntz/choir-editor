@@ -2,6 +2,7 @@ import SwiftUI
 
 struct KeyboardView: View {
     var midiService: MidiService
+    @EnvironmentObject var model: SequencerModel
     @StateObject private var audioMonitor = AudioMonitorService()
     @AppStorage("localAudioEnabled") private var localAudioEnabled = false
     
@@ -66,6 +67,7 @@ struct KeyboardView: View {
                     note: UInt8(note),
                     isBlack: isBlack,
                     midiService: midiService,
+                    model: model,
                     audioMonitor: audioMonitor,
                     localAudioEnabled: localAudioEnabled
                 )
@@ -107,6 +109,7 @@ struct PianoKey: View {
     let note: UInt8
     let isBlack: Bool
     var midiService: MidiService
+    @ObservedObject var model: SequencerModel
     @ObservedObject var audioMonitor: AudioMonitorService
     let localAudioEnabled: Bool
     @State private var isPressed = false
@@ -133,6 +136,7 @@ struct PianoKey: View {
                     .onChanged { _ in
                         if !isPressed {
                             isPressed = true
+                            model.highlightedPitch = note
                             midiService.sendNoteOn(note: note)
                             if localAudioEnabled {
                                 audioMonitor.playNote(note: note)
@@ -141,6 +145,7 @@ struct PianoKey: View {
                     }
                     .onEnded { _ in
                         isPressed = false
+                        model.highlightedPitch = nil
                         midiService.sendNoteOff(note: note)
                         if localAudioEnabled {
                             audioMonitor.stopNote(note: note)

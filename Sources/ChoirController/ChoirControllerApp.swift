@@ -20,6 +20,8 @@ struct ChoirControllerApp: App {
             NSApp.activate(ignoringOtherApps: true)
             NSApp.windows.first?.makeKeyAndOrderFront(nil)
         }
+        
+        // Auto-open last file is handled in ContentView.onAppear
     }
     
     var body: some Scene {
@@ -85,6 +87,31 @@ struct FileCommands: Commands {
             
             Button("Open...") { model.showOpenDialog() }
                 .keyboardShortcut("o", modifiers: .command)
+            
+            // Open Recent submenu
+            Menu("Open Recent") {
+                let recents = SequencerModel.recentFileURLs()
+                if recents.isEmpty {
+                    Text("No Recent Files")
+                        .foregroundColor(.secondary)
+                } else {
+                    ForEach(recents, id: \.path) { url in
+                        Button(url.deletingPathExtension().lastPathComponent) {
+                            do {
+                                try model.load(from: url)
+                            } catch {
+                                print("Error opening recent: \(error)")
+                            }
+                        }
+                    }
+                    
+                    Divider()
+                    
+                    Button("Clear Recents") {
+                        SequencerModel.clearRecentFiles()
+                    }
+                }
+            }
             
             Divider()
             

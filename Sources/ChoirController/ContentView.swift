@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var bluetoothManager: BluetoothMidiManager
+    @EnvironmentObject var model: SequencerModel
     var midiService: MidiService // Passed explicitly, not observed (prevents redraw loop)
     @State private var showSettings = false
     @State private var showSoundPad = false
@@ -94,6 +95,7 @@ struct ContentView: View {
         .onAppear {
             showKeyboard = showKeyboardStorage
             midiService.start()
+            model.loadLastFileIfAvailable()
         }
         .onChange(of: showKeyboardStorage) { newValue in
             withAnimation(.easeInOut(duration: 0.2)) { showKeyboard = newValue }
