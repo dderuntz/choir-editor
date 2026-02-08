@@ -2,7 +2,9 @@ import SwiftUI
 
 struct SequencerView: View {
     var midiService: MidiService
+    @ObservedObject var audioMonitor: AudioMonitorService
     @EnvironmentObject var model: SequencerModel
+    @AppStorage("localAudioEnabled") private var localAudioEnabled = false
     
     // Playback timer
     @State private var playbackTimer: Timer? = nil
@@ -55,6 +57,7 @@ struct SequencerView: View {
                         model.deleteSelectedNote()
                     }
                 )
+                .id(selectedNote.id) // Force fresh view per note so @State resets
                 .frame(height: 90)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -65,6 +68,9 @@ struct SequencerView: View {
         }
         .onDisappear {
             stopPlayback()
+        }
+        .onChange(of: model.togglePlaybackTrigger) { _ in
+            togglePlayback()
         }
     }
     
@@ -108,7 +114,7 @@ struct SequencerView: View {
                 Label("Delete", systemImage: "trash")
                     .font(.caption)
             }
-            .disabled(model.selectedNoteId == nil)
+            .disabled(model.selectedNoteIds.isEmpty)
             .buttonStyle(.bordered)
             .controlSize(.small)
             
@@ -331,6 +337,7 @@ struct SequencerView: View {
         for id in toDeactivate {
             if let note = model.notes.first(where: { $0.id == id }) {
                 midiService.sendNoteOff(note: note.pitch)
+                if localAudioEnabled { audioMonitor.stopNote(note: note.pitch) }
                 model.activeNoteIDs.remove(id)
             }
         }
@@ -361,6 +368,7 @@ struct SequencerView: View {
         for id in toStop {
             if let note = model.notes.first(where: { $0.id == id }) {
                 midiService.sendNoteOff(note: note.pitch)
+                if localAudioEnabled { audioMonitor.stopNote(note: note.pitch) }
             }
             model.activeNoteIDs.remove(id)
         }
@@ -388,6 +396,7 @@ struct SequencerView: View {
             midiService.vibrato = note.vibrato
             midiService.reverb = note.reverb
             midiService.sendNoteOn(note: note.pitch, velocity: note.velocity)
+            if localAudioEnabled { audioMonitor.playNote(note: note.pitch, velocity: note.velocity) }
             model.activeNoteIDs.insert(note.id)
         }
     }
@@ -396,6 +405,7 @@ struct SequencerView: View {
         for id in model.activeNoteIDs {
             if let note = model.notes.first(where: { $0.id == id }) {
                 midiService.sendNoteOff(note: note.pitch)
+                if localAudioEnabled { audioMonitor.stopNote(note: note.pitch) }
             }
         }
         model.activeNoteIDs.removeAll()
@@ -410,6 +420,7 @@ struct SequencerView: View {
         
         // Stop any currently playing note first
         midiService.sendNoteOff(note: pitch)
+        if localAudioEnabled { audioMonitor.stopNote(note: pitch) }
         
         // Set CC values then play
         midiService.consonant = note.consonant
@@ -417,6 +428,7 @@ struct SequencerView: View {
         midiService.vibrato = note.vibrato
         midiService.reverb = note.reverb
         midiService.sendNoteOn(note: pitch, velocity: note.velocity)
+        if localAudioEnabled { audioMonitor.playNote(note: pitch, velocity: note.velocity) }
         
         print("🔊 play pitch=\(pitch) for \(String(format: "%.2f", durationSeconds))s")
         
@@ -424,12 +436,13 @@ struct SequencerView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + durationSeconds) { [self] in
             print("🔊 stop pitch=\(pitch)")
             midiService.sendNoteOff(note: pitch)
+            if localAudioEnabled { audioMonitor.stopNote(note: pitch) }
         }
     }
     
     private func clearAll() {
         model.notes.removeAll()
-        model.selectedNoteId = nil
+        model.clearSelection()
     }
 }
 

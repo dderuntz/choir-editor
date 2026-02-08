@@ -126,6 +126,9 @@ struct PianoRollView: View {
     var onNotePreview: ((SequencerNote) -> Void)?
     var scrollSync: ScrollSyncManager? = nil
     
+    // Shared group drag offset for multi-select move
+    @State private var groupDragOffset: CGSize = .zero
+    
     var body: some View {
         // Vertical scroll wraps both piano keys and grid together
         ScrollViewReader { proxy in
@@ -242,18 +245,36 @@ struct PianoRollView: View {
     
     private var notesLayer: some View {
         ForEach(model.notes) { note in
+            let isInGroup = model.selectedNoteIds.count > 1 && model.selectedNoteIds.contains(note.id)
             NoteRectView(
                 note: note,
                 isSelected: model.selectedNoteId == note.id,
+                isInMultiSelect: isInGroup,
+                groupDragOffset: isInGroup ? groupDragOffset : .zero,
                 onSelect: {
-                    model.selectedNoteId = note.id
+                    // If already multi-selected, just update primary (keep group)
+                    if model.selectedNoteIds.count > 1 && model.selectedNoteIds.contains(note.id) {
+                        model.selectedNoteId = note.id
+                    } else {
+                        model.selectNote(note.id)
+                    }
                     onNotePreview?(note)
+                },
+                onShiftSelect: {
+                    model.toggleNoteInSelection(note.id)
                 },
                 onMove: { newBeat, newPitch in
                     model.moveNote(id: note.id, toBeat: newBeat, pitch: newPitch)
                 },
                 onResize: { newDuration in
                     model.resizeNote(id: note.id, duration: newDuration)
+                },
+                onGroupDragChanged: { offset in
+                    groupDragOffset = offset
+                },
+                onGroupMoveEnded: { beatDelta, pitchDelta in
+                    model.moveSelectedNotes(beatDelta: beatDelta, pitchDelta: pitchDelta)
+                    groupDragOffset = .zero
                 }
             )
         }
@@ -372,19 +393,31 @@ struct SubdivisionGridShape: Shape {
 struct NoteRectView: View {
     let note: SequencerNote
     let isSelected: Bool
+    let isInMultiSelect: Bool
+    let groupDragOffset: CGSize
     var onSelect: () -> Void
+    var onShiftSelect: () -> Void
     var onMove: (Double, UInt8) -> Void
     var onResize: (Double) -> Void
+    var onGroupDragChanged: ((CGSize) -> Void)?
+    var onGroupMoveEnded: ((Double, Int) -> Void)?
+    
     // Visual-only offsets (no model mutation during drag = no flicker)
     @State private var dragOffset = CGSize.zero
     @State private var resizeOffset: CGFloat = 0
     @State private var hasFiredDragStart = false
     
-    private var isDragging: Bool { dragOffset != .zero }
+    /// Effective visual offset: group offset for multi-select, own offset otherwise
+    private var effectiveOffset: CGSize {
+        if isInMultiSelect { return groupDragOffset }
+        return dragOffset
+    }
+    
+    private var isDragging: Bool { effectiveOffset != .zero }
     private var isResizing: Bool { resizeOffset != 0 }
     
     private var noteColor: Color {
-        if isSelected { return .accentColor }
+        if isSelected || isInMultiSelect { return .accentColor }
         // Color by vowel for visual variety
         let hue = Double(note.vowel) / 127.0
         return Color(hue: hue, saturation: 0.6, brightness: 0.85)
@@ -395,15 +428,15 @@ struct NoteRectView: View {
     private var noteWidth: CGFloat { CGFloat(note.duration) * PianoRollLayout.beatWidth }
     private var noteHeight: CGFloat { PianoRollLayout.rowHeight }
     
-    // Visual width includes resize offset (applied via @GestureState)
+    // Visual width includes resize offset
     private var visualWidth: CGFloat { max(noteWidth + resizeOffset, 6) }
     
     var body: some View {
         noteBody
             .frame(width: visualWidth, height: noteHeight - 2)
             .offset(
-                x: x + dragOffset.width,
-                y: y + 1 + dragOffset.height
+                x: x + effectiveOffset.width,
+                y: y + 1 + effectiveOffset.height
             )
             .zIndex(isSelected ? 10 : (isDragging ? 5 : 1))
     }
@@ -416,8 +449,8 @@ struct NoteRectView: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: 3)
                         .stroke(
-                            isSelected ? Color.white : noteColor.opacity(0.5),
-                            lineWidth: isSelected ? 1.5 : 0.5
+                            (isSelected || isInMultiSelect) ? Color.white : noteColor.opacity(0.5),
+                            lineWidth: isSelected ? 1.5 : (isInMultiSelect ? 1.0 : 0.5)
                         )
                 )
                 .overlay(noteLabel, alignment: .leading)
@@ -459,43 +492,55 @@ struct NoteRectView: View {
     }
     
     // MARK: - Move Gesture
-    // Uses @GestureState for visual offset; only commits to model on .onEnded
     
     private var moveGesture: some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .named("pianoGrid"))
             .onChanged { value in
-                // Select + play on first touch (mousedown)
+                // Select on first touch (mousedown)
                 if !hasFiredDragStart {
                     hasFiredDragStart = true
-                    onSelect()
+                    let isShift = NSEvent.modifierFlags.contains(.shift)
+                    if isShift {
+                        onShiftSelect()
+                    } else {
+                        onSelect()
+                    }
                 }
                 
                 let dist = sqrt(value.translation.width * value.translation.width + value.translation.height * value.translation.height)
                 guard dist > 4 else { return }
-                dragOffset = value.translation
+                
+                // Use isInMultiSelect (updated by SwiftUI after selection change)
+                if isInMultiSelect {
+                    onGroupDragChanged?(value.translation)
+                } else {
+                    dragOffset = value.translation
+                }
             }
             .onEnded { value in
                 let dist = sqrt(value.translation.width * value.translation.width + value.translation.height * value.translation.height)
                 
                 if dist > 4 {
-                    // Drag -- commit final position to model
                     let beatDelta = PianoRollLayout.beatForX(value.translation.width)
-                    let newBeat = max(0, note.startBeat + beatDelta)
-                    
                     let pitchDelta = -Int(round(value.translation.height / PianoRollLayout.rowHeight))
-                    let rawPitch = Int(note.pitch) + pitchDelta
-                    let newPitch = PitchConstants.clampPitch(UInt8(clamping: max(0, rawPitch)))
                     
-                    onMove(newBeat, newPitch)
+                    if isInMultiSelect {
+                        onGroupMoveEnded?(beatDelta, pitchDelta)
+                    } else {
+                        let newBeat = max(0, note.startBeat + beatDelta)
+                        let rawPitch = Int(note.pitch) + pitchDelta
+                        let newPitch = PitchConstants.clampPitch(UInt8(clamping: max(0, rawPitch)))
+                        onMove(newBeat, newPitch)
+                    }
                 }
                 
                 dragOffset = .zero
+                onGroupDragChanged?(.zero)
                 hasFiredDragStart = false
             }
     }
     
     // MARK: - Resize Gesture
-    // Uses @GestureState for visual width offset; only commits to model on .onEnded
     
     private var resizeGesture: some Gesture {
         DragGesture(minimumDistance: 2, coordinateSpace: .named("pianoGrid"))

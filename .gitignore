@@ -7,3 +7,5 @@
 DerivedData/
 ChoirController.app/
 *.choir
+firmware/
+*.tfw
