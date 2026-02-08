@@ -57,6 +57,59 @@ enum GridConstants {
     static let minDuration: Double = 0.25
 }
 
+// MARK: - Scale Helper
+
+enum ScaleType: String, CaseIterable, Identifiable {
+    case major = "Major"
+    case minor = "Minor"
+    case harmonicMinor = "Harmonic Minor"
+    case dorian = "Dorian"
+    case mixolydian = "Mixolydian"
+    case pentatonicMajor = "Pentatonic Maj"
+    case pentatonicMinor = "Pentatonic Min"
+    case chromatic = "Chromatic"
+    
+    var id: String { rawValue }
+    
+    /// Semitone intervals in the scale (relative to root)
+    var intervals: Set<Int> {
+        switch self {
+        case .major:           return [0, 2, 4, 5, 7, 9, 11]
+        case .minor:           return [0, 2, 3, 5, 7, 8, 10]
+        case .harmonicMinor:   return [0, 2, 3, 5, 7, 8, 11]
+        case .dorian:          return [0, 2, 3, 5, 7, 9, 10]
+        case .mixolydian:      return [0, 2, 4, 5, 7, 9, 10]
+        case .pentatonicMajor: return [0, 2, 4, 7, 9]
+        case .pentatonicMinor: return [0, 3, 5, 7, 10]
+        case .chromatic:       return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        }
+    }
+}
+
+enum MusicalKey: Int, CaseIterable, Identifiable {
+    case C = 0, Cs = 1, D = 2, Ds = 3, E = 4, F = 5
+    case Fs = 6, G = 7, Gs = 8, A = 9, As = 10, B = 11
+    
+    var id: Int { rawValue }
+    
+    var name: String {
+        switch self {
+        case .C: return "C"
+        case .Cs: return "C#"
+        case .D: return "D"
+        case .Ds: return "D#"
+        case .E: return "E"
+        case .F: return "F"
+        case .Fs: return "F#"
+        case .G: return "G"
+        case .Gs: return "G#"
+        case .A: return "A"
+        case .As: return "A#"
+        case .B: return "B"
+        }
+    }
+}
+
 // MARK: - Sequencer Model
 
 @MainActor
@@ -72,6 +125,19 @@ class SequencerModel: ObservableObject {
     @Published var isPlaying: Bool = false
     /// IDs of notes currently sounding via playback/scrub
     var activeNoteIDs: Set<UUID> = []
+    
+    // Keyboard highlight (set when a bottom keyboard key is pressed)
+    @Published var highlightedPitch: UInt8? = nil
+    
+    // Scale helper
+    @Published var showScaleHelper: Bool = false
+    @Published var musicalKey: MusicalKey = .C
+    @Published var scaleType: ScaleType = .major
+    
+    func isInScale(_ pitch: UInt8) -> Bool {
+        let interval = (Int(pitch) - musicalKey.rawValue + 120) % 12  // +120 to keep positive
+        return scaleType.intervals.contains(interval)
+    }
     
     // File state
     @Published var currentFileURL: URL? = nil
@@ -175,6 +241,7 @@ class SequencerModel: ObservableObject {
         try data.write(to: url, options: .atomic)
         currentFileURL = url
         hasUnsavedChanges = false
+        Self.addToRecentFiles(url)
         print("Saved \(notes.count) notes to \(url.lastPathComponent)")
     }
     
@@ -188,7 +255,50 @@ class SequencerModel: ObservableObject {
         selectedNoteId = nil
         currentFileURL = url
         hasUnsavedChanges = false
+        Self.addToRecentFiles(url)
         print("Loaded \(notes.count) notes from \(url.lastPathComponent)")
+    }
+    
+    /// Auto-open the last file on launch
+    func loadLastFileIfAvailable() {
+        guard let path = UserDefaults.standard.string(forKey: "lastOpenedFile") else { return }
+        let url = URL(fileURLWithPath: path)
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        do {
+            try load(from: url)
+            print("Auto-opened last file: \(url.lastPathComponent)")
+        } catch {
+            print("Failed to auto-open last file: \(error)")
+        }
+    }
+    
+    // MARK: - Recent Files
+    
+    static let maxRecentFiles = 10
+    
+    static func addToRecentFiles(_ url: URL) {
+        var recents = recentFilePaths()
+        recents.removeAll { $0 == url.path }
+        recents.insert(url.path, at: 0)
+        if recents.count > maxRecentFiles {
+            recents = Array(recents.prefix(maxRecentFiles))
+        }
+        UserDefaults.standard.set(recents, forKey: "recentFiles")
+        UserDefaults.standard.set(url.path, forKey: "lastOpenedFile")
+    }
+    
+    static func recentFilePaths() -> [String] {
+        UserDefaults.standard.stringArray(forKey: "recentFiles") ?? []
+    }
+    
+    static func recentFileURLs() -> [URL] {
+        recentFilePaths()
+            .map { URL(fileURLWithPath: $0) }
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+    }
+    
+    static func clearRecentFiles() {
+        UserDefaults.standard.removeObject(forKey: "recentFiles")
     }
     
     /// Save to current file, or show Save As if no file yet. Returns true if saved.

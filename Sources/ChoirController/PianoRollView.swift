@@ -128,26 +128,35 @@ struct PianoRollView: View {
     
     var body: some View {
         // Vertical scroll wraps both piano keys and grid together
-        ScrollView(.vertical) {
-            HStack(alignment: .top, spacing: 0) {
-                // Piano key labels (scrolls vertically with grid)
-                pianoKeys
-                    .frame(width: PianoRollLayout.pianoKeyWidth)
-                
-                Divider()
-                
-                // Grid area: horizontal scroll only
-                ScrollView(.horizontal) {
-                    gridContent
-                        .frame(
-                            width: PianoRollLayout.gridWidth(beats: model.totalBeats),
-                            height: PianoRollLayout.gridHeight()
-                        )
-                        .background {
-                            if let sync = scrollSync {
-                                ScrollSyncHelper(id: "grid", manager: sync)
+        ScrollViewReader { proxy in
+            ScrollView(.vertical) {
+                HStack(alignment: .top, spacing: 0) {
+                    // Piano key labels (scrolls vertically with grid)
+                    pianoKeys
+                        .frame(width: PianoRollLayout.pianoKeyWidth)
+                    
+                    Divider()
+                    
+                    // Grid area: horizontal scroll only
+                    ScrollView(.horizontal) {
+                        gridContent
+                            .frame(
+                                width: PianoRollLayout.gridWidth(beats: model.totalBeats),
+                                height: PianoRollLayout.gridHeight()
+                            )
+                            .background {
+                                if let sync = scrollSync {
+                                    ScrollSyncHelper(id: "grid", manager: sync)
+                                }
                             }
-                        }
+                    }
+                }
+            }
+            .onChange(of: model.highlightedPitch) { pitch in
+                if let pitch = pitch {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        proxy.scrollTo(Int(pitch), anchor: .center)
+                    }
                 }
             }
         }
@@ -157,16 +166,33 @@ struct PianoRollView: View {
     
     private var gridContent: some View {
         ZStack(alignment: .topLeading) {
-            // 1. Grid background (row shading + lines)
-            PianoRollGridBackground(totalBeats: model.totalBeats)
+            // 1. Grid background (row shading + lines + scale helper)
+            PianoRollGridBackground(
+                totalBeats: model.totalBeats,
+                showScaleHelper: model.showScaleHelper,
+                isInScale: model.showScaleHelper ? { model.isInScale($0) } : nil
+            )
             
-            // 2. Click-to-add overlay
+            // 2. Keyboard highlight row
+            if let pitch = model.highlightedPitch {
+                Rectangle()
+                    .fill(Color.accentColor.opacity(0.15))
+                    .frame(
+                        width: PianoRollLayout.gridWidth(beats: model.totalBeats),
+                        height: PianoRollLayout.rowHeight
+                    )
+                    .offset(y: PianoRollLayout.yForPitch(pitch))
+                    .allowsHitTesting(false)
+                    .animation(.easeInOut(duration: 0.1), value: model.highlightedPitch)
+            }
+            
+            // 3. Click-to-add overlay
             gridClickOverlay
             
-            // 3. Notes on top
+            // 4. Notes on top
             notesLayer
             
-            // 4. Playhead line (green, full height)
+            // 5. Playhead line (green, full height)
             playheadLine
         }
         .coordinateSpace(name: "pianoGrid")
@@ -207,6 +233,7 @@ struct PianoRollView: View {
                         ? Color.black.opacity(0.15)
                         : Color.clear
                 )
+                .id(pitch)
             }
         }
     }
@@ -258,17 +285,23 @@ struct PianoRollView: View {
 
 struct PianoRollGridBackground: View {
     let totalBeats: Int
+    var showScaleHelper: Bool = false
+    var isInScale: ((UInt8) -> Bool)? = nil
     
     var body: some View {
         ZStack {
-            // Row shading for black keys
+            // Row shading for black keys + scale helper
             VStack(spacing: 0) {
                 ForEach((Int(PitchConstants.minPitch)...Int(PitchConstants.maxPitch)).reversed(), id: \.self) { pitch in
+                    let p = UInt8(pitch)
+                    let isBlack = PitchConstants.isBlackKey(p)
+                    let outOfScale = showScaleHelper && !(isInScale?(p) ?? true)
+                    
                     Rectangle()
                         .fill(
-                            PitchConstants.isBlackKey(UInt8(pitch))
-                                ? Color(NSColor.systemGray).opacity(0.08)
-                                : Color.clear
+                            outOfScale
+                                ? Color.red.opacity(isBlack ? 0.12 : 0.06)
+                                : (isBlack ? Color(NSColor.systemGray).opacity(0.08) : Color.clear)
                         )
                         .frame(height: PianoRollLayout.rowHeight)
                 }
