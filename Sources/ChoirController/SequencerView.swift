@@ -66,6 +66,9 @@ struct SequencerView: View {
         .onDisappear {
             stopPlayback()
         }
+        .onChange(of: model.togglePlaybackTrigger) { _ in
+            togglePlayback()
+        }
     }
     
     // MARK: - Toolbar
