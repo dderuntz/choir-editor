@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var showSoundPad = false
     @AppStorage("showKeyboard") private var showKeyboardStorage = true
     @AppStorage("localAudioEnabled") private var localAudioEnabled = false
+    @Environment(\.colorScheme) private var colorScheme
     @State private var showKeyboard = true
     
     var body: some View {
@@ -21,7 +22,7 @@ struct ContentView: View {
                     Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showSettings.toggle() } }) {
                         Image(systemName: showSettings ? "sidebar.left" : "sidebar.left")
                             .font(.title2)
-                            .foregroundColor(showSettings ? .accentColor : .secondary)
+                            .foregroundColor(showSettings ? Theme.accent : .secondary)
                     }
                     .buttonStyle(.plain)
                     .help("Toggle Settings Panel")
@@ -45,7 +46,7 @@ struct ContentView: View {
                     Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showKeyboard.toggle(); showKeyboardStorage = showKeyboard } }) {
                         Image(systemName: "pianokeys")
                             .font(.title2)
-                            .foregroundColor(showKeyboard ? .accentColor : .secondary)
+                            .foregroundColor(showKeyboard ? Theme.accent : .secondary)
                     }
                     .buttonStyle(.plain)
                     .help("Toggle Keyboard")
@@ -55,7 +56,7 @@ struct ContentView: View {
                 }
                 .padding(.horizontal)
                 .padding(.vertical, 12)
-                .background(Color(NSColor.windowBackgroundColor))
+                .background(Theme.window)
                 
                 Divider()
                 
@@ -68,25 +69,26 @@ struct ContentView: View {
                     if showKeyboard {
                         KeyboardView(midiService: midiService, audioMonitor: audioMonitor)
                             .frame(height: 150)
-                            .background(Color(NSColor.windowBackgroundColor))
-                            .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: -4)
+                            .background(Theme.window)
+                            .compositingGroup()
+                            .shadow(color: Theme.keyboardShadow(colorScheme), radius: 12, x: 0, y: -4)
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .background(Color(NSColor.windowBackgroundColor))
+            .background(Theme.window)
             
             // Collapsible Settings Panel (slides in from left)
             if showSettings {
                 HStack(spacing: 0) {
                     SettingsPanelView(bluetoothManager: bluetoothManager, midiService: midiService, showSettings: $showSettings)
                         .frame(width: 280)
-                        .background(Color(NSColor.controlBackgroundColor))
+                        .background(Theme.surface)
                         .transition(.move(edge: .leading))
                     
                     // Dimmed overlay to close
-                    Color.black.opacity(0.1)
+                    Theme.overlay(colorScheme)
                         .onTapGesture {
                             withAnimation(.easeInOut(duration: 0.2)) { showSettings = false }
                         }
@@ -119,8 +121,16 @@ struct ContentView: View {
                     Text("Sound Pad")
                         .font(.headline)
                     Spacer()
-                    Button("Done") { showSoundPad = false }
-                        .keyboardShortcut(.defaultAction)
+                    Button(action: { showSoundPad = false }) {
+                        Text("Done")
+                            .fontWeight(.medium)
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 4)
+                            .background(Theme.accent, in: RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.defaultAction)
                 }
                 .padding()
                 
@@ -143,7 +153,7 @@ struct ConnectionStatusView: View {
         HStack(spacing: 6) {
             // Status dot
             Circle()
-                .fill(midiService.selectedInput != nil ? Color.green : Color.orange)
+                .fill(midiService.selectedInput != nil ? Theme.statusConnected : Theme.statusWarning)
                 .frame(width: 8, height: 8)
             
             // Device name or status
@@ -155,12 +165,12 @@ struct ConnectionStatusView: View {
             } else {
                 Text("No MIDI")
                     .font(.caption)
-                    .foregroundColor(.orange)
+                    .foregroundColor(Theme.statusWarning)
             }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+        .background(Theme.surface.opacity(0.5))
         .cornerRadius(12)
     }
 }
@@ -185,7 +195,7 @@ struct SettingsPanelView: View {
                 .buttonStyle(.plain)
             }
             .padding()
-            .background(Color(NSColor.controlBackgroundColor))
+            .background(Theme.surface)
             
             Divider()
             
@@ -267,7 +277,7 @@ struct SettingsPanelView: View {
                                 ForEach(bluetoothManager.connectedPeripherals, id: \.identifier) { peripheral in
                                     HStack {
                                         Circle()
-                                            .fill(Color.green)
+                                            .fill(Theme.statusConnected)
                                             .frame(width: 6, height: 6)
                                         Text(peripheral.name ?? "Unknown")
                                             .font(.caption)
@@ -308,7 +318,7 @@ struct SettingsPanelView: View {
                             if let selected = midiService.selectedInput {
                                 HStack {
                                     Circle()
-                                        .fill(Color.green)
+                                        .fill(Theme.statusConnected)
                                         .frame(width: 6, height: 6)
                                     Text(selected.displayName)
                                         .font(.caption)
@@ -316,7 +326,7 @@ struct SettingsPanelView: View {
                             } else {
                                 Text("No MIDI destination selected")
                                     .font(.caption)
-                                    .foregroundColor(.orange)
+                                    .foregroundColor(Theme.statusWarning)
                             }
                         }
                     }
