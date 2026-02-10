@@ -124,6 +124,7 @@ class SequencerModel: ObservableObject {
     // Playback state
     @Published var playheadBeat: Double = 0
     @Published var isPlaying: Bool = false
+    @Published var isLooping: Bool = false
     /// Incremented to signal play/stop toggle from menu bar
     @Published var togglePlaybackTrigger: Int = 0
     /// IDs of notes currently sounding via playback/scrub

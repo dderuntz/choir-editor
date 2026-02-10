@@ -24,12 +24,16 @@ struct ChoirControllerApp: App {
         // Auto-open last file is handled in ContentView.onAppear
     }
     
+    @AppStorage("appearanceMode") private var appearanceMode: AppearanceMode = .system
+    
     var body: some Scene {
         WindowGroup {
             ContentView(midiService: midiService)
                 .environmentObject(bluetoothManager)
                 .environmentObject(midiService)
                 .environmentObject(sequencerModel)
+                .preferredColorScheme(appearanceMode.colorScheme)
+                .tint(Theme.accent)
         }
         .windowResizability(.contentSize)
         .commands {
@@ -41,11 +45,36 @@ struct ChoirControllerApp: App {
     }
 }
 
+// MARK: - Appearance Mode
+
+enum AppearanceMode: String, CaseIterable {
+    case system = "system"
+    case light = "light"
+    case dark = "dark"
+    
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+    
+    var label: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+}
+
 // MARK: - View Menu Commands
 
 struct ViewCommands: Commands {
     @AppStorage("showKeyboard") private var showKeyboard = true
     @AppStorage("localAudioEnabled") private var localAudioEnabled = false
+    @AppStorage("appearanceMode") private var appearanceMode: AppearanceMode = .system
     
     var body: some Commands {
         CommandGroup(after: .toolbar) {
@@ -55,6 +84,22 @@ struct ViewCommands: Commands {
             Divider()
             
             Toggle("Local Audio Monitor", isOn: $localAudioEnabled)
+            
+            Divider()
+            
+            Menu("Appearance") {
+                ForEach(AppearanceMode.allCases, id: \.self) { mode in
+                    Button {
+                        appearanceMode = mode
+                    } label: {
+                        if appearanceMode == mode {
+                            Label(mode.label, systemImage: "checkmark")
+                        } else {
+                            Text(mode.label)
+                        }
+                    }
+                }
+            }
         }
     }
 }

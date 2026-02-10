@@ -151,16 +151,23 @@ class MidiService: ObservableObject {
     
     /// Send All Notes Off (CC 123) + All Sound Off (CC 120) on all channels
     func panicAllNotesOff() {
-        print("🚨 MIDI PANIC: All Notes Off")
+        print("🚨 MIDI PANIC: All Notes Off + CC Reset")
         for ch: UInt8 in 0...15 {
             let channel = UInt4(ch)
             sendCC(controller: 120, value: 0, channel: channel) // All Sound Off
             sendCC(controller: 123, value: 0, channel: channel) // All Notes Off
+            sendCC(controller: 121, value: 0, channel: channel) // Reset All Controllers
         }
         // Also send explicit NoteOff for all notes on channel 0
         for note: UInt8 in 0...127 {
             sendNoteOff(note: note, velocity: 0, channel: 0)
         }
+        // Re-send Choir CC defaults
+        sendCC(controller: ChoirCC.consonant, value: ChoirDefaults.consonant)
+        sendCC(controller: ChoirCC.vowel, value: ChoirDefaults.vowel)
+        sendCC(controller: ChoirCC.vibrato, value: ChoirDefaults.vibrato)
+        sendCC(controller: ChoirCC.reverb, value: ChoirDefaults.reverb)
+        print("🚨 MIDI PANIC: CC reset to defaults (cons=\(ChoirDefaults.consonant) vow=\(ChoirDefaults.vowel) vib=\(ChoirDefaults.vibrato) rev=\(ChoirDefaults.reverb))")
     }
     
     /// Disconnect and reconnect MIDI
