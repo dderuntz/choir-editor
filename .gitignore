@@ -3,9 +3,11 @@
 /Packages
 /*.xcodeproj
 /*.xcworkspace
-*.xcuserdata
+**/xcuserdata/
 DerivedData/
+.xcode-build/
 ChoirController.app/
 *.choir
 firmware/
 *.tfw
+default.profraw

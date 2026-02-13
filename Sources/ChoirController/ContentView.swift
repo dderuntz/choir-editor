@@ -1,4 +1,5 @@
 import SwiftUI
+import MIDIKitIO
 
 struct ContentView: View {
     @EnvironmentObject var bluetoothManager: BluetoothMidiManager

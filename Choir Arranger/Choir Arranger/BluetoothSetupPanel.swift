@@ -1,0 +1,1 @@
+../../Sources/ChoirController/BluetoothSetupPanel.swift
