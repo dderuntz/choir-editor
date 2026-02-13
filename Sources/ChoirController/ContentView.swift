@@ -13,6 +13,9 @@ struct ContentView: View {
     @AppStorage("localAudioEnabled") private var localAudioEnabled = false
     @Environment(\.colorScheme) private var colorScheme
     @State private var showKeyboard = true
+    @State private var editingTitle: String = ""
+    @State private var isSaving = false
+    @FocusState private var isTitleFocused: Bool
     
     var body: some View {
         ZStack(alignment: .leading) {
@@ -20,35 +23,71 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 // Top bar with title and connection status
                 HStack {
-                    // Settings toggle
-                    Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showSettings.toggle() } }) {
-                        Image(systemName: showSettings ? "sidebar.left" : "sidebar.left")
-                            .font(.title2)
-                            .foregroundColor(showSettings ? Theme.accent : .secondary)
+                    // App icon with file menu
+                    Button(action: { showFileMenu() }) {
+                        HStack(spacing: 2) {
+                            Image(systemName: "doc.fill")
+                                .font(.title2)
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 8, weight: .bold))
+                        }
+                        .foregroundColor(isSaving ? Theme.accent : Theme.toolbarActive)
                     }
                     .buttonStyle(.plain)
-                    .help("Toggle Settings Panel")
+                    .help("File")
                     
-                    Text("Choir Arranger")
-                        .font(.title2)
-                        .fontWeight(.semibold)
+                    TextField("Untitled", text: $editingTitle, onCommit: { commitTitleEdit(); isTitleFocused = false })
+                        .font(.system(size: 56, weight: .ultraLight))
+                        .kerning(-1.4)
+                        .textFieldStyle(.plain)
+                        .focused($isTitleFocused)
+                        .tint(Theme.accent)
+                        .fixedSize()
+                        .onAppear {
+                            syncTitleFromModel()
+                            // Ensure not focused on launch
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                isTitleFocused = false
+                            }
+                        }
+                        .onChange(of: model.currentFileURL) { _ in syncTitleFromModel() }
+                        .onChange(of: isTitleFocused) { focused in
+                            if !focused { commitTitleEdit() }
+                        }
+                    
+                    // Done button — only visible while editing title, right next to title
+                    if isTitleFocused {
+                        Button(action: { commitTitleEdit(); isTitleFocused = false }) {
+                            Text("Done")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(Theme.toolbarActive)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Theme.toolbarActive, lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
                     
                     Spacer()
                     
-                    // Sound Pad (test/browser tool)
-                    Button(action: { showSoundPad = true }) {
-                        Image(systemName: "waveform")
+                    // Settings toggle
+                    Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showSettings.toggle() } }) {
+                        Image(systemName: "gearshape")
                             .font(.title2)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(showSettings ? Theme.accent : Theme.toolbarInactive)
                     }
                     .buttonStyle(.plain)
-                    .help("Sound Pad")
+                    .help("Settings")
                     
                     // Keyboard toggle
                     Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showKeyboard.toggle(); showKeyboardStorage = showKeyboard } }) {
                         Image(systemName: "pianokeys")
                             .font(.title2)
-                            .foregroundColor(showKeyboard ? Theme.accent : .secondary)
+                            .foregroundColor(showKeyboard ? Theme.toolbarActive : Theme.toolbarInactive)
                     }
                     .buttonStyle(.plain)
                     .help("Toggle Keyboard")
@@ -84,6 +123,9 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .background(Theme.window)
+            .onTapGesture {
+                if isTitleFocused { isTitleFocused = false }
+            }
             
             // Collapsible Settings Panel (slides in from left)
             if showSettings {
@@ -146,6 +188,9 @@ struct ContentView: View {
                 withAnimation(.easeInOut(duration: 0.2)) { showSettings = false }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .showSoundPad)) { _ in
+            showSoundPad = true
+        }
         .sheet(isPresented: $showSoundPad) {
             VStack(spacing: 0) {
                 // Sheet header with close button
@@ -176,6 +221,37 @@ struct ContentView: View {
         }
     }
     
+    // MARK: - Title Editing
+    
+    private func syncTitleFromModel() {
+        editingTitle = model.currentFileURL?.deletingPathExtension().lastPathComponent ?? "Untitled"
+    }
+    
+    private func commitTitleEdit() {
+        let trimmed = editingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            syncTitleFromModel() // revert to current name
+            return
+        }
+        let currentName = model.currentFileURL?.deletingPathExtension().lastPathComponent ?? ""
+        guard trimmed != currentName else { return } // no change
+        
+        do {
+            try model.renameFile(to: trimmed)
+            flashSaveIndicator()
+        } catch {
+            print("Rename failed: \(error)")
+            syncTitleFromModel() // revert on failure
+        }
+    }
+    
+    private func flashSaveIndicator() {
+        withAnimation(.easeIn(duration: 0.1)) { isSaving = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            withAnimation(.easeOut(duration: 0.3)) { isSaving = false }
+        }
+    }
+    
     // MARK: - Bluetooth Setup Flow
     
     /// Opens the instruction panel and Apple's BLE MIDI window simultaneously
@@ -184,6 +260,68 @@ struct ContentView: View {
             showBluetoothSetup = true
         }
         bluetoothManager.showBluetoothMIDIWindow()
+    }
+    
+    private func showFileMenu() {
+        let target = FileMenuActions.shared
+        target.model = model
+        let menu = NSMenu()
+        
+        let newItem = NSMenuItem(title: "New", action: #selector(FileMenuActions.newDoc(_:)), keyEquivalent: "")
+        newItem.target = target
+        menu.addItem(newItem)
+        
+        let openItem = NSMenuItem(title: "Open...", action: #selector(FileMenuActions.openDoc(_:)), keyEquivalent: "")
+        openItem.target = target
+        menu.addItem(openItem)
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        let recentURLs = SequencerModel.recentFileURLs()
+        if !recentURLs.isEmpty {
+            let recentMenu = NSMenu()
+            let recentItem = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
+            recentItem.submenu = recentMenu
+            for url in recentURLs {
+                let item = NSMenuItem(title: url.deletingPathExtension().lastPathComponent, action: #selector(FileMenuActions.openRecent(_:)), keyEquivalent: "")
+                item.target = target
+                item.representedObject = url
+                recentMenu.addItem(item)
+            }
+            recentMenu.addItem(NSMenuItem.separator())
+            let clearItem = NSMenuItem(title: "Clear Recents", action: #selector(FileMenuActions.clearRecents(_:)), keyEquivalent: "")
+            clearItem.target = target
+            recentMenu.addItem(clearItem)
+            menu.addItem(recentItem)
+        }
+        
+        if model.currentFileURL != nil {
+            menu.addItem(NSMenuItem.separator())
+            let revealItem = NSMenuItem(title: "Reveal in Finder", action: #selector(FileMenuActions.revealInFinder(_:)), keyEquivalent: "")
+            revealItem.target = target
+            menu.addItem(revealItem)
+        }
+        
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
+}
+
+// Helper for NSMenu actions
+@MainActor
+class FileMenuActions: NSObject {
+    static let shared = FileMenuActions()
+    var model: SequencerModel?
+    
+    @objc func newDoc(_ sender: Any?) { model?.newDocument() }
+    @objc func openDoc(_ sender: Any?) { model?.showOpenDialog() }
+    @objc func openRecent(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        try? model?.load(from: url)
+    }
+    @objc func clearRecents(_ sender: Any?) { SequencerModel.clearRecentFiles() }
+    @objc func revealInFinder(_ sender: Any?) {
+        guard let url = model?.currentFileURL else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 }
 
@@ -233,61 +371,118 @@ struct SettingsPanelView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header
+            // Header — matches doc title style
             HStack {
-                Text("Settings")
-                    .font(.headline)
+                Text("Setup")
+                    .font(.system(size: 56, weight: .ultraLight))
+                    .kerning(-1.4)
                 Spacer()
                 Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showSettings = false } }) {
                     Image(systemName: "xmark")
-                        .foregroundColor(.secondary)
+                        .font(.title2)
+                        .foregroundColor(Theme.toolbarInactive)
                 }
                 .buttonStyle(.plain)
             }
-            .padding()
+            .padding(.horizontal)
+            .padding(.vertical, 12)
             .background(Theme.surface)
             
             Divider()
             
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 24) {
                     // Sequencer Settings
-                    GroupBox("Sequencer Settings") {
-                        VStack(alignment: .leading, spacing: 10) {
-                            // Tempo
-                            HStack {
-                                Text("Tempo:")
-                                    .font(.caption)
-                                    .frame(width: 80, alignment: .leading)
-                                Slider(value: $midiService.tempo, in: 40...200, step: 5)
-                                Text("\(Int(midiService.tempo))")
-                                    .font(.caption).monospacedDigit()
-                                    .frame(width: 30)
-                            }
-                            
-                            // Min Note
-                            HStack {
-                                Text("Min Note:")
-                                    .font(.caption)
-                                    .frame(width: 80, alignment: .leading)
-                                Slider(value: $midiService.minNoteDuration, in: 0.01...0.5, step: 0.01)
-                                Text("\(Int(midiService.minNoteDuration * 1000))ms")
-                                    .font(.caption).monospacedDigit()
-                                    .frame(width: 40)
-                            }
-                            
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Sequencer")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .textCase(.uppercase)
+                        
+                        SliderWithDefault(label: "Tempo", value: $midiService.tempo, range: 40...200, defaultValue: 100, displayText: "\(Int(midiService.tempo))", displayWidth: 30) { val in
+                            (val / 5).rounded() * 5
+                        }
+                        
+                        SliderWithDefault(label: "Min Note", value: $midiService.minNoteDuration, range: 0.01...0.5, defaultValue: 0.28, displayText: "\(Int(midiService.minNoteDuration * 1000))ms", displayWidth: 40) { val in
+                            (val * 100).rounded() / 100
                         }
                     }
                     
+                    Divider()
+                    
                     // Voice Controls
-                    GroupBox("Voice Controls") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Global Choir Effects")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .textCase(.uppercase)
+                        
                         VoiceControlsView(midiService: midiService)
                     }
                     
+                    Divider()
                     
+                    Button(action: {
+                        midiService.tempo = 100
+                        midiService.minNoteDuration = 0.28
+                        midiService.vibrato = ChoirDefaults.vibrato
+                        midiService.reverb = ChoirDefaults.reverb
+                    }) {
+                        Text("Reset Defaults")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding()
             }
+        }
+    }
+}
+
+// MARK: - Slider with Default Dot
+
+struct SliderWithDefault: View {
+    let label: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let defaultValue: Double
+    let displayText: String
+    var displayWidth: CGFloat = 30
+    var snap: ((Double) -> Double)? = nil
+    
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(.caption)
+                .frame(width: 80, alignment: .leading)
+            Slider(value: $value, in: range)
+                .onChange(of: value) { val in
+                    if let snap = snap { value = snap(val) }
+                }
+                .background(defaultDot)
+            Text(displayText)
+                .font(.caption).monospacedDigit()
+                .frame(width: displayWidth)
+        }
+    }
+    
+    private var nearDefault: Bool {
+        let totalRange = range.upperBound - range.lowerBound
+        return abs(value - defaultValue) / totalRange < 0.03
+    }
+    
+    private var defaultDot: some View {
+        GeometryReader { geo in
+            let trackInset: CGFloat = 10
+            let trackWidth = geo.size.width - trackInset * 2
+            let fraction = (defaultValue - range.lowerBound) / (range.upperBound - range.lowerBound)
+            let x = trackInset + trackWidth * CGFloat(fraction)
+            Circle()
+                .fill(Color.white.opacity(nearDefault ? 0 : 0.35))
+                .frame(width: 6, height: 6)
+                .position(x: x, y: geo.size.height / 2)
+                .allowsHitTesting(false)
         }
     }
 }

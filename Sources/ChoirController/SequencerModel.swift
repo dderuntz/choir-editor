@@ -341,6 +341,22 @@ class SequencerModel: ObservableObject {
         print("Loaded \(notes.count) notes from \(url.lastPathComponent)")
     }
     
+    /// Rename the current file on disk and update references
+    func renameFile(to newName: String) throws {
+        guard let currentURL = currentFileURL else { return }
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let newURL = currentURL.deletingLastPathComponent()
+            .appendingPathComponent(trimmed)
+            .appendingPathExtension("choir")
+        guard newURL != currentURL else { return } // no change
+        try FileManager.default.moveItem(at: currentURL, to: newURL)
+        currentFileURL = newURL
+        hasUnsavedChanges = false
+        Self.addToRecentFiles(newURL)
+        print("Renamed to \(newURL.lastPathComponent)")
+    }
+    
     /// Auto-open the last file on launch
     func loadLastFileIfAvailable() {
         guard let path = UserDefaults.standard.string(forKey: "lastOpenedFile") else { return }

@@ -9,37 +9,23 @@ struct VoiceControlsView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Vibrato
-            HStack {
-                Text("Vibrato:")
-                    .font(.caption)
-                    .frame(width: 80, alignment: .leading)
-                Slider(value: $vibratoValue, in: 0...127, step: 1)
-                    .onChange(of: vibratoValue) { newValue in
-                        midiService.vibrato = UInt8(newValue)
-                    }
-                Text("\(Int(vibratoValue))")
-                    .font(.caption).monospacedDigit()
-                    .frame(width: 30)
+            SliderWithDefault(label: "Vibrato", value: $vibratoValue, range: 0...127, defaultValue: Double(ChoirDefaults.vibrato), displayText: "\(Int(vibratoValue))") { val in
+                let rounded = val.rounded()
+                midiService.vibrato = UInt8(rounded)
+                return rounded
             }
             
-            // Reverb
-            HStack {
-                Text("Reverb:")
-                    .font(.caption)
-                    .frame(width: 80, alignment: .leading)
-                Slider(value: $reverbValue, in: 0...127, step: 1)
-                    .onChange(of: reverbValue) { newValue in
-                        midiService.reverb = UInt8(newValue)
-                    }
-                Text("\(Int(reverbValue))")
-                    .font(.caption).monospacedDigit()
-                    .frame(width: 30)
+            SliderWithDefault(label: "Reverb", value: $reverbValue, range: 0...127, defaultValue: Double(ChoirDefaults.reverb), displayText: "\(Int(reverbValue))") { val in
+                let rounded = val.rounded()
+                midiService.reverb = UInt8(rounded)
+                return rounded
             }
         }
         .onAppear {
             vibratoValue = Double(midiService.vibrato)
             reverbValue = Double(midiService.reverb)
         }
+        .onChange(of: midiService.vibrato) { val in vibratoValue = Double(val) }
+        .onChange(of: midiService.reverb) { val in reverbValue = Double(val) }
     }
 }
