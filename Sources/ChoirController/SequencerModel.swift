@@ -1,6 +1,8 @@
 import Foundation
 import SwiftUI
 import AppKit
+import Combine
+import UniformTypeIdentifiers
 
 // MARK: - Data Model
 

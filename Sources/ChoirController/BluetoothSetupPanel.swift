@@ -1,4 +1,5 @@
 import SwiftUI
+import MIDIKitIO
 
 /// Transient instruction panel that slides in from the right to guide users through
 /// Bluetooth MIDI pairing. Auto-dismisses when MidiService detects a connection.

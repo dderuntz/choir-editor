@@ -1,6 +1,7 @@
 import Foundation
 import CoreBluetooth
 import CoreAudioKit
+import Combine
 import MIDIKit
 
 class BluetoothMidiManager: NSObject, ObservableObject {

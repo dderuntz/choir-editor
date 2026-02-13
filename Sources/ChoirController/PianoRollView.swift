@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 
 // MARK: - Scroll Sync (bidirectional NSScrollView sync)
 
