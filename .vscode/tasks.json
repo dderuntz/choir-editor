@@ -2,31 +2,9 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "make-run",
+            "label": "xcode-run",
             "type": "shell",
-            "command": "make run",
-            "group": {
-                "kind": "test",
-                "isDefault": true
-            },
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": false,
-                "panel": "shared"
-            }
-        },
-        {
-            "label": "swift-build",
-            "type": "shell",
-            "command": "swift build",
-            "group": "build",
-            "problemMatcher": "$swiftc"
-        },
-        {
-            "label": "swift-run",
-            "type": "shell",
-            "command": "swift run",
+            "command": "make xcode-run",
             "group": {
                 "kind": "test",
                 "isDefault": true
@@ -37,6 +15,28 @@
                 "focus": true,
                 "panel": "shared"
             }
-        }
+        },
+        {
+            "label": "xcode-build",
+            "type": "shell",
+            "command": "make xcode-build",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$swiftc"
+        },
+        {
+            "label": "make-run",
+            "type": "shell",
+            "command": "make run",
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            }
+        },
     ]
 }

@@ -24,7 +24,6 @@ class MidiService: ObservableObject {
     
     // Global Sequencer Settings
     @Published var tempo: Double = 100
-    @Published var consonantDuration: Double = 0.15
     @Published var minNoteDuration: Double = 0.28
     
     init() {
@@ -70,12 +69,13 @@ class MidiService: ObservableObject {
             }
         }
         
-        // Auto-select if we find a Teenage Engineering device or just the first one if none selected
+        // Auto-select only Choir dolls (CH-8, Choir, or TE devices)
         if self.selectedInput == nil {
-            let newSelection = self.availableInputs.first(where: { $0.displayName.contains("CH-8") || $0.displayName.contains("Choir") || $0.displayName.contains("TE") }) 
-                ?? self.availableInputs.first
+            let choirDevice = self.availableInputs.first(where: {
+                $0.displayName.contains("CH-8") || $0.displayName.contains("Choir") || $0.displayName.contains("TE")
+            })
             
-            if let input = newSelection {
+            if let input = choirDevice {
                 self.selectedInput = input
                 self.setupConnection(to: input)
             }
@@ -151,16 +151,23 @@ class MidiService: ObservableObject {
     
     /// Send All Notes Off (CC 123) + All Sound Off (CC 120) on all channels
     func panicAllNotesOff() {
-        print("🚨 MIDI PANIC: All Notes Off")
+        print("🚨 MIDI PANIC: All Notes Off + CC Reset")
         for ch: UInt8 in 0...15 {
             let channel = UInt4(ch)
             sendCC(controller: 120, value: 0, channel: channel) // All Sound Off
             sendCC(controller: 123, value: 0, channel: channel) // All Notes Off
+            sendCC(controller: 121, value: 0, channel: channel) // Reset All Controllers
         }
         // Also send explicit NoteOff for all notes on channel 0
         for note: UInt8 in 0...127 {
             sendNoteOff(note: note, velocity: 0, channel: 0)
         }
+        // Re-send Choir CC defaults
+        sendCC(controller: ChoirCC.consonant, value: ChoirDefaults.consonant)
+        sendCC(controller: ChoirCC.vowel, value: ChoirDefaults.vowel)
+        sendCC(controller: ChoirCC.vibrato, value: ChoirDefaults.vibrato)
+        sendCC(controller: ChoirCC.reverb, value: ChoirDefaults.reverb)
+        print("🚨 MIDI PANIC: CC reset to defaults (cons=\(ChoirDefaults.consonant) vow=\(ChoirDefaults.vowel) vib=\(ChoirDefaults.vibrato) rev=\(ChoirDefaults.reverb))")
     }
     
     /// Disconnect and reconnect MIDI

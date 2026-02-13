@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import Combine
 
 // C-compatible struct for voice data to avoid Swift ARC in render thread
 struct VoiceData {

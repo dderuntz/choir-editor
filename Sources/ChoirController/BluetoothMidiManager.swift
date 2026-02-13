@@ -1,5 +1,7 @@
 import Foundation
 import CoreBluetooth
+import CoreAudioKit
+import Combine
 import MIDIKit
 
 class BluetoothMidiManager: NSObject, ObservableObject {
@@ -12,16 +14,36 @@ class BluetoothMidiManager: NSObject, ObservableObject {
     // Standard BLE MIDI Service UUID
     private let midiServiceUUID = CBUUID(string: "03B80E5A-EDE8-4B33-A751-6CE34EC4C700")
     
+    // Apple's built-in BLE MIDI pairing window (same UI as MIDI Studio's Bluetooth config)
+    private var btleWindowController: CABTLEMIDIWindowController?
+    
     override init() {
         super.init()
         centralManager = CBCentralManager(delegate: self, queue: nil)
     }
     
+    // MARK: - Apple BLE MIDI Window (replaces MIDI Studio)
+    
+    /// Opens Apple's built-in Bluetooth MIDI configuration window.
+    /// This is the same UI shown by MIDI Studio — handles advertising, pairing, and CoreMIDI bridging.
+    @MainActor
+    func showBluetoothMIDIWindow() {
+        guard centralManager.state == .poweredOn else {
+            print("⚠️ Bluetooth not powered on. Cannot open BLE MIDI window.")
+            return
+        }
+        let wc = CABTLEMIDIWindowController()
+        wc.showWindow(nil)
+        btleWindowController = wc // Prevent deallocation
+        print("📡 Opened Apple Bluetooth MIDI configuration window.")
+    }
+    
+    // MARK: - Central-mode scanning (legacy, kept for reference)
+    
     func startScanning() {
         guard centralManager.state == .poweredOn else { return }
         print("Starting scan for BLE MIDI devices...")
         isScanning = true
-        // Scan for devices advertising the MIDI service
         centralManager.scanForPeripherals(withServices: [midiServiceUUID], options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
     }
     
@@ -33,12 +55,9 @@ class BluetoothMidiManager: NSObject, ObservableObject {
     
     func connect(to peripheral: CBPeripheral) {
         print("Connecting to \(peripheral.name ?? "Unknown")...")
-        // Best practice: Stop scanning before connecting to improve connection reliability
         if isScanning {
             stopScanning()
         }
-        
-        // Connect with options helpful for MIDI
         centralManager.connect(peripheral, options: [
             CBConnectPeripheralOptionNotifyOnDisconnectionKey: true
         ])
