@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 
 // MARK: - Scroll Sync (bidirectional NSScrollView sync)
 
@@ -125,6 +126,7 @@ struct PianoRollView: View {
     @ObservedObject var model: SequencerModel
     var onNotePreview: ((SequencerNote) -> Void)?
     var scrollSync: ScrollSyncManager? = nil
+    @Environment(\.colorScheme) private var colorScheme
     
     // Shared group drag offset for multi-select move
     @State private var groupDragOffset: CGSize = .zero
@@ -206,7 +208,7 @@ struct PianoRollView: View {
     private var playheadLine: some View {
         let xPos = PianoRollLayout.xForBeat(model.playheadBeat)
         return Rectangle()
-            .fill(Color.green)
+            .fill(Theme.playhead)
             .frame(width: 2, height: PianoRollLayout.gridHeight())
             .offset(x: xPos)
             .allowsHitTesting(false)
@@ -222,9 +224,9 @@ struct PianoRollView: View {
                 HStack(spacing: 0) {
                     Spacer()
                     Text(PitchConstants.noteName(for: p))
-                        .font(.system(size: 9, design: .monospaced))
+                        .font(.system(size: 9, design: .monospaced)) // monospaced intentional for pitch alignment
                         .foregroundColor(
-                            p == 60 ? .yellow :
+                            p == 60 ? Theme.middleC :
                             PitchConstants.isBlackKey(p) ? .secondary : .primary
                         )
                         .lineLimit(1)
@@ -233,7 +235,7 @@ struct PianoRollView: View {
                 .frame(height: PianoRollLayout.rowHeight)
                 .background(
                     PitchConstants.isBlackKey(p)
-                        ? Color.black.opacity(0.15)
+                        ? Theme.blackKeyRow(colorScheme)
                         : Color.clear
                 )
                 .id(pitch)
@@ -308,6 +310,7 @@ struct PianoRollGridBackground: View {
     let totalBeats: Int
     var showScaleHelper: Bool = false
     var isInScale: ((UInt8) -> Bool)? = nil
+    @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
         ZStack {
@@ -321,8 +324,8 @@ struct PianoRollGridBackground: View {
                     Rectangle()
                         .fill(
                             outOfScale
-                                ? Color.red.opacity(isBlack ? 0.12 : 0.06)
-                                : (isBlack ? Color(NSColor.systemGray).opacity(0.08) : Color.clear)
+                                ? Theme.outOfScale(colorScheme, isBlackKey: isBlack)
+                                : (isBlack ? Theme.blackKeyRow(colorScheme) : Color.clear)
                         )
                         .frame(height: PianoRollLayout.rowHeight)
                 }
@@ -330,11 +333,11 @@ struct PianoRollGridBackground: View {
             
             // 16th note subdivision lines (light)
             SubdivisionGridShape(totalBeats: totalBeats)
-                .stroke(Color.gray.opacity(0.15), lineWidth: 0.5)
+                .stroke(Theme.gridSubdivision(colorScheme), lineWidth: 0.5)
             
             // Beat and row boundary lines (stronger)
             BeatGridShape(totalBeats: totalBeats)
-                .stroke(Color.gray.opacity(0.3), lineWidth: 0.5)
+                .stroke(Theme.gridLine(colorScheme), lineWidth: 0.5)
         }
     }
 }
@@ -401,6 +404,7 @@ struct NoteRectView: View {
     var onResize: (Double) -> Void
     var onGroupDragChanged: ((CGSize) -> Void)?
     var onGroupMoveEnded: ((Double, Int) -> Void)?
+    @Environment(\.colorScheme) private var colorScheme
     
     // Visual-only offsets (no model mutation during drag = no flicker)
     @State private var dragOffset = CGSize.zero
@@ -418,9 +422,7 @@ struct NoteRectView: View {
     
     private var noteColor: Color {
         if isSelected || isInMultiSelect { return .accentColor }
-        // Color by vowel for visual variety
-        let hue = Double(note.vowel) / 127.0
-        return Color(hue: hue, saturation: 0.6, brightness: 0.85)
+        return Theme.noteColor(vowel: note.vowel, colorScheme: colorScheme)
     }
     
     private var x: CGFloat { PianoRollLayout.xForBeat(note.startBeat) }
@@ -449,7 +451,7 @@ struct NoteRectView: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: 3)
                         .stroke(
-                            (isSelected || isInMultiSelect) ? Color.white : noteColor.opacity(0.5),
+                            (isSelected || isInMultiSelect) ? Theme.noteStroke : noteColor.opacity(0.5),
                             lineWidth: isSelected ? 1.5 : (isInMultiSelect ? 1.0 : 0.5)
                         )
                 )
@@ -475,7 +477,7 @@ struct NoteRectView: View {
     private var noteLabel: some View {
         if visualWidth > 28 {
             Text(phonemeLabel)
-                .font(.system(size: 8))
+                .font(Theme.labelSmall)
                 .foregroundColor(.white)
                 .lineLimit(1)
                 .padding(.leading, 3)

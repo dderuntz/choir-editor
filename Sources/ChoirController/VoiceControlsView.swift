@@ -8,47 +8,24 @@ struct VoiceControlsView: View {
     @State private var reverbValue: Double = Double(ChoirDefaults.reverb)
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Voice Controls")
-                .font(.headline)
-            
-            // Vibrato Slider
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("Vibrato")
-                        .frame(width: 60, alignment: .leading)
-                    Slider(value: $vibratoValue, in: 0...127, step: 1)
-                        .onChange(of: vibratoValue) { newValue in
-                            midiService.vibrato = UInt8(newValue)
-                        }
-                    Text("\(Int(vibratoValue))")
-                        .frame(width: 35, alignment: .trailing)
-                        .monospacedDigit()
-                }
+        VStack(alignment: .leading, spacing: 10) {
+            SliderWithDefault(label: "Vibrato", value: $vibratoValue, range: 0...127, defaultValue: Double(ChoirDefaults.vibrato), displayText: "\(Int(vibratoValue))") { val in
+                let rounded = val.rounded()
+                midiService.vibrato = UInt8(rounded)
+                return rounded
             }
             
-            // Reverb Slider
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("Reverb")
-                        .frame(width: 60, alignment: .leading)
-                    Slider(value: $reverbValue, in: 0...127, step: 1)
-                        .onChange(of: reverbValue) { newValue in
-                            midiService.reverb = UInt8(newValue)
-                        }
-                    Text("\(Int(reverbValue))")
-                        .frame(width: 35, alignment: .trailing)
-                        .monospacedDigit()
-                }
+            SliderWithDefault(label: "Reverb", value: $reverbValue, range: 0...127, defaultValue: Double(ChoirDefaults.reverb), displayText: "\(Int(reverbValue))") { val in
+                let rounded = val.rounded()
+                midiService.reverb = UInt8(rounded)
+                return rounded
             }
         }
-        .padding()
-        .background(Color(NSColor.controlBackgroundColor))
-        .cornerRadius(8)
         .onAppear {
-            // Sync with midiService values on appear
             vibratoValue = Double(midiService.vibrato)
             reverbValue = Double(midiService.reverb)
         }
+        .onChange(of: midiService.vibrato) { val in vibratoValue = Double(val) }
+        .onChange(of: midiService.reverb) { val in reverbValue = Double(val) }
     }
 }

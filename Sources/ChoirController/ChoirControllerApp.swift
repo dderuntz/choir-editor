@@ -1,8 +1,17 @@
 import SwiftUI
 
+extension Notification.Name {
+    static let showSoundPad = Notification.Name("showSoundPad")
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return true
+    }
+    
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Disable window tabbing (tabs are meaningless in this single-document app)
+        NSWindow.allowsAutomaticWindowTabbing = false
     }
 }
 
@@ -24,19 +33,47 @@ struct ChoirControllerApp: App {
         // Auto-open last file is handled in ContentView.onAppear
     }
     
+    @AppStorage("appearanceMode") private var appearanceMode: AppearanceMode = .system
+    
     var body: some Scene {
         WindowGroup {
             ContentView(midiService: midiService)
                 .environmentObject(bluetoothManager)
                 .environmentObject(midiService)
                 .environmentObject(sequencerModel)
+                .preferredColorScheme(appearanceMode.colorScheme)
+                .tint(Theme.accent)
         }
         .windowResizability(.contentSize)
         .commands {
             FileCommands(model: sequencerModel)
             EditCommands(model: sequencerModel)
             ViewCommands()
-            MidiCommands(midiService: midiService)
+            MidiCommands(midiService: midiService, bluetoothManager: bluetoothManager)
+        }
+    }
+}
+
+// MARK: - Appearance Mode
+
+enum AppearanceMode: String, CaseIterable {
+    case system = "system"
+    case light = "light"
+    case dark = "dark"
+    
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+    
+    var label: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
         }
     }
 }
@@ -46,6 +83,7 @@ struct ChoirControllerApp: App {
 struct ViewCommands: Commands {
     @AppStorage("showKeyboard") private var showKeyboard = true
     @AppStorage("localAudioEnabled") private var localAudioEnabled = false
+    @AppStorage("appearanceMode") private var appearanceMode: AppearanceMode = .system
     
     var body: some Commands {
         CommandGroup(after: .toolbar) {
@@ -55,6 +93,29 @@ struct ViewCommands: Commands {
             Divider()
             
             Toggle("Local Audio Monitor", isOn: $localAudioEnabled)
+            
+            Divider()
+            
+            Button("Sound Pad...") {
+                NotificationCenter.default.post(name: .showSoundPad, object: nil)
+            }
+            .keyboardShortcut("p", modifiers: [.command, .shift])
+            
+            Divider()
+            
+            Menu("Appearance") {
+                ForEach(AppearanceMode.allCases, id: \.self) { mode in
+                    Button {
+                        appearanceMode = mode
+                    } label: {
+                        if appearanceMode == mode {
+                            Label(mode.label, systemImage: "checkmark")
+                        } else {
+                            Text(mode.label)
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -63,9 +124,17 @@ struct ViewCommands: Commands {
 
 struct MidiCommands: Commands {
     @ObservedObject var midiService: MidiService
+    @ObservedObject var bluetoothManager: BluetoothMidiManager
     
     var body: some Commands {
         CommandMenu("MIDI") {
+            Button("Connect Bluetooth MIDI...") {
+                bluetoothManager.showBluetoothMIDIWindow()
+            }
+            .keyboardShortcut("b", modifiers: [.command, .shift])
+            
+            Divider()
+            
             Button("All Notes Off") { midiService.panicAllNotesOff() }
                 .keyboardShortcut(".", modifiers: [.command, .shift])
             

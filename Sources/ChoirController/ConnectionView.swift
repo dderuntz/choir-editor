@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreBluetooth
+import MIDIKitIO
 
 struct ConnectionView: View {
     @ObservedObject var bluetoothManager: BluetoothMidiManager

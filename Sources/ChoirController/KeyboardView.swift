@@ -13,7 +13,7 @@ struct KeyboardView: View {
     
     // Minimum white key width before scrolling kicks in
     static let minWhiteKeyWidth: CGFloat = 28
-    static let keyboardHeight: CGFloat = 140
+    static let keyboardHeight: CGFloat = 150
     
     var whiteKeyCount: Int {
         (startNote...endNote).filter { !isBlackKey($0) }.count
@@ -106,6 +106,7 @@ struct PianoKey: View {
     @ObservedObject var model: SequencerModel
     @ObservedObject var audioMonitor: AudioMonitorService
     let localAudioEnabled: Bool
+    @Environment(\.colorScheme) private var colorScheme
     @State private var isPressed = false
     
     var body: some View {
@@ -125,6 +126,14 @@ struct PianoKey: View {
                     .stroke(keyBorderColor, lineWidth: 1)
                 }
             )
+            .overlay(alignment: .bottom) {
+                if note == 60 {
+                    Text("C")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.black.opacity(0.4))
+                        .padding(.bottom, 6)
+                }
+            }
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { _ in
@@ -149,14 +158,13 @@ struct PianoKey: View {
     }
     
     var keyColor: Color {
-        if isPressed {
-            return isBlack ? Color(white: 0.35) : Color.gray.opacity(0.4)
+        if isBlack {
+            return Theme.blackKey(colorScheme, pressed: isPressed)
         }
-        if note == 60 { return .yellow }
-        return isBlack ? Color(white: 0.15) : .white
+        return Theme.whiteKey(colorScheme, pressed: isPressed)
     }
     
     var keyBorderColor: Color {
-        Color.gray.opacity(0.3)
+        Theme.keyBorder(colorScheme, isBlack: isBlack)
     }
 }

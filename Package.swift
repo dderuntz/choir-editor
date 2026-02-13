@@ -21,8 +21,10 @@ let package = Package(
             name: "ChoirController",
             dependencies: [
                 .product(name: "MIDIKit", package: "MIDIKit")
+            ],
+            resources: [
+                .process("Assets.xcassets")
             ]
-            // Removed resources: [.process("Info.plist")] as it causes build error for executables
         ),
         .testTarget(
             name: "ChoirControllerTests",

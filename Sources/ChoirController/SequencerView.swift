@@ -85,7 +85,7 @@ struct SequencerView: View {
                     .fontWeight(.medium)
                 if model.hasUnsavedChanges {
                     Circle()
-                        .fill(Color.orange)
+                        .fill(Theme.statusWarning)
                         .frame(width: 6, height: 6)
                         .help("Unsaved changes")
                 }
@@ -168,22 +168,31 @@ struct SequencerView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+        .background(Theme.surface.opacity(0.5))
     }
     
     // MARK: - Transport Bar
     
     private var transportBar: some View {
         HStack(spacing: 0) {
-            // Play/Stop button (aligned with piano key column)
-            Button(action: { togglePlayback() }) {
-                Image(systemName: model.isPlaying ? "stop.fill" : "play.fill")
-                    .font(.system(size: 14))
-                    .foregroundColor(model.isPlaying ? .red : .green)
-                    .frame(width: 28, height: 28)
+            // Play/Stop + Loop buttons (aligned with piano key column)
+            HStack(spacing: 4) {
+                Button(action: { togglePlayback() }) {
+                    Image(systemName: model.isPlaying ? "stop.fill" : "play.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(model.isPlaying ? .red : Theme.playhead)
+                }
+                .buttonStyle(.plain)
+                .help(model.isPlaying ? "Stop" : "Play")
+                
+                Button(action: { model.isLooping.toggle() }) {
+                    Image(systemName: "repeat")
+                        .font(.system(size: 11))
+                        .foregroundColor(model.isLooping ? Theme.accent : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help(model.isLooping ? "Looping" : "Loop")
             }
-            .buttonStyle(.plain)
-            .help(model.isPlaying ? "Stop" : "Play")
             .frame(width: PianoRollLayout.pianoKeyWidth)
             
             Divider().frame(height: 24)
@@ -196,7 +205,7 @@ struct SequencerView: View {
                     
                     // Playhead line
                     Rectangle()
-                        .fill(Color.green)
+                        .fill(Theme.playhead)
                         .frame(width: 2, height: 28)
                         .offset(x: PianoRollLayout.xForBeat(model.playheadBeat))
                         .allowsHitTesting(false)
@@ -225,7 +234,7 @@ struct SequencerView: View {
             }
         }
         .frame(height: 28)
-        .background(Color.green.opacity(0.08))
+        .background(Theme.playhead.opacity(0.08))
     }
     
     private var scrubBackground: some View {
@@ -249,7 +258,7 @@ struct SequencerView: View {
                 
                 if isMeasure && beat < totalBeats {
                     let bar = (beat / 4) + 1
-                    let text = Text("\(bar)").font(.system(size: 9, weight: .medium)).foregroundColor(.secondary)
+                    let text = Text("\(bar)").font(Theme.labelSmall.weight(.medium)).foregroundColor(.secondary)
                     context.draw(text, at: CGPoint(x: x + 8, y: size.height / 2))
                 }
             }
@@ -313,9 +322,18 @@ struct SequencerView: View {
         if newBeat >= Double(model.totalBeats) {
             // Trigger any remaining notes in the final slice
             triggerNotes(from: previousBeat, to: Double(model.totalBeats))
-            stopPlayback()
-            model.playheadBeat = 0
-            return
+            
+            if model.isLooping {
+                // Loop: stop active notes, reset to start, trigger notes at beat 0
+                stopAllActiveNotes()
+                model.playheadBeat = -0.001
+                lastTickTime = Date()
+                return
+            } else {
+                stopPlayback()
+                model.playheadBeat = 0
+                return
+            }
         }
         
         model.playheadBeat = newBeat
@@ -481,7 +499,7 @@ struct NoteInspectorView: View {
             // Consonant picker
             VStack(alignment: .leading, spacing: 2) {
                 Text("Consonant")
-                    .font(.system(size: 9))
+                    .font(Theme.labelSmall)
                     .foregroundColor(.secondary)
                 Picker("", selection: $consonant) {
                     ForEach(Consonant.all) { c in
@@ -497,7 +515,7 @@ struct NoteInspectorView: View {
             // Vowel picker
             VStack(alignment: .leading, spacing: 2) {
                 Text("Vowel")
-                    .font(.system(size: 9))
+                    .font(Theme.labelSmall)
                     .foregroundColor(.secondary)
                 Picker("", selection: $vowel) {
                     ForEach(Vowel.all) { v in
@@ -515,7 +533,7 @@ struct NoteInspectorView: View {
             // Velocity
             VStack(alignment: .leading, spacing: 2) {
                 Text("Velocity")
-                    .font(.system(size: 9))
+                    .font(Theme.labelSmall)
                     .foregroundColor(.secondary)
                 HStack(spacing: 4) {
                     Slider(value: $velocity, in: 1...127, step: 1)
@@ -530,7 +548,7 @@ struct NoteInspectorView: View {
             // Vibrato
             VStack(alignment: .leading, spacing: 2) {
                 Text("Vibrato")
-                    .font(.system(size: 9))
+                    .font(Theme.labelSmall)
                     .foregroundColor(.secondary)
                 HStack(spacing: 4) {
                     Slider(value: $vibrato, in: 0...127, step: 1)
@@ -545,7 +563,7 @@ struct NoteInspectorView: View {
             // Reverb
             VStack(alignment: .leading, spacing: 2) {
                 Text("Reverb")
-                    .font(.system(size: 9))
+                    .font(Theme.labelSmall)
                     .foregroundColor(.secondary)
                 HStack(spacing: 4) {
                     Slider(value: $reverb, in: 0...127, step: 1)
@@ -580,7 +598,7 @@ struct NoteInspectorView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(Theme.surface)
         .onAppear { syncFromNote() }
         .onChange(of: note.id) { _ in syncFromNote() }
     }
