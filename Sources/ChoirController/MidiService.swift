@@ -24,7 +24,6 @@ class MidiService: ObservableObject {
     
     // Global Sequencer Settings
     @Published var tempo: Double = 100
-    @Published var consonantDuration: Double = 0.15
     @Published var minNoteDuration: Double = 0.28
     
     init() {
@@ -70,12 +69,13 @@ class MidiService: ObservableObject {
             }
         }
         
-        // Auto-select if we find a Teenage Engineering device or just the first one if none selected
+        // Auto-select only Choir dolls (CH-8, Choir, or TE devices)
         if self.selectedInput == nil {
-            let newSelection = self.availableInputs.first(where: { $0.displayName.contains("CH-8") || $0.displayName.contains("Choir") || $0.displayName.contains("TE") }) 
-                ?? self.availableInputs.first
+            let choirDevice = self.availableInputs.first(where: {
+                $0.displayName.contains("CH-8") || $0.displayName.contains("Choir") || $0.displayName.contains("TE")
+            })
             
-            if let input = newSelection {
+            if let input = choirDevice {
                 self.selectedInput = input
                 self.setupConnection(to: input)
             }

@@ -4,6 +4,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return true
     }
+    
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Disable window tabbing (tabs are meaningless in this single-document app)
+        NSWindow.allowsAutomaticWindowTabbing = false
+    }
 }
 
 @main
@@ -40,7 +45,7 @@ struct ChoirControllerApp: App {
             FileCommands(model: sequencerModel)
             EditCommands(model: sequencerModel)
             ViewCommands()
-            MidiCommands(midiService: midiService)
+            MidiCommands(midiService: midiService, bluetoothManager: bluetoothManager)
         }
     }
 }
@@ -108,9 +113,17 @@ struct ViewCommands: Commands {
 
 struct MidiCommands: Commands {
     @ObservedObject var midiService: MidiService
+    @ObservedObject var bluetoothManager: BluetoothMidiManager
     
     var body: some Commands {
         CommandMenu("MIDI") {
+            Button("Connect Bluetooth MIDI...") {
+                bluetoothManager.showBluetoothMIDIWindow()
+            }
+            .keyboardShortcut("b", modifiers: [.command, .shift])
+            
+            Divider()
+            
             Button("All Notes Off") { midiService.panicAllNotesOff() }
                 .keyboardShortcut(".", modifiers: [.command, .shift])
             
