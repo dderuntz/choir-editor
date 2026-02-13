@@ -1,5 +1,9 @@
 import SwiftUI
 
+extension Notification.Name {
+    static let showSoundPad = Notification.Name("showSoundPad")
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return true
@@ -89,6 +93,13 @@ struct ViewCommands: Commands {
             Divider()
             
             Toggle("Local Audio Monitor", isOn: $localAudioEnabled)
+            
+            Divider()
+            
+            Button("Sound Pad...") {
+                NotificationCenter.default.post(name: .showSoundPad, object: nil)
+            }
+            .keyboardShortcut("p", modifiers: [.command, .shift])
             
             Divider()
             

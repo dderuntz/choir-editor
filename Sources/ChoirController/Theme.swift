@@ -93,4 +93,9 @@ enum Theme {
     
     static let labelSmall: Font = .caption2
     static let label: Font = .caption
+    
+    // MARK: Toolbar Icons
+    
+    static let toolbarActive = Color.white.opacity(0.85)
+    static let toolbarInactive = Color.secondary
 }
