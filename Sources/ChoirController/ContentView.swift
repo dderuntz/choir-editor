@@ -7,6 +7,7 @@ struct ContentView: View {
     @StateObject private var audioMonitor = AudioMonitorService()
     @State private var showSettings = false
     @State private var showSoundPad = false
+    @State private var showBluetoothSetup = false
     @AppStorage("showKeyboard") private var showKeyboardStorage = true
     @AppStorage("localAudioEnabled") private var localAudioEnabled = false
     @Environment(\.colorScheme) private var colorScheme
@@ -51,8 +52,12 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                     .help("Toggle Keyboard")
                     
-                    // Connection status indicator
+                    // Connection status indicator (tappable to open Bluetooth setup)
                     ConnectionStatusView(midiService: midiService)
+                        .onTapGesture {
+                            startBluetoothSetup()
+                        }
+                        .help(midiService.isConnected ? "MIDI Connected" : "Tap to connect Bluetooth MIDI")
                 }
                 .padding(.horizontal)
                 .padding(.vertical, 12)
@@ -82,7 +87,7 @@ struct ContentView: View {
             // Collapsible Settings Panel (slides in from left)
             if showSettings {
                 HStack(spacing: 0) {
-                    SettingsPanelView(bluetoothManager: bluetoothManager, midiService: midiService, showSettings: $showSettings)
+                    SettingsPanelView(midiService: midiService, showSettings: $showSettings)
                         .frame(width: 280)
                         .background(Theme.surface)
                         .transition(.move(edge: .leading))
@@ -92,6 +97,26 @@ struct ContentView: View {
                         .onTapGesture {
                             withAnimation(.easeInOut(duration: 0.2)) { showSettings = false }
                         }
+                }
+            }
+            
+            // Bluetooth Setup Panel (slides in from right)
+            if showBluetoothSetup {
+                HStack(spacing: 0) {
+                    // Dimmed overlay to close
+                    Theme.overlay(colorScheme)
+                        .onTapGesture {
+                            withAnimation(.easeInOut(duration: 0.2)) { showBluetoothSetup = false }
+                        }
+                    
+                    BluetoothSetupPanel(
+                        midiService: midiService,
+                        isPresented: $showBluetoothSetup,
+                        onOpenBluetoothWindow: { bluetoothManager.showBluetoothMIDIWindow() }
+                    )
+                    .frame(width: 300)
+                    .background(Theme.surface)
+                    .transition(.move(edge: .trailing))
                 }
             }
         }
@@ -112,6 +137,12 @@ struct ContentView: View {
                 audioMonitor.ensureStarted()
             } else {
                 audioMonitor.tearDown()
+            }
+        }
+        .onChange(of: showBluetoothSetup) { showing in
+            // Close settings panel if Bluetooth setup opens (avoid both panels at once)
+            if showing && showSettings {
+                withAnimation(.easeInOut(duration: 0.2)) { showSettings = false }
             }
         }
         .sheet(isPresented: $showSoundPad) {
@@ -143,6 +174,16 @@ struct ContentView: View {
             .frame(minWidth: 700, minHeight: 500)
         }
     }
+    
+    // MARK: - Bluetooth Setup Flow
+    
+    /// Opens the instruction panel and Apple's BLE MIDI window simultaneously
+    private func startBluetoothSetup() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showBluetoothSetup = true
+        }
+        bluetoothManager.showBluetoothMIDIWindow()
+    }
 }
 
 // Compact connection status for top-right
@@ -151,33 +192,41 @@ struct ConnectionStatusView: View {
     
     var body: some View {
         HStack(spacing: 6) {
-            // Status dot
-            Circle()
-                .fill(midiService.selectedInput != nil ? Theme.statusConnected : Theme.statusWarning)
-                .frame(width: 8, height: 8)
-            
-            // Device name or status
             if let selected = midiService.selectedInput {
+                // Connected — subtle indicator
+                Circle()
+                    .fill(Theme.statusConnected)
+                    .frame(width: 8, height: 8)
                 Text(selected.displayName)
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
             } else {
-                Text("No MIDI")
+                // Not connected — loud call-to-action
+                Image(systemName: "antenna.radiowaves.left.and.right")
                     .font(.caption)
-                    .foregroundColor(Theme.statusWarning)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.black)
+                Text("Connect")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.black)
             }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(Theme.surface.opacity(0.5))
+        .background(
+            midiService.selectedInput != nil
+                ? Theme.surface.opacity(0.5)
+                : Theme.accent
+        )
         .cornerRadius(12)
+        .contentShape(Rectangle()) // Makes entire area tappable
     }
 }
 
 // Settings panel content (collapsible)
 struct SettingsPanelView: View {
-    @ObservedObject var bluetoothManager: BluetoothMidiManager
     @ObservedObject var midiService: MidiService
     @Binding var showSettings: Bool
     
@@ -226,16 +275,6 @@ struct SettingsPanelView: View {
                                     .frame(width: 40)
                             }
                             
-                            // Consonant Length
-                            HStack {
-                                Text("Consonant:")
-                                    .font(.caption)
-                                    .frame(width: 80, alignment: .leading)
-                                Slider(value: $midiService.consonantDuration, in: 0.05...0.6, step: 0.05)
-                                Text("\(midiService.consonantDuration, specifier: "%.2f")b")
-                                    .font(.caption).monospacedDigit()
-                                    .frame(width: 40)
-                            }
                         }
                     }
                     
@@ -244,92 +283,7 @@ struct SettingsPanelView: View {
                         VoiceControlsView(midiService: midiService)
                     }
                     
-                    // Bluetooth MIDI
-                    GroupBox("Bluetooth MIDI") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                if bluetoothManager.isScanning {
-                                    ProgressView()
-                                        .scaleEffect(0.6)
-                                    Text("Scanning...")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                    Spacer()
-                                    Button("Stop") {
-                                        bluetoothManager.stopScanning()
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-                                } else {
-                                    Button("Scan for Devices") {
-                                        bluetoothManager.startScanning()
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-                                }
-                            }
-                            
-                            if !bluetoothManager.connectedPeripherals.isEmpty {
-                                Divider()
-                                Text("Connected")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                ForEach(bluetoothManager.connectedPeripherals, id: \.identifier) { peripheral in
-                                    HStack {
-                                        Circle()
-                                            .fill(Theme.statusConnected)
-                                            .frame(width: 6, height: 6)
-                                        Text(peripheral.name ?? "Unknown")
-                                            .font(.caption)
-                                        Spacer()
-                                        Button("Disconnect") {
-                                            bluetoothManager.disconnect(from: peripheral)
-                                        }
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.mini)
-                                    }
-                                }
-                            }
-                            
-                            if !bluetoothManager.discoveredPeripherals.isEmpty {
-                                Divider()
-                                Text("Discovered")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                ForEach(bluetoothManager.discoveredPeripherals, id: \.identifier) { peripheral in
-                                    HStack {
-                                        Text(peripheral.name ?? "Unknown")
-                                            .font(.caption)
-                                        Spacer()
-                                        Button("Connect") {
-                                            bluetoothManager.connect(to: peripheral)
-                                        }
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.mini)
-                                    }
-                                }
-                            }
-                        }
-                    }
                     
-                    // MIDI Destination
-                    GroupBox("MIDI Output") {
-                        VStack(alignment: .leading, spacing: 4) {
-                            if let selected = midiService.selectedInput {
-                                HStack {
-                                    Circle()
-                                        .fill(Theme.statusConnected)
-                                        .frame(width: 6, height: 6)
-                                    Text(selected.displayName)
-                                        .font(.caption)
-                                }
-                            } else {
-                                Text("No MIDI destination selected")
-                                    .font(.caption)
-                                    .foregroundColor(Theme.statusWarning)
-                            }
-                        }
-                    }
                 }
                 .padding()
             }
