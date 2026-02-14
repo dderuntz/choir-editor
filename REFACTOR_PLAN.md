@@ -30,8 +30,10 @@ Moved `showSaveDialog()`, `showOpenDialog()`, and `saveCurrentOrPrompt()` from
 `FileCommands` (OS menu bar) now routes through `FileMenuActions.shared`.
 Removed unused `import UniformTypeIdentifiers` from SequencerModel.
 
-## 6. Slim down ChoirControllerApp.swift
-Four `Commands` structs (`ViewCommands`, `MidiCommands`, `EditCommands`, `FileCommands`) could live in a `MenuCommands.swift`.
+## 6. Slim down ChoirControllerApp.swift — DONE
+Extracted `FileCommands`, `EditCommands`, `ViewCommands`, `MidiCommands`, and
+`AppearanceMode` into `MenuCommands.swift`. `ChoirControllerApp.swift` is now
+55 lines: just the app entry point, delegate, and notification extension.
 
 ## 7. Future: App Sandbox + security-scoped bookmarks
 Currently sandbox is disabled for dev. Before Mac App Store, need to re-enable sandbox and use security-scoped bookmarks for file access.
