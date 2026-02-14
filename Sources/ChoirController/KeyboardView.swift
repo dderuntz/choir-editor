@@ -6,9 +6,9 @@ struct KeyboardView: View {
     @EnvironmentObject var model: SequencerModel
     @AppStorage("localAudioEnabled") private var localAudioEnabled = false
     
-    // Choir vocal range
-    let startNote = 40  // E2
-    let endNote = 81    // A5
+    // Choir vocal range (from PitchConstants)
+    let startNote = Int(PitchConstants.minPitch)
+    let endNote = Int(PitchConstants.maxPitch)
     let middleC = 60
     
     // Minimum white key width before scrolling kicks in
@@ -78,8 +78,7 @@ struct KeyboardView: View {
     }
     
     func isBlackKey(_ note: Int) -> Bool {
-        let pc = note % 12
-        return [1, 3, 6, 8, 10].contains(pc)
+        PitchConstants.isBlackKey(UInt8(note))
     }
     
     func xPosition(for note: Int, whiteKeyWidth: CGFloat, blackKeyWidth: CGFloat) -> CGFloat {

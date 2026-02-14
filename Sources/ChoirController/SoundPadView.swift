@@ -573,26 +573,6 @@ struct SoundPadView: View {
             )
     }
     
-    /// Play two notes by retriggering (NoteOn without NoteOff first)
-    func retriggerTestButton(label: String, c1: UInt8, v1: UInt8, c2: UInt8, v2: UInt8) -> some View {
-        Text(label)
-            .font(.caption)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Color.orange.opacity(0.3))
-            .cornerRadius(4)
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in
-                        if !isPlaying {
-                            playRetriggerSequence(c1: c1, v1: v1, c2: c2, v2: v2)
-                        }
-                    }
-                    .onEnded { _ in
-                        // Sequence auto-stops
-                    }
-            )
-    }
     
     func playTwoNoteSequence(c1: UInt8, v1: UInt8, c2: UInt8, v2: UInt8) {
         print("🔊 Off/On test: [\(c1),\(v1)] → [\(c2),\(v2)] | 1st:\(Int(firstNoteDuration*1000))ms")
@@ -699,30 +679,6 @@ struct SoundPadView: View {
         }
     }
     
-    func runBaselineTest() {
-        isDiscoveryPlaying = true
-        
-        // 1. Note off + reset all controllers
-        midiService.sendNoteOff(note: testNote)
-        midiService.sendCC(controller: 121, value: 0)  // Reset All Controllers
-        
-        // 2. Set vowel/consonant (no mystery CC)
-        midiService.consonant = 125  // None
-        midiService.vowel = 16       // aɪ (buy)
-        
-        // 3. Note on (with velocity)
-        midiService.sendNoteOn(note: testNote, velocity: testVelocity)
-        lastPacketLog = "CC2:125 CC3:16 → NoteOn \(testNote) vel=\(testVelocity) (baseline)"
-        print("🔍 Baseline: Playing bUY for \(discoveryDuration)s vel:\(testVelocity) (no extra CC)")
-        
-        // Stop after duration
-        DispatchQueue.main.asyncAfter(deadline: .now() + discoveryDuration) {
-            midiService.sendNoteOff(note: testNote)
-            isDiscoveryPlaying = false
-            print("🔍 Baseline: Stopped")
-        }
-    }
-    
     // MARK: - Sweep (values 0-127 for selected CC)
     
     func startSweep(step: Int = 1) {
@@ -783,33 +739,7 @@ struct SoundPadView: View {
         }
     }
     
-    // MARK: - Live Glide & Release Vel Tests
-    
-    func playLiveGlide(c1: UInt8, v1: UInt8, v2: UInt8) {
-        print("🔊 Live Glide Test: [\(c1),\(v1)] → [\(c1),\(v2)]")
-        isPlaying = true
-        
-        // 1. Play First Sound
-        midiService.consonant = c1
-        midiService.vowel = v1
-        midiService.sendNoteOn(note: testNote)
-        lastPacketLog = "CC2:\(c1) CC3:\(v1) → NoteOn \(testNote)"
-        
-        // 2. Wait 1.0s then change vowel ONLY (no new NoteOn)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [self] in
-            midiService.vowel = v2
-            midiService.sendCC(controller: 3, value: v2)
-            lastPacketLog = "CC3:\(v2) (Live Change)"
-            print("   -> Live CC3 change to \(v2)")
-            
-            // 3. Stop after another 1.0s
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [self] in
-                midiService.sendNoteOff(note: testNote)
-                lastPacketLog = "NoteOff \(testNote)"
-                isPlaying = false
-            }
-        }
-    }
+    // MARK: - Release Velocity & Advanced Tests
     
     func playReleaseVel(vel: UInt8) {
         print("🔊 Release Velocity Test: Vel \(vel)")
@@ -950,9 +880,6 @@ struct SoundPadView: View {
     }
     
     func noteName(_ note: UInt8) -> String {
-        let names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-        let octave = (Int(note) / 12) - 1
-        let noteName = names[Int(note) % 12]
-        return "\(noteName)\(octave)"
+        PitchConstants.noteName(for: note)
     }
 }

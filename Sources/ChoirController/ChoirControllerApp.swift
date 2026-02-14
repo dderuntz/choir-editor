@@ -82,17 +82,12 @@ enum AppearanceMode: String, CaseIterable {
 
 struct ViewCommands: Commands {
     @AppStorage("showKeyboard") private var showKeyboard = true
-    @AppStorage("localAudioEnabled") private var localAudioEnabled = false
     @AppStorage("appearanceMode") private var appearanceMode: AppearanceMode = .system
     
     var body: some Commands {
         CommandGroup(after: .toolbar) {
             Toggle("Show Keyboard", isOn: $showKeyboard)
                 .keyboardShortcut("k", modifiers: [.command, .shift])
-            
-            Divider()
-            
-            Toggle("Local Audio Monitor", isOn: $localAudioEnabled)
             
             Divider()
             
@@ -125,6 +120,7 @@ struct ViewCommands: Commands {
 struct MidiCommands: Commands {
     @ObservedObject var midiService: MidiService
     @ObservedObject var bluetoothManager: BluetoothMidiManager
+    @AppStorage("localAudioEnabled") private var localAudioEnabled = false
     
     var body: some Commands {
         CommandMenu("MIDI") {
@@ -132,6 +128,10 @@ struct MidiCommands: Commands {
                 bluetoothManager.showBluetoothMIDIWindow()
             }
             .keyboardShortcut("b", modifiers: [.command, .shift])
+            
+            Divider()
+            
+            Toggle("Local Synth Monitor", isOn: $localAudioEnabled)
             
             Divider()
             
