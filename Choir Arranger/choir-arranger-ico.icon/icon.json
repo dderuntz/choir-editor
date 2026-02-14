@@ -9,8 +9,8 @@
           "blend-mode" : "normal",
           "glass" : false,
           "hidden" : false,
-          "image-name" : "Choir App Icon-New.png",
-          "name" : "Choir App Icon-New",
+          "image-name" : "Choir App Icon-raw.png",
+          "name" : "Choir App Icon-raw",
           "position-specializations" : [
             {
               "value" : {
