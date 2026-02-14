@@ -82,6 +82,15 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                     .help("Settings")
                     
+                    // Explorer (tuning fork)
+                    Button(action: { showSoundPad = true }) {
+                        Image(systemName: "tuningfork")
+                            .font(.title2)
+                            .foregroundColor(showSoundPad ? Theme.accent : Theme.toolbarInactive)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Choir Explorer")
+                    
                     // Keyboard toggle
                     Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showKeyboard.toggle(); showKeyboardStorage = showKeyboard } }) {
                         Image(systemName: "pianokeys")
@@ -99,8 +108,8 @@ struct ContentView: View {
                         .help(midiService.isConnected ? "MIDI Connected" : "Tap to connect Bluetooth MIDI")
                 }
                 .padding(.horizontal)
-                .padding(.vertical, 12)
-                .background(Theme.window)
+                .padding(.bottom, 12)
+                .background(Theme.toolbar)
                 
                 Divider()
                 

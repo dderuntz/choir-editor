@@ -99,6 +99,10 @@ enum Theme {
     static let toolbarActive = Color.white.opacity(0.85)
     static let toolbarInactive = Color.secondary
     
+    // MARK: Toolbar
+    
+    static let toolbar = Color(red: 0x32/255, green: 0x32/255, blue: 0x32/255)   // #323232
+    
     // MARK: Pill Button Tokens
     
     static let buttonFont: Font = .caption
