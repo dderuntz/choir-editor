@@ -91,7 +91,7 @@ struct ViewCommands: Commands {
             
             Divider()
             
-            Button("Sound Pad...") {
+            Button("Choir Explorer...") {
                 NotificationCenter.default.post(name: .showSoundPad, object: nil)
             }
             .keyboardShortcut("p", modifiers: [.command, .shift])
@@ -169,12 +169,18 @@ struct EditCommands: Commands {
 struct FileCommands: Commands {
     @ObservedObject var model: SequencerModel
     
+    private var actions: FileMenuActions {
+        let a = FileMenuActions.shared
+        a.model = model
+        return a
+    }
+    
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
             Button("New") { model.newDocument() }
                 .keyboardShortcut("n", modifiers: .command)
             
-            Button("Open...") { model.showOpenDialog() }
+            Button("Open...") { actions.showOpenDialog() }
                 .keyboardShortcut("o", modifiers: .command)
             
             // Open Recent submenu
@@ -204,10 +210,10 @@ struct FileCommands: Commands {
             
             Divider()
             
-            Button("Save") { model.saveCurrentOrPrompt() }
+            Button("Save") { actions.saveCurrentOrPrompt() }
                 .keyboardShortcut("s", modifiers: .command)
             
-            Button("Save As...") { model.showSaveDialog() }
+            Button("Save As...") { actions.showSaveDialog() }
                 .keyboardShortcut("s", modifiers: [.command, .shift])
         }
     }

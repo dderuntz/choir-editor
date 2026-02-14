@@ -28,14 +28,14 @@ struct ConnectionStatusView: View {
                     .foregroundColor(.black)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
+        .padding(.horizontal, Theme.buttonPaddingH)
+        .padding(.vertical, Theme.buttonPaddingV)
         .background(
             midiService.selectedInput != nil
                 ? Theme.surface.opacity(0.5)
                 : Theme.accent
         )
-        .cornerRadius(12)
+        .cornerRadius(Theme.buttonRadius)
         .contentShape(Rectangle()) // Makes entire area tappable
     }
 }
