@@ -7,7 +7,7 @@ enum Theme {
     
     // MARK: Brand Accent
     
-    static let accent = Color(red: 0xD9 / 255.0, green: 0xFF / 255.0, blue: 0x00 / 255.0) // #D9FF00
+    static let accent = Color(red: 0xCA / 255.0, green: 0xB6 / 255.0, blue: 0x1D / 255.0) // #CAB61D
     
     // MARK: Playhead & Transport
     
@@ -98,4 +98,21 @@ enum Theme {
     
     static let toolbarActive = Color.white.opacity(0.85)
     static let toolbarInactive = Color.secondary
+    
+    // MARK: Pill Button Tokens
+    
+    static let buttonFont: Font = .caption
+    static let buttonWeight: Font.Weight = .semibold
+    static let buttonPaddingH: CGFloat = 14
+    static let buttonPaddingV: CGFloat = 7
+    static let buttonRadius: CGFloat = 14
+    static let buttonStroke: CGFloat = 1.5
+    
+    // MARK: Explorer Panel
+    
+    static let explorerText = Color(red: 0xEA/255, green: 0xE8/255, blue: 0xE4/255)     // #EAE8E4
+    static let explorerHeader = Color(red: 0x32/255, green: 0x32/255, blue: 0x32/255)   // #323232
+    static let explorerField = Color(red: 0x8A/255, green: 0x8C/255, blue: 0x7F/255)    // #8A8C7F
+    static let explorerConsole = Color(red: 0x1A/255, green: 0x1A/255, blue: 0x1A/255)  // near-black
+    static let explorerGridBorder = Color.black.opacity(0.15)
 }

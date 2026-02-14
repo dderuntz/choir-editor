@@ -24,9 +24,11 @@ Removed dead functions: `retriggerTestButton`, `runBaselineTest`, `playLiveGlide
 
 Also moved "Local Audio Monitor" → "Local Synth Monitor" in the MIDI menu.
 
-## 5. Pull file dialogs out of SequencerModel
-`NSSavePanel`/`NSOpenPanel` are presented directly from the model.
-Move dialog presentation to a coordinator or to ContentView's menu logic.
+## 5. Pull file dialogs out of SequencerModel — DONE
+Moved `showSaveDialog()`, `showOpenDialog()`, and `saveCurrentOrPrompt()` from
+`SequencerModel` into `FileMenuActions`. Model keeps pure `save(to:)`/`load(from:)`.
+`FileCommands` (OS menu bar) now routes through `FileMenuActions.shared`.
+Removed unused `import UniformTypeIdentifiers` from SequencerModel.
 
 ## 6. Slim down ChoirControllerApp.swift
 Four `Commands` structs (`ViewCommands`, `MidiCommands`, `EditCommands`, `FileCommands`) could live in a `MenuCommands.swift`.

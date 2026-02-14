@@ -2,7 +2,6 @@ import Foundation
 import SwiftUI
 import AppKit
 import Combine
-import UniformTypeIdentifiers
 
 // MARK: - Data Model
 
@@ -397,70 +396,6 @@ class SequencerModel: ObservableObject {
     
     static func clearRecentFiles() {
         UserDefaults.standard.removeObject(forKey: "recentFiles")
-    }
-    
-    /// Save to current file, or show Save As if no file yet. Returns true if saved.
-    @discardableResult
-    func saveCurrentOrPrompt() -> Bool {
-        if let url = currentFileURL {
-            do {
-                try save(to: url)
-                return true
-            } catch {
-                print("Error saving: \(error)")
-                return false
-            }
-        } else {
-            return showSaveDialog()
-        }
-    }
-    
-    /// Show NSSavePanel and save. Returns true if saved.
-    @discardableResult
-    func showSaveDialog() -> Bool {
-        let panel = NSSavePanel()
-        panel.title = "Save Choir Sequence"
-        panel.nameFieldStringValue = documentName == "Untitled" ? "Untitled.choir" : "\(documentName).choir"
-        panel.allowedContentTypes = [.json]
-        panel.allowsOtherFileTypes = false
-        panel.isExtensionHidden = false
-        // Force .choir extension
-        panel.allowedContentTypes = [.init(filenameExtension: "choir") ?? .json]
-        
-        guard panel.runModal() == .OK, var url = panel.url else { return false }
-        
-        // Ensure .choir extension
-        if url.pathExtension != "choir" {
-            url = url.appendingPathExtension("choir")
-        }
-        
-        do {
-            try save(to: url)
-            return true
-        } catch {
-            print("Error saving: \(error)")
-            return false
-        }
-    }
-    
-    /// Show NSOpenPanel and load. Returns true if loaded.
-    @discardableResult
-    func showOpenDialog() -> Bool {
-        let panel = NSOpenPanel()
-        panel.title = "Open Choir Sequence"
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.allowedContentTypes = [.init(filenameExtension: "choir") ?? .json]
-        
-        guard panel.runModal() == .OK, let url = panel.url else { return false }
-        
-        do {
-            try load(from: url)
-            return true
-        } catch {
-            print("Error loading: \(error)")
-            return false
-        }
     }
     
     func markDirty() {

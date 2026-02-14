@@ -58,14 +58,14 @@ struct ContentView: View {
                     if isTitleFocused {
                         Button(action: { commitTitleEdit(); isTitleFocused = false }) {
                             Text("Done")
-                                .font(.caption)
-                                .fontWeight(.semibold)
+                                .font(Theme.buttonFont)
+                                .fontWeight(Theme.buttonWeight)
                                 .foregroundColor(Theme.toolbarActive)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
+                                .padding(.horizontal, Theme.buttonPaddingH)
+                                .padding(.vertical, Theme.buttonPaddingV)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Theme.toolbarActive, lineWidth: 1)
+                                    RoundedRectangle(cornerRadius: Theme.buttonRadius)
+                                        .stroke(Theme.toolbarActive, lineWidth: Theme.buttonStroke)
                                 )
                         }
                         .buttonStyle(.plain)
@@ -191,32 +191,8 @@ struct ContentView: View {
             showSoundPad = true
         }
         .sheet(isPresented: $showSoundPad) {
-            VStack(spacing: 0) {
-                // Sheet header with close button
-                HStack {
-                    Text("Sound Pad")
-                        .font(.headline)
-                    Spacer()
-                    Button(action: { showSoundPad = false }) {
-                        Text("Done")
-                            .fontWeight(.medium)
-                            .foregroundColor(.black)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 4)
-                            .background(Theme.accent, in: RoundedRectangle(cornerRadius: 6))
-                    }
-                    .buttonStyle(.plain)
-                    .keyboardShortcut(.defaultAction)
-                }
-                .padding()
-                
-                Divider()
-                
-                ScrollView {
-                    SoundPadView(midiService: midiService)
-                }
-            }
-            .frame(minWidth: 700, minHeight: 500)
+            SoundPadView(midiService: midiService, isPresented: $showSoundPad)
+                .frame(minWidth: 700, minHeight: 580)
         }
     }
     
