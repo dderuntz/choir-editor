@@ -1,6 +1,9 @@
 import Foundation
 import MIDIKit
 import Combine
+import os
+
+private let log = Logger(subsystem: "com.choir-arranger", category: "midi")
 
 @MainActor
 class MidiService: ObservableObject {
@@ -26,13 +29,7 @@ class MidiService: ObservableObject {
     @Published var tempo: Double = 100
     @Published var minNoteDuration: Double = 0.28
     
-    init() {
-        // We need to defer notification handler setup or handle concurrency carefully
-        // Since we are in init, self is not fully available/sendable yet in some contexts, 
-        // but let's try setting it up.
-        // To avoid Sendable warnings in strict mode with closure capturing self:
-        // We can use a helper or just assume MainActor isolation.
-    }
+    init() {}
     
     func start() {
         midiManager.notificationHandler = { [weak self] notification in
@@ -44,7 +41,7 @@ class MidiService: ObservableObject {
         do {
             try midiManager.start()
         } catch {
-            print("Error starting MIDI Manager: \(error.localizedDescription)")
+            log.error("Error starting MIDI Manager: \(error.localizedDescription)")
         }
         
         updateEndpoints()
@@ -54,16 +51,16 @@ class MidiService: ObservableObject {
         // Get INPUT endpoints (destinations that receive MIDI, like the Choir)
         self.availableInputs = self.midiManager.endpoints.inputs
         
-        print("🔍 MIDI Input Endpoints Found: \(self.availableInputs.count)")
+        log.debug("MIDI Input Endpoints Found: \(self.availableInputs.count)")
         for input in self.availableInputs {
-            print("   - Name: '\(input.name)', DisplayName: '\(input.displayName)', ID: \(input.uniqueID)")
+            log.debug("   - Name: '\(input.name)', DisplayName: '\(input.displayName)', ID: \(input.uniqueID)")
         }
         
         // Check if our selected endpoint has disappeared
         if let selected = self.selectedInput {
             let stillAvailable = self.availableInputs.contains(where: { $0.uniqueID == selected.uniqueID })
             if !stillAvailable {
-                print("⚠️ MIDI device disconnected: \(selected.displayName)")
+                log.info("MIDI device disconnected: \(selected.displayName)")
                 self.selectedInput = nil
                 self.isConnected = false
             }
@@ -99,16 +96,16 @@ class MidiService: ObservableObject {
                 tag: "ChoirOutput"
             )
             isConnected = true
-            print("✅ Successfully connected to MIDI input: \(endpoint.displayName)")
+            log.info("Connected to MIDI input: \(endpoint.displayName)")
         } catch {
-            print("❌ Error creating MIDI output connection: \(error.localizedDescription)")
+            log.error("Error creating MIDI output connection: \(error.localizedDescription)")
             isConnected = false
         }
     }
     
     func sendNoteOn(note: UInt8, velocity: UInt8 = 100, channel: UInt4 = 0) {
         guard let connection = midiManager.managedOutputConnections["ChoirOutput"] else {
-            print("❌ MIDI: No output connection 'ChoirOutput' found!")
+            log.error("MIDI: No output connection 'ChoirOutput' found")
             return
         }
         
@@ -126,9 +123,9 @@ class MidiService: ObservableObject {
         
         do {
             try connection.send(event: noteOn)
-            print("🎹 MIDI Sent: Note On \(note) ch:\(channel)")
+            log.debug("Note On \(note) ch:\(channel)")
         } catch {
-            print("❌ MIDI Error: \(error.localizedDescription)")
+            log.error("MIDI send error: \(error.localizedDescription)")
         }
     }
     
@@ -143,15 +140,15 @@ class MidiService: ObservableObject {
         
         do {
             try connection.send(event: noteOff)
-            print("🎹 MIDI Sent: Note Off \(note) ch:\(channel)")
+            log.debug("Note Off \(note) ch:\(channel)")
         } catch {
-            print("❌ MIDI Error sending Note Off: \(error.localizedDescription)")
+            log.error("MIDI Note Off error: \(error.localizedDescription)")
         }
     }
     
     /// Send All Notes Off (CC 123) + All Sound Off (CC 120) on all channels
     func panicAllNotesOff() {
-        print("🚨 MIDI PANIC: All Notes Off + CC Reset")
+        log.info("MIDI Panic: All Notes Off + CC Reset")
         for ch: UInt8 in 0...15 {
             let channel = UInt4(ch)
             sendCC(controller: 120, value: 0, channel: channel) // All Sound Off
@@ -167,26 +164,26 @@ class MidiService: ObservableObject {
         sendCC(controller: ChoirCC.vowel, value: ChoirDefaults.vowel)
         sendCC(controller: ChoirCC.vibrato, value: ChoirDefaults.vibrato)
         sendCC(controller: ChoirCC.reverb, value: ChoirDefaults.reverb)
-        print("🚨 MIDI PANIC: CC reset to defaults (cons=\(ChoirDefaults.consonant) vow=\(ChoirDefaults.vowel) vib=\(ChoirDefaults.vibrato) rev=\(ChoirDefaults.reverb))")
+        log.info("MIDI Panic: CC reset to defaults (cons=\(ChoirDefaults.consonant) vow=\(ChoirDefaults.vowel) vib=\(ChoirDefaults.vibrato) rev=\(ChoirDefaults.reverb))")
     }
     
     /// Disconnect and reconnect MIDI
     func reconnect() {
-        print("🔄 MIDI Reconnect: dropping connection...")
+        log.info("MIDI Reconnect: dropping connection")
         midiManager.remove(.outputConnection, .withTag("ChoirOutput"))
         isConnected = false
         selectedInput = nil
         
         // Re-scan and reconnect after a short delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
-            print("🔄 MIDI Reconnect: re-scanning endpoints...")
+            log.info("MIDI Reconnect: re-scanning endpoints")
             updateEndpoints()
         }
     }
     
     func sendCC(controller: UInt8, value: UInt8, channel: UInt4 = 0) {
         guard let connection = midiManager.managedOutputConnections["ChoirOutput"] else {
-            print("❌ CC: No output connection")
+            log.error("CC: No output connection")
             return
         }
         
@@ -198,91 +195,22 @@ class MidiService: ObservableObject {
         
         do {
             try connection.send(event: cc)
-            print("🎛️ CC\(controller)=\(value) ch:\(channel)")
+            log.debug("CC\(controller)=\(value) ch:\(channel)")
         } catch {
-            print("❌ CC Error: \(error.localizedDescription)")
+            log.error("CC send error: \(error.localizedDescription)")
         }
     }
     
     /// Send pitch bend. Value range: 0-16383, center (no bend) = 8192
     func sendPitchBend(value: UInt16, channel: UInt4 = 0) {
         guard let connection = midiManager.managedOutputConnections["ChoirOutput"] else { return }
-        
-        // MIDIKit uses UInt14 for pitch bend (0-16383)
         let clampedValue = min(value, 16383)
         let pitchBend = MIDIEvent.pitchBend(value: .midi1(UInt14(clampedValue)), channel: channel)
-        
         do {
             try connection.send(event: pitchBend)
-            print("🎹 MIDI Sent: Pitch Bend \(clampedValue) ch:\(channel)")
+            log.debug("Pitch Bend \(clampedValue) ch:\(channel)")
         } catch {
-            print("❌ MIDI Error sending Pitch Bend: \(error.localizedDescription)")
-        }
-    }
-    
-    /// Send channel aftertouch (pressure). Value range: 0-127
-    func sendAftertouch(pressure: UInt8, channel: UInt4 = 0) {
-        guard let connection = midiManager.managedOutputConnections["ChoirOutput"] else { return }
-        
-        let aftertouch = MIDIEvent.pressure(amount: .midi1(UInt7(min(pressure, 127))), channel: channel)
-        
-        do {
-            try connection.send(event: aftertouch)
-            print("🎹 MIDI Sent: Aftertouch \(pressure) ch:\(channel)")
-        } catch {
-            print("❌ MIDI Error sending Aftertouch: \(error.localizedDescription)")
-        }
-    }
-    
-    /// Send program change. Value range: 0-127
-    func sendProgramChange(program: UInt8, channel: UInt4 = 0) {
-        guard let connection = midiManager.managedOutputConnections["ChoirOutput"] else { return }
-        
-        let pc = MIDIEvent.programChange(program: UInt7(min(program, 127)), channel: channel)
-        
-        do {
-            try connection.send(event: pc)
-            print("🎹 MIDI Sent: Program Change \(program) ch:\(channel)")
-        } catch {
-            print("❌ MIDI Error sending Program Change: \(error.localizedDescription)")
-        }
-    }
-    
-    /// Send NRPN (Non-Registered Parameter Number)
-    /// Parameter range: 0-16383, Value range: 0-16383
-    func sendNRPN(parameter: UInt16, value: UInt16, channel: UInt4 = 0) {
-        // NRPN uses 4 CC messages:
-        // CC99 = parameter MSB (high 7 bits)
-        // CC98 = parameter LSB (low 7 bits)
-        // CC6 = value MSB (high 7 bits)
-        // CC38 = value LSB (low 7 bits) - optional for fine control
-        
-        let paramMSB = UInt8((parameter >> 7) & 0x7F)
-        let paramLSB = UInt8(parameter & 0x7F)
-        let valueMSB = UInt8((value >> 7) & 0x7F)
-        let valueLSB = UInt8(value & 0x7F)
-        
-        sendCC(controller: 99, value: paramMSB, channel: channel)
-        sendCC(controller: 98, value: paramLSB, channel: channel)
-        sendCC(controller: 6, value: valueMSB, channel: channel)
-        sendCC(controller: 38, value: valueLSB, channel: channel)
-        
-        print("🎹 MIDI Sent: NRPN param=\(parameter) value=\(value) ch:\(channel)")
-    }
-    
-    /// Send Song Select (0-127)
-    func sendSongSelect(song: UInt8, channel: UInt4 = 0) {
-        guard let connection = midiManager.managedOutputConnections["ChoirOutput"] else { return }
-        
-        let songSelect = MIDIEvent.songSelect(
-            number: UInt7(min(song, 127))
-        )
-        
-        do {
-            try connection.send(event: songSelect)
-            print("🎹 MIDI Sent: Song Select \(song)")
-        } catch {
-            print("❌ MIDI Error sending Song Select: \(error.localizedDescription)")
+            log.error("Pitch Bend error: \(error.localizedDescription)")
         }
     }
 }

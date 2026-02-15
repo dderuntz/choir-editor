@@ -51,6 +51,7 @@ struct SequencerView: View {
             NoteInspectorView(
                 note: model.selectedNote ?? SequencerNote.placeholder,
                 arrowX: noteArrowX,
+                groupCount: model.selectedNoteIds.count,
                 onUpdate: { updatedNote in
                     // Apply to all selected notes (group edit)
                     let ids = model.selectedNoteIds.isEmpty ? [updatedNote.id] : model.selectedNoteIds
@@ -80,6 +81,10 @@ struct SequencerView: View {
         }
         .onDeleteCommand {
             model.deleteSelectedNote()
+        }
+        .alert("Delete \(model.selectedNoteIds.count) notes?", isPresented: $model.pendingDeleteConfirm) {
+            Button("Delete", role: .destructive) { model.confirmDeleteSelected() }
+            Button("Cancel", role: .cancel) {}
         }
         .onDisappear {
             stopPlayback()
@@ -434,7 +439,7 @@ struct SequencerView: View {
             midiService.vibrato = note.vibrato
             midiService.reverb = note.reverb
             midiService.sendNoteOn(note: note.pitch, velocity: note.velocity)
-            if localAudioEnabled { audioMonitor.playNote(note: note.pitch, velocity: note.velocity, vibrato: note.vibrato, reverb: note.reverb) }
+            if localAudioEnabled { audioMonitor.playNote(note: note.pitch, velocity: note.velocity, vibrato: note.vibrato, reverb: note.reverb, vowel: note.vowel, consonant: note.consonant) }
             model.activeNoteIDs.insert(note.id)
         }
     }
@@ -466,13 +471,12 @@ struct SequencerView: View {
         midiService.vibrato = note.vibrato
         midiService.reverb = note.reverb
         midiService.sendNoteOn(note: pitch, velocity: note.velocity)
-        if localAudioEnabled { audioMonitor.playNote(note: pitch, velocity: note.velocity, vibrato: note.vibrato, reverb: note.reverb) }
+        if localAudioEnabled { audioMonitor.playNote(note: pitch, velocity: note.velocity, vibrato: note.vibrato, reverb: note.reverb, vowel: note.vowel, consonant: note.consonant) }
         
-        print("🔊 play pitch=\(pitch) for \(String(format: "%.2f", durationSeconds))s")
+        
         
         // Schedule stop
         DispatchQueue.main.asyncAfter(deadline: .now() + durationSeconds) { [self] in
-            print("🔊 stop pitch=\(pitch)")
             midiService.sendNoteOff(note: pitch)
             if localAudioEnabled { audioMonitor.stopNote(note: pitch) }
         }
@@ -505,6 +509,7 @@ struct CalloutArrow: Shape {
 struct NoteInspectorView: View {
     let note: SequencerNote
     var arrowX: CGFloat = 0  // horizontal position of arrow from leading edge
+    var groupCount: Int = 1  // number of selected notes (1 = single)
     var onUpdate: (SequencerNote) -> Void
     var onPlay: (SequencerNote) -> Void
     var onDelete: () -> Void
@@ -515,6 +520,7 @@ struct NoteInspectorView: View {
     @State private var velocity: Double = 100
     @State private var vibrato: Double = 64
     @State private var reverb: Double = 32
+    @State private var isSyncing = true  // suppress pushUpdate during initial sync
     
     private var isBlackKey: Bool { PitchConstants.isBlackKey(note.pitch) }
     private var bg: Color { isBlackKey ? Theme.dark : Theme.ivory }
@@ -526,16 +532,23 @@ struct NoteInspectorView: View {
         HStack(spacing: 16) {
             // Note info
             VStack(alignment: .leading, spacing: 2) {
-                Text(PitchConstants.noteName(for: note.pitch))
-                    .font(.title3)
-                    .fontWeight(.semibold)
-                    .foregroundColor(fg)
-                Text("Beat \(Int(note.startBeat + 1))")
-                    .font(.caption2)
-                    .foregroundColor(fgDim)
-                    .monospacedDigit()
+                if groupCount > 1 {
+                    Text("\(groupCount) notes")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.accent)
+                } else {
+                    Text(PitchConstants.noteName(for: note.pitch))
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                        .foregroundColor(fg)
+                    Text("Beat \(Int(note.startBeat + 1))")
+                        .font(.caption2)
+                        .foregroundColor(fgDim)
+                        .monospacedDigit()
+                }
             }
-            .frame(width: 50, alignment: .leading)
+            .frame(width: 55, alignment: .leading)
             
             dividerColor.frame(width: 1, height: 40)
             
@@ -630,11 +643,14 @@ struct NoteInspectorView: View {
     }
     
     private func syncFromNote() {
+        isSyncing = true
         consonant = note.consonant
         vowel = note.vowel
         velocity = Double(note.velocity)
         vibrato = Double(note.vibrato)
         reverb = Double(note.reverb)
+        // Allow onChange to settle before re-enabling pushUpdate
+        DispatchQueue.main.async { isSyncing = false }
     }
     
     private func currentNote() -> SequencerNote {
@@ -648,6 +664,7 @@ struct NoteInspectorView: View {
     }
     
     private func pushUpdate() {
+        guard !isSyncing else { return }
         onUpdate(currentNote())
     }
     

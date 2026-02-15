@@ -6,9 +6,16 @@ alwaysApply: true
 
 # Build & Run
 
+## Dual build targets
+This project builds via **SPM** (`swift run`) and an **Xcode project** (`Choir Arranger/`). The Xcode project uses **symlinks** in `Choir Arranger/Choir Arranger/` pointing to `Sources/ChoirController/`. When you add a new `.swift` file, you MUST also create a matching symlink:
+```
+ln -s "../../Sources/ChoirController/NewFile.swift" "Choir Arranger/Choir Arranger/NewFile.swift"
+```
+Forgetting this means the Xcode build silently uses stale code.
+
 ## Execution
-- **Method**: Use VS Code "Run and Debug" (CMD+Shift+D) -> "Run ChoirController".
-- **CLI**: `swift run` (App activates via `NSApp.activate` hack in init).
+- **Xcode**: Open `Choir Arranger/Choir Arranger.xcodeproj`, Run (Cmd+R). This is the primary build the user tests with.
+- **CLI**: `swift run` (SPM, App activates via `NSApp.activate` hack in init).
 
 ## Dependencies
 - **MIDIKit**: Core MIDI handling.
@@ -16,5 +23,5 @@ alwaysApply: true
 - **AVFoundation**: Local audio synthesis.
 
 ## Debugging
-- **Audio Hangs**: If app freezes on note press, check `AudioMonitorService` for locks/allocations in render block.
+- **Audio Hangs**: If app freezes on note press, check `AudioMonitorService` / `FormantEngine` for locks/allocations in render block.
 - **BLE**: Needs "Bluetooth" permission in Info.plist (handled by ad-hoc signing usually, or `entitlements` if bundled).

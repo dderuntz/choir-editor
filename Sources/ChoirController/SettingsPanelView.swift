@@ -4,7 +4,7 @@ import SwiftUI
 struct SettingsPanelView: View {
     @ObservedObject var midiService: MidiService
     @Binding var showSettings: Bool
-    @AppStorage("localAudioEnabled") private var localAudioEnabled = false
+    @AppStorage("localAudioMode") private var localAudioMode = LocalAudioMode.automatic.rawValue
     @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
@@ -58,11 +58,14 @@ struct SettingsPanelView: View {
                     
                     Divider()
                     
-                    Toggle("Local Synth Monitor", isOn: $localAudioEnabled)
-                        .font(Theme.toolbarFont)
-                        .tint(Theme.text(colorScheme))
-                        .accentColor(Theme.text(colorScheme))
-                        .controlSize(.small)
+                    Picker("Local Synth Monitor", selection: $localAudioMode) {
+                        ForEach(LocalAudioMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .font(Theme.toolbarFont)
+                    .controlSize(.small)
                     
                     Button(action: {
                         midiService.tempo = 100
