@@ -36,11 +36,13 @@ struct NonDraggableArea: NSViewRepresentable {
 struct ContentView: View {
     @EnvironmentObject var bluetoothManager: BluetoothMidiManager
     @EnvironmentObject var model: SequencerModel
+    @EnvironmentObject var composerModel: ComposerModel
     var midiService: MidiService // Passed explicitly, not observed (prevents redraw loop)
     @EnvironmentObject var audioMonitor: AudioMonitorService
     @State private var showSettings = false
     @State private var showSoundPad = false
     @State private var showBluetoothSetup = false
+    @State private var showComposer = false
     @AppStorage("showKeyboard") private var showKeyboardStorage = true
     @AppStorage("localAudioEnabled") private var localAudioEnabled = false
     @AppStorage("localAudioMode") private var localAudioMode = LocalAudioMode.automatic.rawValue
@@ -70,8 +72,8 @@ struct ContentView: View {
                     .help("File")
                     
                     TextField("Untitled", text: $editingTitle, onCommit: { commitTitleEdit(); isTitleFocused = false })
-                        .font(.system(size: 56, weight: .ultraLight))
-                        .kerning(-1.4)
+                        .font(.system(size: showComposer ? 24 : 56, weight: .ultraLight))
+                        .kerning(showComposer ? -0.5 : -1.4)
                         .textFieldStyle(.plain)
                         .focused($isTitleFocused)
                         .tint(Theme.accent)
@@ -116,6 +118,17 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                     .help("Settings")
                     
+                    // Composer toggle
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.25)) { showComposer.toggle() }
+                    }) {
+                        Image(systemName: "text.word.spacing")
+                            .font(.title2)
+                            .foregroundColor(showComposer ? Theme.accent : Theme.text(colorScheme).opacity(0.4))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Composer")
+                    
                     // Explorer (tuning fork)
                     Button(action: { showSoundPad = true }) {
                         Image(systemName: "tuningfork")
@@ -147,12 +160,20 @@ struct ContentView: View {
                 
                 Theme.bg(colorScheme).opacity(0.15).frame(height: 1)
                 
-                // Sequencer fills available space, keyboard is collapsible pane below
+                // Main content: Composer or Sequencer
                 ZStack(alignment: .bottom) {
-                    SequencerView(midiService: midiService, audioMonitor: audioMonitor)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(NonDraggableArea())
-                        .padding(.bottom, showKeyboard ? 150 : 0)
+                    if showComposer {
+                        ComposerView(audioMonitor: audioMonitor)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(NonDraggableArea())
+                            .padding(.bottom, showKeyboard ? 150 : 0)
+                            .transition(.opacity)
+                    } else {
+                        SequencerView(midiService: midiService, audioMonitor: audioMonitor)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(NonDraggableArea())
+                            .padding(.bottom, showKeyboard ? 150 : 0)
+                    }
                     
                     if showKeyboard {
                         KeyboardView(midiService: midiService, audioMonitor: audioMonitor)
