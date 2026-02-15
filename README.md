@@ -54,6 +54,19 @@ Each note carries five parameters that control the Choir doll's voice:
 
 A built-in synthesizer lets you hear playback without a connected doll. It plays a triangle wave with pitch vibrato and reverb that respond to each note's settings. Toggle it in the app settings.
 
+### MIDI Export
+
+**File → Export as MIDI...** (Cmd+Shift+E) saves your arrangement as a standard `.mid` file. Notes, velocity, and tempo carry over to any DAW. The file also includes per-note CC data for the Choir parameters:
+
+| CC | Parameter |
+|---|---|
+| CC1 | Vibrato (Modulation) |
+| CC2 | Consonant (Breath) |
+| CC3 | Vowel |
+| CC4 | Reverb (Foot Control) |
+
+In Logic Pro, open the Piano Roll, show **Automation/MIDI → Region**, and select the CC lane from the dropdown to view and edit these values. GarageBand plays the notes but does not surface CC data.
+
 ### Keyboard
 
 The bottom keyboard lets you play notes live. Clicking a key scrolls the grid to that pitch. Middle C is highlighted.

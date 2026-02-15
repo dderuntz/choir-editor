@@ -1,4 +1,7 @@
 import SwiftUI
+import os
+
+private let log = Logger(subsystem: "com.choir-arranger", category: "menu")
 
 // MARK: - Appearance Mode
 
@@ -55,7 +58,7 @@ struct FileCommands: Commands {
                             do {
                                 try model.load(from: url)
                             } catch {
-                                print("Error opening recent: \(error)")
+                                log.error("Error opening recent: \(error)")
                             }
                         }
                     }
@@ -142,12 +145,43 @@ struct ViewCommands: Commands {
     }
 }
 
+// MARK: - Help Menu Commands
+
+struct HelpCommands: Commands {
+    private let repoURL = "https://github.com/dderuntz/choir-editor"
+    
+    var body: some Commands {
+        CommandGroup(replacing: .help) {
+            Button("How to Use Choir Arranger") {
+                if let url = URL(string: "\(repoURL)#getting-started") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+            
+            Button("About the Project") {
+                if let url = URL(string: repoURL) {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+            
+            Divider()
+            
+            Button("Report an Issue...") {
+                if let url = URL(string: "\(repoURL)/issues") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+        }
+    }
+}
+
 // MARK: - MIDI Menu Commands
 
 struct MidiCommands: Commands {
     @ObservedObject var midiService: MidiService
     @ObservedObject var bluetoothManager: BluetoothMidiManager
-    @AppStorage("localAudioEnabled") private var localAudioEnabled = false
+    @ObservedObject var audioMonitor: AudioMonitorService
+    @AppStorage("localAudioMode") private var localAudioMode = LocalAudioMode.automatic.rawValue
     
     var body: some Commands {
         CommandMenu("MIDI") {
@@ -158,7 +192,20 @@ struct MidiCommands: Commands {
             
             Divider()
             
-            Toggle("Local Synth Monitor", isOn: $localAudioEnabled)
+            Picker("Local Synth Monitor", selection: $localAudioMode) {
+                ForEach(LocalAudioMode.allCases) { mode in
+                    Text(mode.rawValue).tag(mode.rawValue)
+                }
+            }
+            
+            Picker("Local Synth Engine", selection: Binding(
+                get: { audioMonitor.engineType },
+                set: { audioMonitor.setEngine($0) }
+            )) {
+                ForEach(SynthEngineType.allCases) { type in
+                    Text(type.label).tag(type)
+                }
+            }
             
             Divider()
             

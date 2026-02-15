@@ -4,7 +4,9 @@ import AppKit
 /// A grid pad for exploring vowel/consonant combinations
 struct SoundPadView: View {
     @ObservedObject var midiService: MidiService
+    @ObservedObject var audioMonitor: AudioMonitorService
     @Binding var isPresented: Bool
+    @AppStorage("localAudioEnabled") private var localAudioEnabled = false
     @Environment(\.colorScheme) private var colorScheme
     
     @State private var selectedConsonant: UInt8 = 125  // None
@@ -399,11 +401,15 @@ struct SoundPadView: View {
         midiService.vowel = selectedVowel
         lastPacketLog = "PB:\(Int(pitchBendValue)) CC2:\(selectedConsonant) CC3:\(selectedVowel) → NoteOn \(testNote)"
         midiService.sendNoteOn(note: testNote, velocity: testVelocity)
+        if localAudioEnabled {
+            audioMonitor.playNote(note: testNote, velocity: testVelocity, vowel: selectedVowel, consonant: selectedConsonant)
+        }
         isPlaying = true
     }
     
     func stopSound() {
         midiService.sendNoteOff(note: testNote)
+        if localAudioEnabled { audioMonitor.stopNote(note: testNote) }
         lastPacketLog = "NoteOff \(testNote)"
         isPlaying = false
     }

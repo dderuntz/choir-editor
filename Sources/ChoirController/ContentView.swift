@@ -1,4 +1,7 @@
 import SwiftUI
+import os
+
+private let log = Logger(subsystem: "com.choir-arranger", category: "ui")
 
 /// Transparent view that allows window dragging from its area.
 struct WindowDragArea: NSViewRepresentable {
@@ -34,12 +37,13 @@ struct ContentView: View {
     @EnvironmentObject var bluetoothManager: BluetoothMidiManager
     @EnvironmentObject var model: SequencerModel
     var midiService: MidiService // Passed explicitly, not observed (prevents redraw loop)
-    @StateObject private var audioMonitor = AudioMonitorService()
+    @EnvironmentObject var audioMonitor: AudioMonitorService
     @State private var showSettings = false
     @State private var showSoundPad = false
     @State private var showBluetoothSetup = false
     @AppStorage("showKeyboard") private var showKeyboardStorage = true
     @AppStorage("localAudioEnabled") private var localAudioEnabled = false
+    @AppStorage("localAudioMode") private var localAudioMode = LocalAudioMode.automatic.rawValue
     @Environment(\.colorScheme) private var colorScheme
     @State private var showKeyboard = true
     @State private var editingTitle: String = ""
@@ -155,16 +159,6 @@ struct ContentView: View {
                             .frame(height: 150)
                             .background(NonDraggableArea())
                             .background(Theme.bg(colorScheme))
-                            // .overlay(alignment: .top) {
-                            //     // Inner shadow at top edge
-                            //     LinearGradient(
-                            //         colors: [Color.black.opacity(0.2), Color.black.opacity(0.07), Color.black.opacity(0)],
-                            //         startPoint: .top,
-                            //         endPoint: .bottom
-                            //     )
-                            //     .frame(height: 28)
-                            //     .allowsHitTesting(false)
-                            // }
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
@@ -215,6 +209,7 @@ struct ContentView: View {
             showKeyboard = showKeyboardStorage
             midiService.start()
             model.loadLastFileIfAvailable()
+            applyLocalAudioMode()
         }
         .onChange(of: showKeyboardStorage) { newValue in
             withAnimation(.easeInOut(duration: 0.2)) { showKeyboard = newValue }
@@ -229,6 +224,8 @@ struct ContentView: View {
                 audioMonitor.tearDown()
             }
         }
+        .onChange(of: localAudioMode) { _ in applyLocalAudioMode() }
+        .onChange(of: midiService.isConnected) { _ in applyLocalAudioMode() }
         .onChange(of: showBluetoothSetup) { showing in
             // Close settings panel if Bluetooth setup opens (avoid both panels at once)
             if showing && showSettings {
@@ -245,7 +242,7 @@ struct ContentView: View {
             showSoundPad = true
         }
         .sheet(isPresented: $showSoundPad) {
-            SoundPadView(midiService: midiService, isPresented: $showSoundPad)
+            SoundPadView(midiService: midiService, audioMonitor: audioMonitor, isPresented: $showSoundPad)
                 .frame(minWidth: 700, minHeight: 580)
         }
     }
@@ -269,7 +266,7 @@ struct ContentView: View {
             try model.renameFile(to: trimmed)
             flashSaveIndicator()
         } catch {
-            print("Rename failed: \(error)")
+            log.error("Rename failed: \(error)")
             syncTitleFromModel() // revert on failure
         }
     }
@@ -278,6 +275,22 @@ struct ContentView: View {
         withAnimation(.easeIn(duration: 0.1)) { isSaving = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             withAnimation(.easeOut(duration: 0.3)) { isSaving = false }
+        }
+    }
+    
+    // MARK: - Local Audio Mode
+    
+    /// Resolve the three-state mode (automatic / on / off) into the boolean flag
+    /// that every other view reads via @AppStorage("localAudioEnabled").
+    private func applyLocalAudioMode() {
+        let mode = LocalAudioMode(rawValue: localAudioMode) ?? .automatic
+        switch mode {
+        case .automatic:
+            localAudioEnabled = !midiService.isConnected
+        case .on:
+            localAudioEnabled = true
+        case .off:
+            localAudioEnabled = false
         }
     }
     

@@ -2,6 +2,9 @@ import Foundation
 import SwiftUI
 import AppKit
 import Combine
+import os
+
+private let log = Logger(subsystem: "com.choir-arranger", category: "model")
 
 // MARK: - Data Model
 
@@ -207,6 +210,12 @@ class SequencerModel: ObservableObject {
         }
     }
     
+    /// Replace the entire selection with a set of note IDs (marquee select)
+    func selectNotes(_ ids: Set<UUID>) {
+        selectedNoteIds = ids
+        selectedNoteId = ids.first
+    }
+    
     func clearSelection() {
         selectedNoteId = nil
         selectedNoteIds.removeAll()
@@ -257,7 +266,21 @@ class SequencerModel: ObservableObject {
         }
     }
     
+    /// Set to true to trigger a confirmation alert before deleting multiple notes
+    @Published var pendingDeleteConfirm = false
+    
+    /// Request deletion — confirms first if multiple notes are selected
     func deleteSelectedNote() {
+        guard !selectedNoteIds.isEmpty else { return }
+        if selectedNoteIds.count > 1 {
+            pendingDeleteConfirm = true
+        } else {
+            confirmDeleteSelected()
+        }
+    }
+    
+    /// Actually delete the selected notes (call after confirmation)
+    func confirmDeleteSelected() {
         guard !selectedNoteIds.isEmpty else { return }
         withUndo("Delete Notes") {
             for id in selectedNoteIds {
@@ -423,7 +446,7 @@ class SequencerModel: ObservableObject {
         midi.append(trackData)
         
         try midi.write(to: url, options: .atomic)
-        print("Exported \(notes.count) notes as MIDI to \(url.lastPathComponent)")
+        log.info("Exported \(self.notes.count) notes as MIDI to \(url.lastPathComponent)")
     }
     
     private static func variableLengthQuantity(_ value: UInt32) -> [UInt8] {
@@ -463,7 +486,7 @@ class SequencerModel: ObservableObject {
         currentFileURL = url
         hasUnsavedChanges = false
         Self.addToRecentFiles(url)
-        print("Saved \(notes.count) notes to \(url.lastPathComponent)")
+        log.info("Saved \(self.notes.count) notes to \(url.lastPathComponent)")
     }
     
     func load(from url: URL) throws {
@@ -477,7 +500,7 @@ class SequencerModel: ObservableObject {
         currentFileURL = url
         hasUnsavedChanges = false
         Self.addToRecentFiles(url)
-        print("Loaded \(notes.count) notes from \(url.lastPathComponent)")
+        log.info("Loaded \(self.notes.count) notes from \(url.lastPathComponent)")
     }
     
     /// Rename the current file on disk and update references
@@ -493,7 +516,7 @@ class SequencerModel: ObservableObject {
         currentFileURL = newURL
         hasUnsavedChanges = false
         Self.addToRecentFiles(newURL)
-        print("Renamed to \(newURL.lastPathComponent)")
+        log.info("Renamed to \(newURL.lastPathComponent)")
     }
     
     /// Auto-open the last file on launch
@@ -503,9 +526,9 @@ class SequencerModel: ObservableObject {
         guard FileManager.default.fileExists(atPath: url.path) else { return }
         do {
             try load(from: url)
-            print("Auto-opened last file: \(url.lastPathComponent)")
+            log.info("Auto-opened last file: \(url.lastPathComponent)")
         } catch {
-            print("Failed to auto-open last file: \(error)")
+            log.error("Failed to auto-open last file: \(error)")
         }
     }
     
@@ -587,9 +610,9 @@ class SequencerModel: ObservableObject {
         guard let url = currentFileURL else { return }
         do {
             try save(to: url)
-            print("Auto-saved to \(url.lastPathComponent)")
+            log.debug("Auto-saved to \(url.lastPathComponent)")
         } catch {
-            print("Auto-save failed: \(error)")
+            log.error("Auto-save failed: \(error)")
         }
     }
 }

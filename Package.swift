@@ -23,7 +23,8 @@ let package = Package(
                 .product(name: "MIDIKit", package: "MIDIKit")
             ],
             resources: [
-                .process("Assets.xcassets")
+                .process("Assets.xcassets"),
+                .copy("AnimaleSounds")
             ]
         ),
         .testTarget(
