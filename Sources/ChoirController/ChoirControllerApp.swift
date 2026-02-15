@@ -5,8 +5,17 @@ extension Notification.Name {
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Set by ChoirControllerApp so we can clean up on quit.
+    weak var midiService: MidiService?
+    weak var audioMonitor: AudioMonitorService?
+    
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return true
+    }
+    
+    func applicationWillTerminate(_ notification: Notification) {
+        midiService?.panicAllNotesOff()
+        audioMonitor?.tearDown()
     }
     
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -36,6 +45,9 @@ struct ChoirControllerApp: App {
             NSApp.activate(ignoringOtherApps: true)
             NSApp.windows.first?.makeKeyAndOrderFront(nil)
         }
+        // Give the delegate references for cleanup on quit
+        appDelegate.midiService = midiService
+        appDelegate.audioMonitor = audioMonitor
     }
     
     @AppStorage("appearanceMode") private var appearanceMode: AppearanceMode = .system

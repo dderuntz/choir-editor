@@ -1,4 +1,7 @@
 import SwiftUI
+import os
+
+private let log = Logger(subsystem: "com.choir-arranger", category: "ui")
 
 /// Transparent view that allows window dragging from its area.
 struct WindowDragArea: NSViewRepresentable {
@@ -156,16 +159,6 @@ struct ContentView: View {
                             .frame(height: 150)
                             .background(NonDraggableArea())
                             .background(Theme.bg(colorScheme))
-                            // .overlay(alignment: .top) {
-                            //     // Inner shadow at top edge
-                            //     LinearGradient(
-                            //         colors: [Color.black.opacity(0.2), Color.black.opacity(0.07), Color.black.opacity(0)],
-                            //         startPoint: .top,
-                            //         endPoint: .bottom
-                            //     )
-                            //     .frame(height: 28)
-                            //     .allowsHitTesting(false)
-                            // }
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
@@ -232,7 +225,7 @@ struct ContentView: View {
             }
         }
         .onChange(of: localAudioMode) { _ in applyLocalAudioMode() }
-        .onChange(of: bluetoothManager.connectedPeripherals.count) { _ in applyLocalAudioMode() }
+        .onChange(of: midiService.isConnected) { _ in applyLocalAudioMode() }
         .onChange(of: showBluetoothSetup) { showing in
             // Close settings panel if Bluetooth setup opens (avoid both panels at once)
             if showing && showSettings {
@@ -273,7 +266,7 @@ struct ContentView: View {
             try model.renameFile(to: trimmed)
             flashSaveIndicator()
         } catch {
-            print("Rename failed: \(error)")
+            log.error("Rename failed: \(error)")
             syncTitleFromModel() // revert on failure
         }
     }
@@ -293,7 +286,7 @@ struct ContentView: View {
         let mode = LocalAudioMode(rawValue: localAudioMode) ?? .automatic
         switch mode {
         case .automatic:
-            localAudioEnabled = bluetoothManager.connectedPeripherals.isEmpty
+            localAudioEnabled = !midiService.isConnected
         case .on:
             localAudioEnabled = true
         case .off:

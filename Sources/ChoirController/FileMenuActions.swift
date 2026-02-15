@@ -1,5 +1,8 @@
 import AppKit
 import UniformTypeIdentifiers
+import os
+
+private let log = Logger(subsystem: "com.choir-arranger", category: "file")
 
 // Centralises file-dialog presentation and NSMenu actions.
 // The model owns save(to:)/load(from:); this layer owns the panels.
@@ -33,7 +36,7 @@ class FileMenuActions: NSObject {
                 try model.save(to: url)
                 return true
             } catch {
-                print("Error saving: \(error)")
+                log.error("Error saving: \(error)")
                 return false
             }
         } else {
@@ -63,7 +66,7 @@ class FileMenuActions: NSObject {
             try model.save(to: url)
             return true
         } catch {
-            print("Error saving: \(error)")
+            log.error("Error saving: \(error)")
             return false
         }
     }
@@ -90,7 +93,7 @@ class FileMenuActions: NSObject {
             try model.exportMIDI(to: url)
             return true
         } catch {
-            print("Error exporting MIDI: \(error)")
+            log.error("Error exporting MIDI: \(error)")
             return false
         }
     }
@@ -113,7 +116,7 @@ class FileMenuActions: NSObject {
             try model.load(from: url)
             return true
         } catch {
-            print("Error loading: \(error)")
+            log.error("Error loading: \(error)")
             return false
         }
     }
