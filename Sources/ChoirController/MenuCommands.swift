@@ -120,12 +120,16 @@ struct EditCommands: Commands {
 
 struct ViewCommands: Commands {
     @AppStorage("showKeyboard") private var showKeyboard = true
+    @AppStorage("showSettings") private var showSettings = false
     @AppStorage("appearanceMode") private var appearanceMode: AppearanceMode = .system
     
     var body: some Commands {
         CommandGroup(after: .toolbar) {
             Toggle("Show Keyboard", isOn: $showKeyboard)
                 .keyboardShortcut("k", modifiers: [.command, .shift])
+            
+            Toggle("Show Setup", isOn: $showSettings)
+                .keyboardShortcut(",", modifiers: .command)
             
             Divider()
             

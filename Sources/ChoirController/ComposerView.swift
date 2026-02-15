@@ -15,7 +15,7 @@ struct ComposerView: View {
 
                 // Text editor
                 TextEditor(text: $composerModel.inputText)
-                    .font(.system(size: 22, weight: .light))
+                    .font(.title2)
                     .scrollContentBackground(.hidden)
                     .padding(12)
                     .background(
@@ -127,6 +127,18 @@ struct ComposerView: View {
                         composerModel.playSinglePhoneme(phoneme, audioMonitor: audioMonitor)
                     }
                 }
+
+                // Thumbs up at end of strip
+                Button(action: { composerModel.approveResult() }) {
+                    Image(systemName: composerModel.isApproved ? "hand.thumbsup.fill" : "hand.thumbsup")
+                        .font(.system(size: 14))
+                        .foregroundColor(composerModel.isApproved ? Theme.accent : Theme.text(colorScheme).opacity(0.3))
+                        .frame(width: 32, height: 32)
+                }
+                .buttonStyle(.plain)
+                .help(composerModel.isApproved
+                      ? "Saved (\(composerModel.savedExampleCount) examples)"
+                      : "Approve — save as training example")
             }
             .padding(.horizontal, 32)
             .padding(.vertical, 12)

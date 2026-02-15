@@ -39,6 +39,7 @@ struct ContentView: View {
     @EnvironmentObject var composerModel: ComposerModel
     var midiService: MidiService // Passed explicitly, not observed (prevents redraw loop)
     @EnvironmentObject var audioMonitor: AudioMonitorService
+    @AppStorage("showSettings") private var showSettingsStorage = false
     @State private var showSettings = false
     @State private var showSoundPad = false
     @State private var showBluetoothSetup = false
@@ -61,7 +62,7 @@ struct ContentView: View {
                     // App icon with file menu
                     Button(action: { showFileMenu() }) {
                         HStack(spacing: 2) {
-                            Image(systemName: "doc.fill")
+                            Image(systemName: "apple.classical.pages.fill")
                                 .font(.title2)
                             Image(systemName: "chevron.down")
                                 .font(.system(size: 8, weight: .bold))
@@ -111,29 +112,37 @@ struct ContentView: View {
                     
                     // Settings toggle
                     Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showSettings.toggle() } }) {
-                        Image(systemName: "gearshape")
+                        Image(systemName: "nose")
                             .font(.title2)
-                            .foregroundColor(showSettings ? Theme.accent : Theme.text(colorScheme).opacity(0.4))
+                            .foregroundColor(showSettings ? Theme.text(colorScheme) : Theme.text(colorScheme).opacity(0.4))
                     }
                     .buttonStyle(.plain)
-                    .help("Settings")
+                    .help("Setup")
                     
                     // Composer toggle
                     Button(action: {
                         withAnimation(.easeInOut(duration: 0.25)) { showComposer.toggle() }
                     }) {
-                        Image(systemName: "text.word.spacing")
+                        Image(systemName: "eyebrow")
                             .font(.title2)
-                            .foregroundColor(showComposer ? Theme.accent : Theme.text(colorScheme).opacity(0.4))
+                            .foregroundColor(showComposer ? Theme.text(colorScheme) : Theme.text(colorScheme).opacity(0.4))
+                            .overlay(alignment: .topTrailing) {
+                                if composerModel.hasContent && !showComposer {
+                                    Circle()
+                                        .fill(Theme.accent)
+                                        .frame(width: 6, height: 6)
+                                        .offset(x: 3, y: -3)
+                                }
+                            }
                     }
                     .buttonStyle(.plain)
                     .help("Composer")
                     
                     // Explorer (tuning fork)
                     Button(action: { showSoundPad = true }) {
-                        Image(systemName: "tuningfork")
+                        Image(systemName: "ear")
                             .font(.title2)
-                            .foregroundColor(showSoundPad ? Theme.accent : Theme.text(colorScheme).opacity(0.4))
+                            .foregroundColor(showSoundPad ? Theme.text(colorScheme) : Theme.text(colorScheme).opacity(0.4))
                     }
                     .buttonStyle(.plain)
                     .help("Choir Explorer")
@@ -247,6 +256,13 @@ struct ContentView: View {
         }
         .onChange(of: localAudioMode) { _ in applyLocalAudioMode() }
         .onChange(of: midiService.isConnected) { _ in applyLocalAudioMode() }
+        .onAppear { showSettings = showSettingsStorage }
+        .onChange(of: showSettingsStorage) { newValue in
+            withAnimation(.easeInOut(duration: 0.2)) { showSettings = newValue }
+        }
+        .onChange(of: showSettings) { newValue in
+            showSettingsStorage = newValue
+        }
         .onChange(of: showBluetoothSetup) { showing in
             // Close settings panel if Bluetooth setup opens (avoid both panels at once)
             if showing && showSettings {

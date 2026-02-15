@@ -51,14 +51,134 @@ struct LLMPhonemeResult {
     let syllables: [LLMSyllable]
 }
 
+// MARK: - Few-Shot Example Storage
+
+struct PhonemeExample: Codable {
+    let inputText: String
+    let syllables: [SyllableExample]
+
+    struct SyllableExample: Codable {
+        let text: String
+        let consonant: String  // consonant ID
+        let vowel: String      // vowel ID
+    }
+}
+
+enum PhonemeExampleStore {
+    private static let storageKey = "composer.fewShotExamples"
+    private static let maxExamples = 10  // keep prompt manageable
+
+    static func load() -> [PhonemeExample] {
+        guard let data = UserDefaults.standard.data(forKey: storageKey),
+              let examples = try? JSONDecoder().decode([PhonemeExample].self, from: data)
+        else { return [] }
+        return examples
+    }
+
+    static func save(_ examples: [PhonemeExample]) {
+        // Keep only the most recent N
+        let trimmed = Array(examples.suffix(maxExamples))
+        if let data = try? JSONEncoder().encode(trimmed) {
+            UserDefaults.standard.set(data, forKey: storageKey)
+        }
+    }
+
+    static func addExample(_ example: PhonemeExample) {
+        var existing = load()
+        // Don't duplicate same input text
+        existing.removeAll(where: { $0.inputText == example.inputText })
+        existing.append(example)
+        save(existing)
+        print("[Composer] ✓ Saved example: \"\(example.inputText)\" (\(example.syllables.count) syllables, \(load().count) total)")
+    }
+
+    /// Format saved examples as prompt text
+    static func promptSection() -> String? {
+        let examples = load()
+        guard !examples.isEmpty else { return nil }
+        var lines = ["USER-APPROVED EXAMPLES (highest priority — match these exactly):"]
+        for ex in examples {
+            let pairs = ex.syllables.map { "\($0.text):\($0.consonant)+\($0.vowel)" }.joined(separator: ", ")
+            lines.append("  \"\(ex.inputText)\" → [\(pairs)]")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// Export all examples as JSONL for adapter training
+    static func exportJSONL() -> String {
+        let examples = load()
+        return examples.map { ex in
+            let syllablesJSON = ex.syllables.map {
+                "{\"text\":\"\($0.text)\",\"consonant\":\"\($0.consonant)\",\"vowel\":\"\($0.vowel)\"}"
+            }.joined(separator: ",")
+            let prompt = "Extract singable phonemes from: \(ex.inputText)"
+            let response = "{\"syllables\":[\(syllablesJSON)]}"
+            return "[{\"role\":\"user\",\"content\":\"\(prompt)\"},{\"role\":\"assistant\",\"content\":\"\(response)\"}]"
+        }.joined(separator: "\n")
+    }
+}
+
+// MARK: - Composer Persistence
+
+private struct StoredPhoneme: Codable {
+    let text: String
+    let consonantCC: UInt8
+    let vowelCC: UInt8
+}
+
+private enum ComposerPersistence {
+    private static let textKey = "composer.inputText"
+    private static let phonemesKey = "composer.phonemes"
+
+    static func saveText(_ text: String) {
+        UserDefaults.standard.set(text, forKey: textKey)
+    }
+
+    static func loadText() -> String {
+        UserDefaults.standard.string(forKey: textKey) ?? ""
+    }
+
+    static func savePhonemes(_ phonemes: [ChoirPhoneme]) {
+        let stored = phonemes.map { StoredPhoneme(text: $0.text, consonantCC: $0.consonantCC, vowelCC: $0.vowelCC) }
+        if let data = try? JSONEncoder().encode(stored) {
+            UserDefaults.standard.set(data, forKey: phonemesKey)
+        }
+    }
+
+    static func loadPhonemes() -> [ChoirPhoneme] {
+        guard let data = UserDefaults.standard.data(forKey: phonemesKey),
+              let stored = try? JSONDecoder().decode([StoredPhoneme].self, from: data)
+        else { return [] }
+        return stored.map { ChoirPhoneme(text: $0.text, consonantCC: $0.consonantCC, vowelCC: $0.vowelCC) }
+    }
+}
+
 // MARK: - Composer Model
 
 class ComposerModel: ObservableObject {
-    @Published var inputText: String = ""
-    @Published var phonemes: [ChoirPhoneme] = []
+    @Published var inputText: String = "" {
+        didSet { ComposerPersistence.saveText(inputText) }
+    }
+    @Published var phonemes: [ChoirPhoneme] = [] {
+        didSet { ComposerPersistence.savePhonemes(phonemes) }
+    }
     @Published var isProcessing: Bool = false
     @Published var errorMessage: String? = nil
     @Published var llmStatusMessage: String? = nil
+
+    // Approval
+    @Published var isApproved: Bool = false
+    var savedExampleCount: Int { PhonemeExampleStore.load().count }
+
+    /// Whether the Composer has any content (for icon indicator)
+    var hasContent: Bool {
+        !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !phonemes.isEmpty
+    }
+
+    init() {
+        inputText = ComposerPersistence.loadText()
+        phonemes = ComposerPersistence.loadPhonemes()
+    }
 
     // Playback
     @Published var isPlaying: Bool = false
@@ -99,12 +219,28 @@ class ComposerModel: ObservableObject {
     // MARK: - Phoneme Extraction
 
     @MainActor
+    func approveResult() {
+        let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !phonemes.isEmpty else { return }
+
+        let syllables = phonemes.map { p -> PhonemeExample.SyllableExample in
+            let cID = Consonant.all.first(where: { $0.ccValue == p.consonantCC })?.id ?? "none"
+            let vID = Vowel.all.first(where: { $0.ccValue == p.vowelCC })?.id ?? "schwa"
+            return PhonemeExample.SyllableExample(text: p.text, consonant: cID, vowel: vID)
+        }
+        let example = PhonemeExample(inputText: text, syllables: syllables)
+        PhonemeExampleStore.addExample(example)
+        isApproved = true
+    }
+
+    @MainActor
     func extractPhonemes() async {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
 
         isProcessing = true
         errorMessage = nil
+        isApproved = false
 
         if #available(macOS 26, *) {
             await extractWithLLM(text: text)
@@ -164,9 +300,15 @@ class ComposerModel: ObservableObject {
           The:th+schwa, far:f+aa, mer:m+schwa, i:none+ee, n:n+schwa, The:th+schwa, de:d+ae, ll:l+schwa
         """
 
+        // Inject user-approved examples if any exist
+        var fullInstructions = instructions
+        if let fewShot = PhonemeExampleStore.promptSection() {
+            fullInstructions += "\n\n" + fewShot
+        }
+
         do {
             let session = LanguageModelSession {
-                instructions
+                fullInstructions
             }
 
             let response = try await session.respond(
