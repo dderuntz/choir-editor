@@ -14,12 +14,13 @@ Unzip and drag to Applications. No Xcode or build tools needed.
 
 ### Connect a Doll
 
-1. Click the **Connect** button in the toolbar.
-2. Follow the on-screen steps — the app opens the macOS Bluetooth MIDI window for you.
-3. Wake the doll (press its button).
-4. Click **Connect** when it appears (e.g., "CH-8").
+1. **Wake your dolls** — give each one a tap.
+2. **Choose your lead doll** — long-press its connect button until it sings *"Searching for controller."*
+3. Click the **Connect** button in the toolbar. The app opens the macOS Bluetooth MIDI window.
+4. Click **Advertise** in the Bluetooth window. The doll should connect and sing *"Connected to MIDI controller."*
+5. Enter the **PIN code** shown in the app when prompted.
 
-The app detects the doll automatically once paired. A PIN code is shown for dolls that require one.
+The app detects the doll automatically once paired and closes the setup panel.
 
 ### Using the Sequencer
 
