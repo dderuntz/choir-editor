@@ -203,7 +203,7 @@ struct SequencerView: View {
             .help(model.isPlaying ? "Stop" : "Play")
             .frame(width: PianoRollLayout.pianoKeyWidth)
             
-            Theme.dark.opacity(0.15).frame(width: 1)
+            Theme.structuralDivider.frame(width: 1)
             
             // Scrub zone (same width as the grid, scrolls in sync)
             ScrollView(.horizontal, showsIndicators: false) {

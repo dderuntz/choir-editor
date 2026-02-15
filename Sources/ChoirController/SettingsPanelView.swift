@@ -31,7 +31,7 @@ struct SettingsPanelView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Sequencer")
                             .font(Theme.toolbarFont)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(Theme.textSecondary)
                             .textCase(.uppercase)
                         
                         SliderWithDefault(label: "Tempo", value: $midiService.tempo, range: 40...200, defaultValue: 100, displayText: "\(Int(midiService.tempo))", displayWidth: 30) { val in
@@ -49,7 +49,7 @@ struct SettingsPanelView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Global Choir Effects")
                             .font(Theme.toolbarFont)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(Theme.textSecondary)
                             .textCase(.uppercase)
                         
                         VoiceControlsView(midiService: midiService)
@@ -71,7 +71,7 @@ struct SettingsPanelView: View {
                     }) {
                         Text("Reset Defaults")
                             .font(Theme.toolbarFont)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(Theme.textSecondary)
                     }
                     .buttonStyle(.plain)
                 }

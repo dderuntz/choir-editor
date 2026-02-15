@@ -14,25 +14,25 @@ struct ConnectionStatusView: View {
                     .frame(width: 8, height: 8)
                 Text(selected.displayName)
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(Theme.ivory.opacity(0.5))
                     .lineLimit(1)
             } else {
                 // Not connected — loud call-to-action
                 Image(systemName: "antenna.radiowaves.left.and.right")
                     .font(.caption)
                     .fontWeight(.semibold)
-                    .foregroundColor(.black)
+                    .foregroundColor(Theme.dark)
                 Text("Connect")
                     .font(.caption)
                     .fontWeight(.semibold)
-                    .foregroundColor(.black)
+                    .foregroundColor(Theme.dark)
             }
         }
         .padding(.horizontal, Theme.buttonPaddingH)
         .padding(.vertical, Theme.buttonPaddingV)
         .background(
             midiService.selectedInput != nil
-                ? Theme.surface.opacity(0.5)
+                ? Theme.dark.opacity(0.5)
                 : Theme.accent
         )
         .cornerRadius(Theme.buttonRadius)

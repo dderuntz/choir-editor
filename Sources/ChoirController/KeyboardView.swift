@@ -149,7 +149,7 @@ struct PianoKey: View {
                 if note == 60 {
                     Text("C")
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.black.opacity(0.4))
+                        .foregroundColor(Theme.dark.opacity(0.4))
                         .padding(.bottom, 6)
                 }
             }
