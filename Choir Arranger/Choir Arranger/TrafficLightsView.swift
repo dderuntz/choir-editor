@@ -1,1 +1,0 @@
-../../Sources/ChoirController/TrafficLightsView.swift
