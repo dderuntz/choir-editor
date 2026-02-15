@@ -72,11 +72,13 @@ struct BluetoothSetupPanel: View {
                     .foregroundColor(txt.opacity(0.7))
                     .padding(.bottom, 4)
                 
-                stepRow(number: 1, icon: "power", text: "Turn on your Choir doll")
+                stepRow(number: 1, icon: "hand.tap", text: "**Wake your dolls** — give each one a tap")
                 
-                stepRow(number: 2, icon: "rectangle.on.rectangle", text: "In the Bluetooth window that opened, click **\"Advertise\"**")
+                stepRow(number: 2, icon: "antenna.radiowaves.left.and.right", text: "**Choose your lead doll** — long-press its connect button until it sings *\"Searching for controller\"*")
                 
-                stepRow(number: 3, icon: "lock.shield", text: "When macOS asks for a PIN, enter:")
+                stepRow(number: 3, icon: "rectangle.on.rectangle", text: "In the Bluetooth window, click **\"Advertise\"**. The doll should sing *\"Connected to MIDI controller\"*")
+                
+                stepRow(number: 4, icon: "lock.shield", text: "When macOS asks for a PIN, enter:")
                 
                 // PIN display
                 HStack {
@@ -98,7 +100,7 @@ struct BluetoothSetupPanel: View {
                     Spacer()
                 }
                 
-                stepRow(number: 4, icon: "checkmark.circle", text: "Wait for connection — this panel will close automatically")
+                stepRow(number: 5, icon: "checkmark.circle", text: "Wait for connection — this panel will close automatically")
                 
                 // Re-open button in case user closed the Apple window
                 Button(action: onOpenBluetoothWindow) {

@@ -235,6 +235,12 @@ struct ContentView: View {
                 withAnimation(.easeInOut(duration: 0.2)) { showSettings = false }
             }
         }
+        .onChange(of: midiService.isConnected) { connected in
+            // Close Apple Bluetooth window when doll connects
+            if connected {
+                bluetoothManager.closeBluetoothMIDIWindow()
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .showSoundPad)) { _ in
             showSoundPad = true
         }
