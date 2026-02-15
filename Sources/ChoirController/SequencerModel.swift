@@ -358,6 +358,97 @@ class SequencerModel: ObservableObject {
         hasUnsavedChanges = false
     }
     
+    // MARK: - MIDI Export
+    
+    /// Export the arrangement as a Standard MIDI File (Type 0, single track).
+    /// Includes CC events for vibrato (CC1), consonant (CC2), vowel (CC3), and reverb (CC4).
+    func exportMIDI(to url: URL) throws {
+        let ticksPerBeat: UInt16 = 480
+        var events: [(tick: UInt32, bytes: [UInt8])] = []
+        
+        // Tempo meta event: FF 51 03 tt tt tt (microseconds per beat)
+        let uspb = UInt32(60_000_000.0 / tempo)
+        events.append((tick: 0, bytes: [0xFF, 0x51, 0x03,
+                                         UInt8((uspb >> 16) & 0xFF),
+                                         UInt8((uspb >> 8) & 0xFF),
+                                         UInt8(uspb & 0xFF)]))
+        
+        let channel: UInt8 = 0
+        for note in notes {
+            let onTick = UInt32(note.startBeat * Double(ticksPerBeat))
+            let offTick = onTick + UInt32(note.duration * Double(ticksPerBeat))
+            
+            // CC events just before note-on (same tick)
+            events.append((tick: onTick, bytes: [0xB0 | channel, 1, note.vibrato]))   // CC1 vibrato
+            events.append((tick: onTick, bytes: [0xB0 | channel, 2, note.consonant]))  // CC2 consonant
+            events.append((tick: onTick, bytes: [0xB0 | channel, 3, note.vowel]))      // CC3 vowel
+            events.append((tick: onTick, bytes: [0xB0 | channel, 4, note.reverb]))     // CC4 reverb
+            
+            // Note On
+            events.append((tick: onTick, bytes: [0x90 | channel, note.pitch, note.velocity]))
+            // Note Off
+            events.append((tick: offTick, bytes: [0x80 | channel, note.pitch, 0]))
+        }
+        
+        // End of track
+        let lastTick = events.map(\.tick).max() ?? 0
+        events.append((tick: lastTick, bytes: [0xFF, 0x2F, 0x00]))
+        
+        // Sort by tick (stable sort keeps CC before note-on, note-off after note-on at same tick)
+        events.sort { $0.tick < $1.tick }
+        
+        // Build track data with delta times
+        var trackData = Data()
+        var prevTick: UInt32 = 0
+        for event in events {
+            let delta = event.tick - prevTick
+            prevTick = event.tick
+            trackData.append(contentsOf: Self.variableLengthQuantity(delta))
+            trackData.append(contentsOf: event.bytes)
+        }
+        
+        // Assemble file: header chunk + track chunk
+        var midi = Data()
+        
+        // MThd
+        midi.append(contentsOf: [0x4D, 0x54, 0x68, 0x64]) // "MThd"
+        midi.append(contentsOf: Self.uint32BE(6))            // header length
+        midi.append(contentsOf: Self.uint16BE(0))            // format 0
+        midi.append(contentsOf: Self.uint16BE(1))            // 1 track
+        midi.append(contentsOf: Self.uint16BE(ticksPerBeat)) // ticks per beat
+        
+        // MTrk
+        midi.append(contentsOf: [0x4D, 0x54, 0x72, 0x6B]) // "MTrk"
+        midi.append(contentsOf: Self.uint32BE(UInt32(trackData.count)))
+        midi.append(trackData)
+        
+        try midi.write(to: url, options: .atomic)
+        print("Exported \(notes.count) notes as MIDI to \(url.lastPathComponent)")
+    }
+    
+    private static func variableLengthQuantity(_ value: UInt32) -> [UInt8] {
+        if value == 0 { return [0x00] }
+        var v = value
+        var bytes: [UInt8] = [UInt8(v & 0x7F)]
+        v >>= 7
+        while v > 0 {
+            bytes.insert(UInt8((v & 0x7F) | 0x80), at: 0)
+            v >>= 7
+        }
+        return bytes
+    }
+    
+    private static func uint32BE(_ value: UInt32) -> [UInt8] {
+        [UInt8((value >> 24) & 0xFF), UInt8((value >> 16) & 0xFF),
+         UInt8((value >> 8) & 0xFF), UInt8(value & 0xFF)]
+    }
+    
+    private static func uint16BE(_ value: UInt16) -> [UInt8] {
+        [UInt8((value >> 8) & 0xFF), UInt8(value & 0xFF)]
+    }
+    
+    // MARK: - Save / Load
+    
     func save(to url: URL) throws {
         let doc = ChoirDocument(
             version: 1,

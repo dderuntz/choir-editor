@@ -68,6 +68,35 @@ class FileMenuActions: NSObject {
         }
     }
     
+    /// Export as Standard MIDI File.
+    @discardableResult
+    func showExportMIDIDialog() -> Bool {
+        guard let model else { return false }
+        let panel = NSSavePanel()
+        panel.title = "Export as MIDI"
+        let baseName = model.documentName == "Untitled" ? "Untitled" : model.documentName
+        panel.nameFieldStringValue = "\(baseName).mid"
+        panel.allowedContentTypes = [.midi]
+        panel.allowsOtherFileTypes = false
+        panel.isExtensionHidden = false
+        
+        guard panel.runModal() == .OK, var url = panel.url else { return false }
+        
+        if url.pathExtension != "mid" && url.pathExtension != "midi" {
+            url = url.appendingPathExtension("mid")
+        }
+        
+        do {
+            try model.exportMIDI(to: url)
+            return true
+        } catch {
+            print("Error exporting MIDI: \(error)")
+            return false
+        }
+    }
+    
+    @objc func exportMIDI(_ sender: Any?) { showExportMIDIDialog() }
+    
     /// Show NSOpenPanel and load. Returns true if loaded.
     @discardableResult
     func showOpenDialog() -> Bool {

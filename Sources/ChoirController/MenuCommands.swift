@@ -75,6 +75,11 @@ struct FileCommands: Commands {
             
             Button("Save As...") { actions.showSaveDialog() }
                 .keyboardShortcut("s", modifiers: [.command, .shift])
+            
+            Divider()
+            
+            Button("Export as MIDI...") { actions.showExportMIDIDialog() }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
         }
     }
 }
