@@ -10,3 +10,4 @@ alwaysApply: true
 3. **Ask more questions.** The user knows this codebase deeply. Leverage their expertise before going off on tangents.
 4. **Test fast, think less.** Add a log, build, run, read output. Don't spend multiple paragraphs analyzing when a 2-line print statement would answer the question.
 5. **Keep the user in the loop.** Share findings concisely, propose next steps, wait for confirmation.
+6. **Never push to git.** The user handles all `git push`, `gh release`, and remote operations. Only commit locally when asked.
