@@ -17,6 +17,15 @@ Forgetting this means the Xcode build silently uses stale code.
 - **Xcode**: Open `Choir Arranger/Choir Arranger.xcodeproj`, Run (Cmd+R). This is the primary build the user tests with.
 - **CLI**: `swift run` (SPM, App activates via `NSApp.activate` hack in init).
 
+## Xcode + Cursor workflow
+- **Editing existing files**: Xcode picks up changes on next build (Cmd+R). No clean needed.
+- **Adding new files**: After creating the symlink, touch the directory so Xcode rescans:
+  ```
+  touch "Choir Arranger/Choir Arranger/"
+  ```
+  Then build normally. If Xcode still doesn't see it, **one** Clean Build (Shift+Cmd+K) fixes it.
+- **SPM**: `swift build` / `swift run` always reads fresh source — good for quick verification.
+
 ## Dependencies
 - **MIDIKit**: Core MIDI handling.
 - **CoreBluetooth**: Native BLE scanning.

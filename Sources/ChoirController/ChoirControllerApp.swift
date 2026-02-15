@@ -37,6 +37,7 @@ struct ChoirControllerApp: App {
     @StateObject private var midiService = MidiService()
     @StateObject private var sequencerModel = SequencerModel()
     @StateObject private var audioMonitor = AudioMonitorService()
+    @StateObject private var composerModel = ComposerModel()
     
     init() {
         // Ensure the app activates properly when run from command line
@@ -59,6 +60,7 @@ struct ChoirControllerApp: App {
                 .environmentObject(midiService)
                 .environmentObject(sequencerModel)
                 .environmentObject(audioMonitor)
+                .environmentObject(composerModel)
                 .preferredColorScheme(appearanceMode.colorScheme)
                 .tint(Theme.accent)
         }
