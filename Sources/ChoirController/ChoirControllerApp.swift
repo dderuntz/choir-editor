@@ -12,10 +12,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
         
-        // Make window draggable by background since we removed the title bar
+        // Make window draggable by background since we hid the title bar
         if let window = NSApp.windows.first {
             window.isMovableByWindowBackground = true
-            window.backgroundColor = NSColor(Theme.toolbar)
         }
     }
 }
