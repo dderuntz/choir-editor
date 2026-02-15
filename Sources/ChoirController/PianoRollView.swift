@@ -140,7 +140,7 @@ struct PianoRollView: View {
                     pianoKeys
                         .frame(width: PianoRollLayout.pianoKeyWidth)
                     
-                    Divider()
+                    Color(red: 0x72/255.0, green: 0x73/255.0, blue: 0x69/255.0).frame(width: 1)
                     
                     // Grid area: horizontal scroll only
                     ScrollView(.horizontal) {
@@ -208,7 +208,7 @@ struct PianoRollView: View {
     private var playheadLine: some View {
         let xPos = PianoRollLayout.xForBeat(model.playheadBeat)
         return Rectangle()
-            .fill(Theme.playhead)
+            .fill(model.isPlaying ? Theme.green : Theme.accent)
             .frame(width: 2, height: PianoRollLayout.gridHeight())
             .offset(x: xPos)
             .allowsHitTesting(false)
@@ -224,10 +224,10 @@ struct PianoRollView: View {
                 HStack(spacing: 0) {
                     Spacer()
                     Text(PitchConstants.noteName(for: p))
-                        .font(.system(size: 9, design: .monospaced)) // monospaced intentional for pitch alignment
+                        .font(.system(size: 9, design: .monospaced))
                         .foregroundColor(
                             p == 60 ? Theme.middleC :
-                            PitchConstants.isBlackKey(p) ? .secondary : .primary
+                            PitchConstants.isBlackKey(p) ? Theme.ivory.opacity(0.5) : Theme.ivory.opacity(0.8)
                         )
                         .lineLimit(1)
                     Spacer(minLength: 4)
@@ -241,6 +241,7 @@ struct PianoRollView: View {
                 .id(pitch)
             }
         }
+        .background(Theme.field)
     }
     
     // MARK: - Notes Layer
@@ -314,6 +315,9 @@ struct PianoRollGridBackground: View {
     
     var body: some View {
         ZStack {
+            // Base field color
+            Theme.field
+            
             // Row shading for black keys + scale helper
             VStack(spacing: 0) {
                 ForEach((Int(PitchConstants.minPitch)...Int(PitchConstants.maxPitch)).reversed(), id: \.self) { pitch in
@@ -333,11 +337,15 @@ struct PianoRollGridBackground: View {
             
             // 16th note subdivision lines (light)
             SubdivisionGridShape(totalBeats: totalBeats)
-                .stroke(Theme.gridSubdivision(colorScheme), lineWidth: 0.5)
+                .stroke(Theme.gridSubdivision, lineWidth: 0.5)
             
-            // Beat and row boundary lines (stronger)
+            // Beat and row boundary lines
             BeatGridShape(totalBeats: totalBeats)
-                .stroke(Theme.gridLine(colorScheme), lineWidth: 0.5)
+                .stroke(Theme.gridLine, lineWidth: 0.5)
+            
+            // Bar boundary lines (every 4 beats, stronger)
+            BarGridShape(totalBeats: totalBeats)
+                .stroke(Theme.gridBar, lineWidth: 0.5)
         }
     }
 }
@@ -353,15 +361,33 @@ struct BeatGridShape: Shape {
         let rh = PianoRollLayout.rowHeight
         let bw = PianoRollLayout.beatWidth
         
-        // Horizontal lines (row boundaries)
-        for row in 0...rows {
-            let y = CGFloat(row) * rh
-            path.move(to: CGPoint(x: 0, y: y))
-            path.addLine(to: CGPoint(x: rect.width, y: y))
-        }
+        // Horizontal lines (row boundaries) — disabled for now
+        // for row in 0...rows {
+        //     let y = CGFloat(row) * rh
+        //     path.move(to: CGPoint(x: 0, y: y))
+        //     path.addLine(to: CGPoint(x: rect.width, y: y))
+        // }
         
         // Vertical beat lines
         for beat in 0...totalBeats {
+            let x = CGFloat(beat) * bw
+            path.move(to: CGPoint(x: x, y: 0))
+            path.addLine(to: CGPoint(x: x, y: rect.height))
+        }
+        
+        return path
+    }
+}
+
+struct BarGridShape: Shape {
+    let totalBeats: Int
+    
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let bw = PianoRollLayout.beatWidth
+        
+        // Vertical bar lines (every 4 beats)
+        for beat in stride(from: 0, through: totalBeats, by: 4) {
             let x = CGFloat(beat) * bw
             path.move(to: CGPoint(x: x, y: 0))
             path.addLine(to: CGPoint(x: x, y: rect.height))
@@ -422,7 +448,7 @@ struct NoteRectView: View {
     
     private var noteColor: Color {
         if isSelected || isInMultiSelect { return .accentColor }
-        return Theme.noteColor(vowel: note.vowel, colorScheme: colorScheme)
+        return Theme.noteColor(pitch: note.pitch)
     }
     
     private var x: CGFloat { PianoRollLayout.xForBeat(note.startBeat) }
@@ -478,7 +504,11 @@ struct NoteRectView: View {
         if visualWidth > 28 {
             Text(phonemeLabel)
                 .font(Theme.labelSmall)
-                .foregroundColor(.white)
+                .foregroundColor(
+                    (isSelected || isInMultiSelect)
+                        ? .white
+                        : Theme.noteLabelColor(pitch: note.pitch)
+                )
                 .lineLimit(1)
                 .padding(.leading, 3)
         }

@@ -109,22 +109,42 @@ struct PianoKey: View {
     @State private var isPressed = false
     
     var body: some View {
-        Rectangle()
-            .fill(keyColor)
-            .overlay(
-                // Stroke only sides and bottom, not the top edge
-                GeometryReader { geo in
-                    Path { path in
-                        let w = geo.size.width
-                        let h = geo.size.height
-                        path.move(to: CGPoint(x: 0, y: 0))
-                        path.addLine(to: CGPoint(x: 0, y: h))
-                        path.addLine(to: CGPoint(x: w, y: h))
-                        path.addLine(to: CGPoint(x: w, y: 0))
-                    }
+        Group {
+            if isBlack {
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 0,
+                    bottomLeadingRadius: 2,
+                    bottomTrailingRadius: 2,
+                    topTrailingRadius: 0
+                )
+                .fill(keyColor)
+                .overlay(
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: 0,
+                        bottomLeadingRadius: 2,
+                        bottomTrailingRadius: 2,
+                        topTrailingRadius: 0
+                    )
                     .stroke(keyBorderColor, lineWidth: 1)
-                }
-            )
+                )
+            } else {
+                Rectangle()
+                    .fill(keyColor)
+                    .overlay(
+                        GeometryReader { geo in
+                            Path { path in
+                                let w = geo.size.width
+                                let h = geo.size.height
+                                path.move(to: CGPoint(x: 0, y: 0))
+                                path.addLine(to: CGPoint(x: 0, y: h))
+                                path.addLine(to: CGPoint(x: w, y: h))
+                                path.addLine(to: CGPoint(x: w, y: 0))
+                            }
+                            .stroke(keyBorderColor, lineWidth: 1)
+                        }
+                    )
+            }
+        }
             .overlay(alignment: .bottom) {
                 if note == 60 {
                     Text("C")
@@ -158,12 +178,12 @@ struct PianoKey: View {
     
     var keyColor: Color {
         if isBlack {
-            return Theme.blackKey(colorScheme, pressed: isPressed)
+            return Theme.blackKey(pressed: isPressed)
         }
-        return Theme.whiteKey(colorScheme, pressed: isPressed)
+        return Theme.whiteKey(pressed: isPressed)
     }
     
     var keyBorderColor: Color {
-        Theme.keyBorder(colorScheme, isBlack: isBlack)
+        Theme.keyBorder(isBlack: isBlack)
     }
 }

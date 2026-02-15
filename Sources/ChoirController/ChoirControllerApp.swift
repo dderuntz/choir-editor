@@ -11,11 +11,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
-        
-        // Make window draggable by background since we hid the title bar
-        if let window = NSApp.windows.first {
-            window.isMovableByWindowBackground = true
-        }
+        // iOS-style overlay scrollbars (no track, just the knob, shown when scrolling)
+        UserDefaults.standard.set("WhenScrolling", forKey: "AppleShowScrollBars")
     }
 }
 

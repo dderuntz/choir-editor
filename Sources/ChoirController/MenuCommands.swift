@@ -85,6 +85,16 @@ struct EditCommands: Commands {
     @ObservedObject var model: SequencerModel
     
     var body: some Commands {
+        CommandGroup(replacing: .undoRedo) {
+            Button("Undo") { model.undoManager.undo() }
+                .keyboardShortcut("z", modifiers: .command)
+                .disabled(!model.undoManager.canUndo)
+            
+            Button("Redo") { model.undoManager.redo() }
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+                .disabled(!model.undoManager.canRedo)
+        }
+        
         CommandGroup(after: .pasteboard) {
             Button(model.isPlaying ? "Stop" : "Play") {
                 model.togglePlaybackTrigger += 1

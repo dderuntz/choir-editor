@@ -1,5 +1,20 @@
 import SwiftUI
 
+/// Transparent view that allows window dragging from its area.
+struct WindowDragArea: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = DraggableView()
+        view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        view.setContentHuggingPriority(.defaultLow, for: .vertical)
+        return view
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+    
+    private class DraggableView: NSView {
+        override var mouseDownCanMoveWindow: Bool { true }
+    }
+}
+
 struct ContentView: View {
     @EnvironmentObject var bluetoothManager: BluetoothMidiManager
     @EnvironmentObject var model: SequencerModel
@@ -109,9 +124,10 @@ struct ContentView: View {
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 12)
+                .background(WindowDragArea())
                 .background(Theme.toolbar)
                 
-                Divider()
+                Theme.divider.frame(height: 1)
                 
                 // Sequencer fills available space, keyboard is collapsible pane below
                 ZStack(alignment: .bottom) {
