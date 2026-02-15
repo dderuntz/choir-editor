@@ -36,7 +36,7 @@ final class AnimaleSampleLibrary: @unchecked Sendable {
         //
         // Sample mapping: a(0) b(1) c(2) d(3) e(4) f(5) g(6) h(7) i(8) j(9)
         //   k(10) l(11) m(12) n(13) o(14) p(15) q(16) r(17) s(18) t(19)
-        //   u(20) v(21) w(22) x(23) y(24) z(25) th(26) sh(27) space(28) period(29)
+        //   u(20) v(21) w(22) x(23) y(24) z(25) th(26) sh(27)
         info = [
             SampleInfo(loopStart: 3980,  loopEnd: 4774,  fundamentalHz: 56.5),  //  0: a   ear-tuned
             SampleInfo(loopStart: 7945,  loopEnd: 8861,  fundamentalHz: 61.65), //  1: b
@@ -66,8 +66,6 @@ final class AnimaleSampleLibrary: @unchecked Sendable {
             SampleInfo(loopStart: 4181,  loopEnd: 4903,  fundamentalHz: 61.25), // 25: z
             SampleInfo(loopStart: 2531,  loopEnd: 4067,  fundamentalHz: 62.0),  // 26: th
             SampleInfo(loopStart: 5168,  loopEnd: 6188,  fundamentalHz: 62.0),  // 27: sh
-            SampleInfo(loopStart: 1261,  loopEnd: 3783,  fundamentalHz: 62.0),  // 28: space
-            SampleInfo(loopStart: 7293,  loopEnd: 21879, fundamentalHz: 62.0),  // 29: period
         ]
         loadSamples()
     }
@@ -75,9 +73,10 @@ final class AnimaleSampleLibrary: @unchecked Sendable {
     // MARK: Loading
 
     private func loadSamples() {
-        samples = Array(repeating: [], count: 30)
+        let count = info.count
+        samples = Array(repeating: [], count: count)
 
-        for i in 0..<30 {
+        for i in 0..<count {
             let name = String(format: "sound%02d", i + 1)
 
             #if SWIFT_PACKAGE
