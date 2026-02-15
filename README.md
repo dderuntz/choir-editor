@@ -14,15 +14,12 @@ Unzip and drag to Applications. No Xcode or build tools needed.
 
 ### Connect a Doll
 
-Choir dolls must be paired through macOS **Audio MIDI Setup** once before the app can see them:
+1. Click the **Connect** button in the toolbar.
+2. Follow the on-screen steps — the app opens the macOS Bluetooth MIDI window for you.
+3. Wake the doll (press its button).
+4. Click **Connect** when it appears (e.g., "CH-8").
 
-1. Open **Audio MIDI Setup** (Spotlight → "Audio MIDI Setup").
-2. Window → Show MIDI Studio (Cmd+2).
-3. Click the **Bluetooth** icon in the toolbar.
-4. Wake the doll (press its button).
-5. Click **Connect** when it appears (e.g., "CH-8").
-
-Once paired, Choir Arranger detects the doll automatically.
+The app detects the doll automatically once paired. A PIN code is shown for dolls that require one.
 
 ### Using the Sequencer
 
