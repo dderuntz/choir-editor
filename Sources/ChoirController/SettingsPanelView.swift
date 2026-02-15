@@ -5,6 +5,7 @@ struct SettingsPanelView: View {
     @ObservedObject var midiService: MidiService
     @Binding var showSettings: Bool
     @AppStorage("localAudioEnabled") private var localAudioEnabled = false
+    @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -17,13 +18,13 @@ struct SettingsPanelView: View {
                 Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showSettings = false } }) {
                     Image(systemName: "xmark")
                         .font(.title2)
-                        .foregroundColor(Theme.toolbarInactive)
+                        .foregroundColor(Theme.text(colorScheme).opacity(0.4))
                 }
                 .buttonStyle(.plain)
             }
             .padding(.horizontal)
             .padding(.bottom, 12)
-            .background(Theme.surface)
+            .background(Theme.bg(colorScheme))
             
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
@@ -31,7 +32,7 @@ struct SettingsPanelView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Sequencer")
                             .font(Theme.toolbarFont)
-                            .foregroundColor(Theme.textSecondary)
+                            .foregroundColor(Theme.text(colorScheme).opacity(0.5))
                             .textCase(.uppercase)
                         
                         SliderWithDefault(label: "Tempo", value: $midiService.tempo, range: 40...200, defaultValue: 100, displayText: "\(Int(midiService.tempo))", displayWidth: 30) { val in
@@ -49,7 +50,7 @@ struct SettingsPanelView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Global Choir Effects")
                             .font(Theme.toolbarFont)
-                            .foregroundColor(Theme.textSecondary)
+                            .foregroundColor(Theme.text(colorScheme).opacity(0.5))
                             .textCase(.uppercase)
                         
                         VoiceControlsView(midiService: midiService)
@@ -59,8 +60,8 @@ struct SettingsPanelView: View {
                     
                     Toggle("Local Synth Monitor", isOn: $localAudioEnabled)
                         .font(Theme.toolbarFont)
-                        .tint(Theme.ivory)
-                        .accentColor(Theme.ivory)
+                        .tint(Theme.text(colorScheme))
+                        .accentColor(Theme.text(colorScheme))
                         .controlSize(.small)
                     
                     Button(action: {
@@ -71,12 +72,12 @@ struct SettingsPanelView: View {
                     }) {
                         Text("Reset Defaults")
                             .font(Theme.toolbarFont)
-                            .foregroundColor(Theme.textSecondary)
+                            .foregroundColor(Theme.text(colorScheme).opacity(0.5))
                     }
                     .buttonStyle(.plain)
                 }
                 .padding()
-                .tint(Theme.ivory)
+                .tint(Theme.text(colorScheme))
             }
         }
     }

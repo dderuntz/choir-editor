@@ -5,6 +5,10 @@ struct SequencerView: View {
     @ObservedObject var audioMonitor: AudioMonitorService
     @EnvironmentObject var model: SequencerModel
     @AppStorage("localAudioEnabled") private var localAudioEnabled = false
+    @Environment(\.colorScheme) private var colorScheme
+    
+    /// Stable identity for the inspector when no note is selected (avoids per-frame recreation)
+    private static let noSelectionId = UUID()
     
     // Playback timer
     @State private var playbackTimer: Timer? = nil
@@ -15,7 +19,7 @@ struct SequencerView: View {
     
     /// X position of the callout arrow (note center, accounting for scroll offset)
     private var noteArrowX: CGFloat {
-        guard let note = model.selectedNote else { return 0 }
+        guard let note = model.selectedNote else { return -20 }
         let pianoOffset = PianoRollLayout.pianoKeyWidth + 1 // piano keys + divider
         let noteCenterX = PianoRollLayout.xForBeat(note.startBeat)
             + CGFloat(note.duration) * PianoRollLayout.beatWidth / 2
@@ -29,8 +33,6 @@ struct SequencerView: View {
             
             // Transport bar (play button + scrub zone)
             transportBar
-            
-            Theme.fieldBorder.frame(height: 1)
             
             // Piano Roll
             PianoRollView(
@@ -65,11 +67,10 @@ struct SequencerView: View {
                     model.deleteSelectedNote()
                 }
             )
-            .id(model.selectedNoteId ?? UUID())
+            .id(model.selectedNoteId ?? SequencerView.noSelectionId)
             .compositingGroup()
-            .shadow(color: Color.black.opacity(0.3), radius: 12, x: 0, y: -4)
+            .shadow(color: Color.black.opacity(0.15), radius: 20, x: 0, y: -4)
             .offset(y: model.selectedNote != nil ? 0 : 70)
-            .opacity(model.selectedNote != nil ? 1 : 0)
             .allowsHitTesting(model.selectedNote != nil)
             .animation(.easeInOut(duration: 0.15), value: model.selectedNote != nil)
         }
@@ -92,9 +93,11 @@ struct SequencerView: View {
             Button(action: { withAnimation(.easeInOut(duration: 0.15)) { model.showScaleHelper.toggle() } }) {
                 HStack(spacing: 5) {
                     Image(systemName: "music.note.list")
-                    Text("Enable guide")
+                    if !model.showScaleHelper {
+                        Text("Enable guide")
+                    }
                 }
-                .foregroundColor(model.showScaleHelper ? Theme.accent : Theme.ivory.opacity(0.7))
+                .foregroundColor(model.showScaleHelper ? Theme.accent : Theme.text(colorScheme).opacity(0.7))
             }
             .buttonStyle(.plain)
             .help("Scale guide")
@@ -108,6 +111,8 @@ struct SequencerView: View {
                 .labelsHidden()
                 .frame(width: 50)
                 .controlSize(.small)
+                .tint(Theme.text(colorScheme))
+                .accentColor(Theme.text(colorScheme))
                 
                 Picker("", selection: $model.scaleType) {
                     ForEach(ScaleType.allCases) { scale in
@@ -117,47 +122,49 @@ struct SequencerView: View {
                 .labelsHidden()
                 .frame(width: 110)
                 .controlSize(.small)
+                .tint(Theme.text(colorScheme))
+                .accentColor(Theme.text(colorScheme))
                 
                 Button(action: { withAnimation(.easeInOut(duration: 0.15)) { model.showScaleHelper = false } }) {
                     Text("Clear guide")
-                        .foregroundColor(Theme.ivory.opacity(0.5))
+                        .foregroundColor(Theme.text(colorScheme).opacity(0.5))
                 }
                 .buttonStyle(.plain)
             }
             
             Rectangle()
-                .fill(Theme.ivory.opacity(0.15))
+                .fill(Theme.text(colorScheme).opacity(0.15))
                 .frame(width: 1, height: 16)
             
             // Bar navigation: < X Bars >
             HStack(spacing: 6) {
                 Button(action: { if model.totalBeats > 4 { model.totalBeats -= 4 } }) {
                     Image(systemName: "chevron.left.circle.fill")
-                        .foregroundColor(model.totalBeats > 4 ? Theme.ivory.opacity(0.7) : Theme.ivory.opacity(0.2))
+                        .foregroundColor(model.totalBeats > 4 ? Theme.text(colorScheme).opacity(0.7) : Theme.text(colorScheme).opacity(0.2))
                 }
                 .buttonStyle(.plain)
                 .disabled(model.totalBeats <= 4)
                 
                 Text("\(model.totalBeats / 4) Bars")
-                    .foregroundColor(Theme.ivory.opacity(0.7))
+                    .foregroundColor(Theme.text(colorScheme).opacity(0.7))
                     .monospacedDigit()
                 
                 Button(action: { if model.totalBeats < 64 { model.totalBeats += 4 } }) {
                     Image(systemName: "chevron.right.circle.fill")
-                        .foregroundColor(model.totalBeats < 64 ? Theme.ivory.opacity(0.7) : Theme.ivory.opacity(0.2))
+                        .foregroundColor(model.totalBeats < 64 ? Theme.text(colorScheme).opacity(0.7) : Theme.text(colorScheme).opacity(0.2))
                 }
                 .buttonStyle(.plain)
                 .disabled(model.totalBeats >= 64)
             }
             
             Rectangle()
-                .fill(Theme.ivory.opacity(0.15))
+                .fill(Theme.text(colorScheme).opacity(0.15))
                 .frame(width: 1, height: 16)
             
             // Loop toggle
             Button(action: { model.isLooping.toggle() }) {
                 Label("Loop", systemImage: "repeat")
-                    .foregroundColor(model.isLooping ? Theme.accent : Theme.ivory.opacity(0.7))
+                    .foregroundColor(model.isLooping ? Theme.accent : Theme.text(colorScheme).opacity(0.7))
             }
             .buttonStyle(.plain)
             .help(model.isLooping ? "Looping" : "Loop")
@@ -178,7 +185,7 @@ struct SequencerView: View {
                         : "Clear Selection (\(model.selectedNoteIds.count))",
                     systemImage: "xmark.circle.fill"
                 )
-                .foregroundColor(Theme.ivory.opacity(0.7))
+                .foregroundColor(Theme.text(colorScheme).opacity(0.7))
             }
             .buttonStyle(.plain)
             .disabled(model.notes.isEmpty && model.selectedNoteIds.isEmpty)
@@ -186,7 +193,7 @@ struct SequencerView: View {
         .font(Theme.toolbarFont)
         .padding(.horizontal)
         .frame(height: 32)
-        .background(Theme.dark)
+        .background(Theme.bg(colorScheme))
     }
     
     // MARK: - Transport Bar
@@ -602,6 +609,9 @@ struct NoteInspectorView: View {
         .padding(.horizontal)
         .frame(height: 70)
         .background(bg)
+        .overlay(alignment: .bottom) {
+            Theme.structuralDivider.opacity(0.25).frame(height: 1)
+        }
         .overlay(alignment: .topLeading) {
             // Callout arrow pointing up toward the note
             CalloutArrow()
