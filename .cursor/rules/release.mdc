@@ -1,0 +1,15 @@
+# Release & Distribution
+
+## Key Files
+- **`.release/DISTRIBUTION.md`** — Signing identity, notarization, and full release process (archive → export → notarize → staple → zip).
+- **`.release/TODO.md`** — Development punchlist, tech debt, and feature roadmap. Update after every significant change.
+
+## Release Process
+1. Bump version in Xcode project settings.
+2. Follow the "Quick Release" section in `.release/DISTRIBUTION.md`.
+3. Test the exported `.app` on a clean machine or separate user account.
+4. Upload `export/ChoirArranger.zip` to GitHub Releases.
+
+## Rules
+- `.release/` is gitignored (contains private signing info). Never commit it.
+- Always update `.release/TODO.md` when completing features or adding tech debt.
