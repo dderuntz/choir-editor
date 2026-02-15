@@ -11,6 +11,10 @@ struct VoiceData {
     var envelopeValue: Float
     var stateTime: Double
     var releaseLevel: Float
+    // Vibrato (pitch modulation)
+    var vibratoDepth: Float   // 0.0–1.0, from CC value (0–127)
+    var vibratoPhase: Double  // LFO phase
+    var noteTime: Double      // Total time since note-on (for ramp-in envelope)
 }
 
 // Enum mapping for readability (outside render block)
@@ -25,6 +29,7 @@ enum EnvelopeState: Int32 {
 class AudioMonitorService: ObservableObject {
     private var engine: AVAudioEngine?
     private var sourceNode: AVAudioSourceNode?
+    private var reverbNode: AVAudioUnitReverb?
     private var sampleRate: Double = 44100.0
     private var isSetUp = false
     
@@ -45,9 +50,15 @@ class AudioMonitorService: ObservableObject {
         voicesPointer = UnsafeMutablePointer<VoiceData>.allocate(capacity: maxVoices)
         // Initialize with empty data
         for i in 0..<maxVoices {
-            voicesPointer[i] = VoiceData(note: 0, phase: 0, isActive: false, envelopeState: 4, envelopeValue: 0, stateTime: 0, releaseLevel: 0)
+            voicesPointer[i] = VoiceData(note: 0, phase: 0, isActive: false, envelopeState: 4, envelopeValue: 0, stateTime: 0, releaseLevel: 0, vibratoDepth: 0, vibratoPhase: 0, noteTime: 0)
         }
-        // Audio engine is NOT started until needed
+        // Preload reverb preset on background thread so it's ready before first note
+        let reverb = AVAudioUnitReverb()
+        self.reverbNode = reverb
+        DispatchQueue.global(qos: .userInitiated).async {
+            reverb.loadFactoryPreset(.cathedral)
+            reverb.wetDryMix = 25
+        }
     }
     
     /// Call to ensure the audio engine is running (lazy setup)
@@ -59,10 +70,10 @@ class AudioMonitorService: ObservableObject {
     /// Tear down the engine when local audio is disabled
     func tearDown() {
         engine?.stop()
-        if let node = sourceNode {
-            engine?.detach(node)
-        }
+        if let node = sourceNode { engine?.detach(node) }
+        if let node = reverbNode { engine?.detach(node) }
         sourceNode = nil
+        reverbNode = nil
         engine = nil
         isSetUp = false
     }
@@ -85,43 +96,58 @@ class AudioMonitorService: ObservableObject {
         let decay = decayDuration
         let sustain = sustainLevel
         let release = releaseDuration
+        let sr = sampleRate
         
-        // Context for the block (optional, but we use captured vars)
+        // Vibrato constants
+        let vibratoRate = 4.5           // Hz — natural singing vibrato
+        let vibratoRampTime = 1.0       // seconds to reach full depth
+        let vibratoMaxSemitones = 0.5   // ±0.5 semitone at depth=1.0
+        
         sourceNode = AVAudioSourceNode { _, _, frameCount, audioBufferList -> OSStatus in
             
             let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
-            
-            // Note: We can't easily access `self.isMuted` safely without a lock or atomic. 
-            // For now, we'll calculate audio anyway and maybe silence it if we had a safe flag.
-            // Or just let it run.
-            
             let buffers = ablPointer
-            let sampleRate = 44100.0 // Hardcoded or passed in context? Best to assume standard or check context. 
-            // In a real app we'd pass sampleRate via context.
+            let dt = 1.0 / sr
             
             for frame in 0..<Int(frameCount) {
                 var sampleValue: Float = 0.0
                 
-                // Iterate all fixed voice slots
                 for i in 0..<maxV {
-                    // Use a mutable copy of the struct to update state
-                    // Direct pointer access
-                    
                     if voices[i].envelopeState == 4 { continue } // Finished
                     
-                    // 1. Oscillator (Square Wave)
-                    // Frequency formula: 440 * 2^((note-69)/12)
-                    let noteDiff = Double(voices[i].note) - 69.0
-                    let frequency = 440.0 * pow(2.0, noteDiff / 12.0)
-                    let increment = frequency / sampleRate
+                    // Track total note time (for vibrato ramp-in)
+                    voices[i].noteTime += dt
                     
+                    // 1. Base frequency
+                    let noteDiff = Double(voices[i].note) - 69.0
+                    let baseFreq = 440.0 * pow(2.0, noteDiff / 12.0)
+                    
+                    // 2. Vibrato (pitch modulation)
+                    var frequency = baseFreq
+                    if voices[i].vibratoDepth > 0 {
+                        // Ramp envelope: 0→1 over vibratoRampTime
+                        let ramp = min(voices[i].noteTime / vibratoRampTime, 1.0)
+                        
+                        // LFO: sine wave at vibratoRate Hz
+                        voices[i].vibratoPhase += vibratoRate * dt
+                        if voices[i].vibratoPhase >= 1.0 { voices[i].vibratoPhase -= 1.0 }
+                        let lfo = sin(voices[i].vibratoPhase * 2.0 * .pi)
+                        
+                        // Pitch deviation in semitones
+                        let depthSemitones = Double(voices[i].vibratoDepth) * vibratoMaxSemitones * ramp
+                        let pitchMod = depthSemitones * lfo / 12.0
+                        frequency = baseFreq * pow(2.0, pitchMod)
+                    }
+                    
+                    // 3. Triangle wave oscillator
+                    let increment = frequency / sr
                     voices[i].phase += increment
                     if voices[i].phase >= 1.0 { voices[i].phase -= 1.0 }
                     
-                    let oscillator: Float = voices[i].phase < 0.5 ? 1.0 : -1.0
+                    let oscillator: Float = Float(4.0 * abs(voices[i].phase - 0.5) - 1.0)
                     
-                    // 2. Envelope
-                    voices[i].stateTime += (1.0 / sampleRate)
+                    // 4. ADSR Envelope
+                    voices[i].stateTime += dt
                     
                     let state = EnvelopeState(rawValue: voices[i].envelopeState) ?? .finished
                     
@@ -162,7 +188,7 @@ class AudioMonitorService: ObservableObject {
                 }
                 
                 // Master volume / Polyphony scaling
-                sampleValue *= 0.1 
+                sampleValue *= 0.15
                 
                 for buffer in buffers {
                     let buf: UnsafeMutableBufferPointer<Float> = UnsafeMutableBufferPointer(buffer)
@@ -175,8 +201,17 @@ class AudioMonitorService: ObservableObject {
             return noErr
         }
         
+        // Reverb was pre-created and preset loaded in init()
+        let stereoFormat = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2)!
+        
         newEngine.attach(sourceNode!)
-        newEngine.connect(sourceNode!, to: newEngine.mainMixerNode, format: inputFormat)
+        if let reverb = reverbNode {
+            newEngine.attach(reverb)
+            newEngine.connect(sourceNode!, to: reverb, format: nil)
+            newEngine.connect(reverb, to: newEngine.mainMixerNode, format: stereoFormat)
+        } else {
+            newEngine.connect(sourceNode!, to: newEngine.mainMixerNode, format: nil)
+        }
         
         do {
             try newEngine.start()
@@ -186,12 +221,14 @@ class AudioMonitorService: ObservableObject {
         }
     }
     
-    func playNote(note: UInt8, velocity: UInt8 = 100) {
+    func playNote(note: UInt8, velocity: UInt8 = 100, vibrato: UInt8 = 64, reverb: UInt8 = 32) {
         if isMuted { return }
         ensureStarted()
         
+        // Map CC 0–127 → wet/dry 0–50% (keeps it musical, not drenched)
+        reverbNode?.wetDryMix = Float(reverb) / 127.0 * 50.0
+        
         // Find a free voice or steal one
-        // Simple linear search for now
         var voiceIndex = -1
         
         // 1. Try to find an inactive/finished voice
@@ -211,7 +248,10 @@ class AudioMonitorService: ObservableObject {
                 envelopeState: 0, // Attack
                 envelopeValue: 0.0,
                 stateTime: 0.0,
-                releaseLevel: 0.0
+                releaseLevel: 0.0,
+                vibratoDepth: Float(vibrato) / 127.0,
+                vibratoPhase: 0.0,
+                noteTime: 0.0
             )
         }
     }

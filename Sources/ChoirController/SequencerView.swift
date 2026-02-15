@@ -434,7 +434,7 @@ struct SequencerView: View {
             midiService.vibrato = note.vibrato
             midiService.reverb = note.reverb
             midiService.sendNoteOn(note: note.pitch, velocity: note.velocity)
-            if localAudioEnabled { audioMonitor.playNote(note: note.pitch, velocity: note.velocity) }
+            if localAudioEnabled { audioMonitor.playNote(note: note.pitch, velocity: note.velocity, vibrato: note.vibrato, reverb: note.reverb) }
             model.activeNoteIDs.insert(note.id)
         }
     }
@@ -466,7 +466,7 @@ struct SequencerView: View {
         midiService.vibrato = note.vibrato
         midiService.reverb = note.reverb
         midiService.sendNoteOn(note: pitch, velocity: note.velocity)
-        if localAudioEnabled { audioMonitor.playNote(note: pitch, velocity: note.velocity) }
+        if localAudioEnabled { audioMonitor.playNote(note: pitch, velocity: note.velocity, vibrato: note.vibrato, reverb: note.reverb) }
         
         print("🔊 play pitch=\(pitch) for \(String(format: "%.2f", durationSeconds))s")
         
