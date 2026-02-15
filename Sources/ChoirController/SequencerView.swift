@@ -52,12 +52,16 @@ struct SequencerView: View {
                 note: model.selectedNote ?? SequencerNote.placeholder,
                 arrowX: noteArrowX,
                 onUpdate: { updatedNote in
-                    model.updateNote(id: updatedNote.id) { note in
-                        note.consonant = updatedNote.consonant
-                        note.vowel = updatedNote.vowel
-                        note.velocity = updatedNote.velocity
-                        note.vibrato = updatedNote.vibrato
-                        note.reverb = updatedNote.reverb
+                    // Apply to all selected notes (group edit)
+                    let ids = model.selectedNoteIds.isEmpty ? [updatedNote.id] : model.selectedNoteIds
+                    for id in ids {
+                        model.updateNote(id: id) { note in
+                            note.consonant = updatedNote.consonant
+                            note.vowel = updatedNote.vowel
+                            note.velocity = updatedNote.velocity
+                            note.vibrato = updatedNote.vibrato
+                            note.reverb = updatedNote.reverb
+                        }
                     }
                 },
                 onPlay: { note in
@@ -111,8 +115,8 @@ struct SequencerView: View {
                 .labelsHidden()
                 .frame(width: 50)
                 .controlSize(.small)
-                .tint(Theme.text(colorScheme))
-                .accentColor(Theme.text(colorScheme))
+                .tint(Theme.text(colorScheme).opacity(0.7))
+                .accentColor(Theme.text(colorScheme).opacity(0.7))
                 
                 Picker("", selection: $model.scaleType) {
                     ForEach(ScaleType.allCases) { scale in
@@ -122,8 +126,8 @@ struct SequencerView: View {
                 .labelsHidden()
                 .frame(width: 110)
                 .controlSize(.small)
-                .tint(Theme.text(colorScheme))
-                .accentColor(Theme.text(colorScheme))
+                .tint(Theme.text(colorScheme).opacity(0.7))
+                .accentColor(Theme.text(colorScheme).opacity(0.7))
                 
                 Button(action: { withAnimation(.easeInOut(duration: 0.15)) { model.showScaleHelper = false } }) {
                     Text("Clear guide")
@@ -205,10 +209,11 @@ struct SequencerView: View {
                 Image(systemName: model.isPlaying ? "stop.fill" : "play.fill")
                     .font(.system(size: 14))
                     .foregroundColor(Theme.dark)
+                    .frame(width: PianoRollLayout.pianoKeyWidth, height: 32)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help(model.isPlaying ? "Stop" : "Play")
-            .frame(width: PianoRollLayout.pianoKeyWidth)
             
             Theme.structuralDivider.frame(width: 1)
             

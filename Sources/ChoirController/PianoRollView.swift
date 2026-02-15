@@ -202,10 +202,44 @@ struct PianoRollView: View {
             // 4. Notes on top
             notesLayer
             
-            // 5. Playhead line (green, full height)
+            // 5. Scale hatch overlay (sits above notes, passes through clicks)
+            if model.showScaleHelper {
+                scaleHatchOverlay
+                    .allowsHitTesting(false)
+            }
+            
+            // 6. Playhead line (green, full height)
             playheadLine
         }
         .coordinateSpace(name: "pianoGrid")
+    }
+    
+    // MARK: - Scale Hatch Overlay (above notes)
+    
+    private var scaleHatchOverlay: some View {
+        VStack(spacing: 0) {
+            ForEach((Int(PitchConstants.minPitch)...Int(PitchConstants.maxPitch)).reversed(), id: \.self) { pitch in
+                let p = UInt8(pitch)
+                let outOfScale = !(model.isInScale(p))
+                
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(height: PianoRollLayout.rowHeight)
+                    .overlay {
+                        if outOfScale {
+                                HatchShape(spacing: 6)
+                                    .stroke(hatchColor, lineWidth: 0.5)
+                                    .clipped()
+                            }
+                        }
+            }
+        }
+    }
+    
+    private var hatchColor: Color {
+        colorScheme == .dark
+            ? Color(red: 0x67/255, green: 0x68/255, blue: 0x5F/255).opacity(0.8)
+            : Theme.field.opacity(0.6)
     }
     
     // MARK: - Playhead Line
@@ -274,6 +308,15 @@ struct PianoRollView: View {
                 onResize: { newDuration in
                     model.resizeNote(id: note.id, duration: newDuration)
                 },
+                onDuplicate: {
+                    model.duplicateNote(id: note.id)?.id
+                },
+                onDuplicateMove: { dupId, newBeat, newPitch in
+                    model.moveNote(id: dupId, toBeat: newBeat, pitch: newPitch)
+                },
+                onCancelDuplicate: { dupId in
+                    model.deleteNote(id: dupId)
+                },
                 onGroupDragChanged: { offset in
                     groupDragOffset = offset
                 },
@@ -320,6 +363,12 @@ struct PianoRollGridBackground: View {
     var isInScale: ((UInt8) -> Bool)? = nil
     @Environment(\.colorScheme) private var colorScheme
     
+    private var hatchColor: Color {
+        colorScheme == .dark
+            ? Color(red: 0x67/255, green: 0x68/255, blue: 0x5F/255).opacity(0.8)
+            : Theme.field.opacity(0.6)
+    }
+    
     var body: some View {
         ZStack {
             // Base field color
@@ -333,12 +382,15 @@ struct PianoRollGridBackground: View {
                     let outOfScale = showScaleHelper && !(isInScale?(p) ?? true)
                     
                     Rectangle()
-                        .fill(
-                            outOfScale
-                                ? Theme.outOfScale(colorScheme, isBlackKey: isBlack)
-                                : (isBlack ? Theme.blackKeyRow : Color.clear)
-                        )
+                        .fill(isBlack ? Theme.blackKeyRow : Color.clear)
                         .frame(height: PianoRollLayout.rowHeight)
+                        .overlay {
+                            if outOfScale {
+                                HatchShape(spacing: 6)
+                                    .stroke(hatchColor, lineWidth: 0.5)
+                                    .clipped()
+                            }
+                        }
                 }
             }
             
@@ -354,6 +406,30 @@ struct PianoRollGridBackground: View {
             BarGridShape(totalBeats: totalBeats)
                 .stroke(Theme.gridBar, lineWidth: 0.5)
         }
+    }
+}
+
+// MARK: - Crosshatch Pattern
+
+/// Diagonal hatch pattern for out-of-scale rows (↗ direction).
+struct HatchShape: Shape {
+    var spacing: CGFloat = 6
+    
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let d = spacing
+        let w = rect.width
+        let h = rect.height
+        
+        // ↗ lines (bottom-left to top-right)
+        var offset: CGFloat = -h
+        while offset < w + h {
+            path.move(to: CGPoint(x: offset, y: h))
+            path.addLine(to: CGPoint(x: offset + h, y: 0))
+            offset += d
+        }
+        
+        return path
     }
 }
 
@@ -426,6 +502,9 @@ struct NoteRectView: View, @preconcurrency Equatable {
     var onShiftSelect: () -> Void
     var onMove: (Double, UInt8) -> Void
     var onResize: (Double) -> Void
+    var onDuplicate: (() -> UUID?)?
+    var onDuplicateMove: ((UUID, Double, UInt8) -> Void)?
+    var onCancelDuplicate: ((UUID) -> Void)?
     var onGroupDragChanged: ((CGSize) -> Void)?
     var onGroupMoveEnded: ((Double, Int) -> Void)?
     
@@ -440,6 +519,8 @@ struct NoteRectView: View, @preconcurrency Equatable {
     @State private var dragOffset = CGSize.zero
     @State private var resizeOffset: CGFloat = 0
     @State private var hasFiredDragStart = false
+    @State private var didDuplicate = false
+    @State private var duplicatedNoteId: UUID?
     
     /// Effective visual offset: group offset for multi-select, own offset otherwise
     private var effectiveOffset: CGSize {
@@ -480,7 +561,9 @@ struct NoteRectView: View, @preconcurrency Equatable {
                 .overlay(
                     RoundedRectangle(cornerRadius: 3)
                         .stroke(
-                            (isSelected || isInMultiSelect) ? Theme.accent : noteColor.opacity(0.5),
+                            (isSelected || isInMultiSelect)
+                                ? Theme.accent
+                                : (PitchConstants.isBlackKey(note.pitch) ? noteColor.opacity(0.5) : Theme.dark.opacity(0.5)),
                             lineWidth: (isSelected || isInMultiSelect) ? 2 : 0.5
                         )
                 )
@@ -555,6 +638,12 @@ struct NoteRectView: View, @preconcurrency Equatable {
                 let dist = sqrt(value.translation.width * value.translation.width + value.translation.height * value.translation.height)
                 guard dist > 4 else { return }
                 
+                // Alt-drag: duplicate note on first real drag movement
+                if !didDuplicate && NSEvent.modifierFlags.contains(.option) {
+                    didDuplicate = true
+                    duplicatedNoteId = onDuplicate?()
+                }
+                
                 // Use isInMultiSelect (updated by SwiftUI after selection change)
                 if isInMultiSelect {
                     onGroupDragChanged?(value.translation)
@@ -565,10 +654,21 @@ struct NoteRectView: View, @preconcurrency Equatable {
             .onEnded { value in
                 let dist = sqrt(value.translation.width * value.translation.width + value.translation.height * value.translation.height)
                 
-                if dist > 4 {
-                    let beatDelta = PianoRollLayout.beatForX(value.translation.width)
-                    let pitchDelta = -Int(round(value.translation.height / PianoRollLayout.rowHeight))
-                    
+                let beatDelta = PianoRollLayout.beatForX(value.translation.width)
+                let pitchDelta = -Int(round(value.translation.height / PianoRollLayout.rowHeight))
+                let landedOnOriginal = (beatDelta == 0 && pitchDelta == 0) || dist <= 4
+                
+                if let dupId = duplicatedNoteId {
+                    if landedOnOriginal {
+                        // Dragged back to original position — discard the copy
+                        onCancelDuplicate?(dupId)
+                    } else {
+                        let newBeat = max(0, note.startBeat + beatDelta)
+                        let rawPitch = Int(note.pitch) + pitchDelta
+                        let newPitch = PitchConstants.clampPitch(UInt8(clamping: max(0, rawPitch)))
+                        onDuplicateMove?(dupId, newBeat, newPitch)
+                    }
+                } else if dist > 4 {
                     if isInMultiSelect {
                         onGroupMoveEnded?(beatDelta, pitchDelta)
                     } else {
@@ -582,6 +682,8 @@ struct NoteRectView: View, @preconcurrency Equatable {
                 dragOffset = .zero
                 onGroupDragChanged?(.zero)
                 hasFiredDragStart = false
+                didDuplicate = false
+                duplicatedNoteId = nil
             }
     }
     
