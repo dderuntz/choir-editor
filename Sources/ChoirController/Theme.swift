@@ -14,23 +14,18 @@ enum Theme {
     static let console = Color(red: 0x1A/255, green: 0x1A/255, blue: 0x1A/255)  // near-black
     static let green = Color(red: 0x00/255, green: 0x87/255, blue: 0x38/255)    // #008738
     
-    // MARK: Playhead & Transport
-    
-    static let playhead = accent
-    
     // MARK: Grid
     
     static let gridOverflow = Color(red: 0x67/255.0, green: 0x68/255.0, blue: 0x5F/255.0)       // #67685F — grid past-bars area
-    static let transportOverflow = Color(red: 0x9F/255.0, green: 0x91/255.0, blue: 0x22/255.0) // #9F9122 — transport past-bars area
     static let gridLine = Color.black.opacity(0.15)
     static let gridBar = Color.black.opacity(0.35)       // bar boundaries & piano key column
     static let gridSubdivision = Color.black.opacity(0.08)
     // Pre-blended: field (#8A8C7F) darkened ~12% toward black
     static let fieldBorder = Color(red: 0x7A/255.0, green: 0x7C/255.0, blue: 0x70/255.0)
+    /// Opaque structural divider — piano key column, transport internal
+    static let structuralDivider = Color(red: 0x72/255.0, green: 0x73/255.0, blue: 0x69/255.0) // #727369
     
-    static func blackKeyRow(_ scheme: ColorScheme) -> Color {
-        Color.black.opacity(0.06)
-    }
+    static let blackKeyRow = Color.black.opacity(0.06)
     
     static func outOfScale(_ scheme: ColorScheme, isBlackKey: Bool) -> Color {
         let base: Double = 0.08
@@ -49,27 +44,21 @@ enum Theme {
         PitchConstants.isBlackKey(pitch) ? ivory : dark
     }
     
-    static let noteStroke = Color.white
-    
     // MARK: Status Indicators
     
     static let statusConnected = green
     static let statusWarning = Color.orange
     static let middleC = accent
     
-    // MARK: Surfaces (auto-adapt via NSColor)
+    // MARK: Surfaces
     
-    static let surface = Color(NSColor.controlBackgroundColor)
-    static let window = Color(NSColor.windowBackgroundColor)
+    static let surface = dark
+    static let window = dark
     
     // MARK: Overlays & Shadows
     
     static func overlay(_ scheme: ColorScheme) -> Color {
         Color.black.opacity(scheme == .dark ? 0.3 : 0.1)
-    }
-    
-    static func keyboardShadow(_ scheme: ColorScheme) -> Color {
-        Color.black.opacity(scheme == .dark ? 0.4 : 0.12)
     }
     
     // MARK: Keyboard Keys
@@ -89,12 +78,14 @@ enum Theme {
     // MARK: Typography
     
     static let labelSmall: Font = .caption2
-    static let label: Font = .caption
     
     // MARK: Toolbar Icons
     
-    static let toolbarActive = Color.white.opacity(0.85)
-    static let toolbarInactive = Color.secondary
+    static let toolbarActive = ivory.opacity(0.85)
+    static let toolbarInactive = ivory.opacity(0.4)
+    
+    /// Dimmed text for section headers, secondary labels
+    static let textSecondary = ivory.opacity(0.5)
     
     // MARK: Toolbar
     
@@ -119,6 +110,5 @@ enum Theme {
     static let explorerText = ivory
     static let explorerHeader = dark
     static let explorerField = field
-    static let explorerConsole = console
     static let explorerGridBorder = divider
 }

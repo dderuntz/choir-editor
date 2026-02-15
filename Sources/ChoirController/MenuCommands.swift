@@ -48,7 +48,7 @@ struct FileCommands: Commands {
                 let recents = SequencerModel.recentFileURLs()
                 if recents.isEmpty {
                     Text("No Recent Files")
-                        .foregroundColor(.secondary)
+                        .foregroundColor(Theme.textSecondary)
                 } else {
                     ForEach(recents, id: \.path) { url in
                         Button(url.deletingPathExtension().lastPathComponent) {

@@ -41,7 +41,7 @@ struct SliderWithDefault: View {
             let fraction = (defaultValue - range.lowerBound) / (range.upperBound - range.lowerBound)
             let x = trackInset + trackWidth * CGFloat(fraction)
             Circle()
-                .fill(Color.white.opacity(nearDefault ? 0 : 0.35))
+                .fill(Theme.ivory.opacity(nearDefault ? 0 : 0.35))
                 .frame(width: 6, height: 6)
                 .position(x: x, y: geo.size.height / 2)
                 .allowsHitTesting(false)

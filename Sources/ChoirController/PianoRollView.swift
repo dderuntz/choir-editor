@@ -129,7 +129,6 @@ struct PianoRollView: View {
     @ObservedObject var model: SequencerModel
     var onNotePreview: ((SequencerNote) -> Void)?
     var scrollSync: ScrollSyncManager? = nil
-    @Environment(\.colorScheme) private var colorScheme
     
     // Shared group drag offset for multi-select move
     @State private var groupDragOffset: CGSize = .zero
@@ -143,7 +142,7 @@ struct PianoRollView: View {
                     pianoKeys
                         .frame(width: PianoRollLayout.pianoKeyWidth)
                     
-                    Color(red: 0x72/255.0, green: 0x73/255.0, blue: 0x69/255.0).frame(width: 1)
+                    Theme.structuralDivider.frame(width: 1)
                     
                     // Grid area: horizontal scroll only
                     ScrollView(.horizontal) {
@@ -185,7 +184,7 @@ struct PianoRollView: View {
             // 2. Keyboard highlight row
             if let pitch = model.highlightedPitch {
                 Rectangle()
-                    .fill(Color.accentColor.opacity(0.15))
+                    .fill(Theme.accent.opacity(0.15))
                     .frame(
                         width: PianoRollLayout.gridWidth(beats: model.totalBeats),
                         height: PianoRollLayout.rowHeight
@@ -236,7 +235,7 @@ struct PianoRollView: View {
                 .frame(height: PianoRollLayout.rowHeight)
                 .background(
                     PitchConstants.isBlackKey(p)
-                        ? Theme.blackKeyRow(colorScheme)
+                        ? Theme.blackKeyRow
                         : Color.clear
                 )
                 .id(pitch)
@@ -335,7 +334,7 @@ struct PianoRollGridBackground: View {
                         .fill(
                             outOfScale
                                 ? Theme.outOfScale(colorScheme, isBlackKey: isBlack)
-                                : (isBlack ? Theme.blackKeyRow(colorScheme) : Color.clear)
+                                : (isBlack ? Theme.blackKeyRow : Color.clear)
                         )
                         .frame(height: PianoRollLayout.rowHeight)
                 }
@@ -363,16 +362,7 @@ struct BeatGridShape: Shape {
     
     func path(in rect: CGRect) -> Path {
         var path = Path()
-        let rows = PitchConstants.pitchCount
-        let rh = PianoRollLayout.rowHeight
         let bw = PianoRollLayout.beatWidth
-        
-        // Horizontal lines (row boundaries) — disabled for now
-        // for row in 0...rows {
-        //     let y = CGFloat(row) * rh
-        //     path.move(to: CGPoint(x: 0, y: y))
-        //     path.addLine(to: CGPoint(x: rect.width, y: y))
-        // }
         
         // Vertical beat lines
         for beat in 0...totalBeats {
@@ -436,7 +426,6 @@ struct NoteRectView: View, @preconcurrency Equatable {
     var onResize: (Double) -> Void
     var onGroupDragChanged: ((CGSize) -> Void)?
     var onGroupMoveEnded: ((Double, Int) -> Void)?
-    @Environment(\.colorScheme) private var colorScheme
     
     static func == (lhs: NoteRectView, rhs: NoteRectView) -> Bool {
         lhs.note == rhs.note &&

@@ -207,7 +207,7 @@ struct SoundPadView: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 20)
-            .background(Theme.explorerConsole)
+            .background(Theme.console)
         }
         .onDisappear {
             stopSweep()
@@ -261,16 +261,16 @@ struct SoundPadView: View {
                 }
             }
             .font(.system(size: 12, weight: isSelected ? .bold : .regular))
-            .foregroundColor(Theme.explorerText)
+            .foregroundColor(isSelected ? Theme.dark : Theme.explorerText)
             if let sub = item.subtitle {
                 Text(sub)
                     .font(.system(size: 8))
-                    .foregroundColor(Theme.explorerText.opacity(0.5))
+                    .foregroundColor(isSelected ? Theme.dark.opacity(0.5) : Theme.explorerText.opacity(0.5))
             }
         }
         .frame(maxWidth: .infinity)
         .frame(height: 40)
-        .background(isSelected ? Theme.accent.opacity(0.35) : Color.clear)
+        .background(isSelected ? Theme.accent : Color.clear)
         .border(width: [.trailing, .bottom], color: Theme.explorerGridBorder)
         .contentShape(Rectangle())
         .gesture(
@@ -315,7 +315,7 @@ struct SoundPadView: View {
             Text(label)
                 .font(Theme.buttonFont)
                 .fontWeight(Theme.buttonWeight)
-                .foregroundColor(accent ? .black : Theme.toolbarActive)
+                .foregroundColor(accent ? Theme.dark : Theme.toolbarActive)
                 .padding(.horizontal, Theme.buttonPaddingH)
                 .padding(.vertical, Theme.buttonPaddingV)
                 .background(accent ? Theme.accent : Color.clear)
