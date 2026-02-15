@@ -45,7 +45,7 @@ struct ContentView: View {
                             Image(systemName: "chevron.down")
                                 .font(.system(size: 8, weight: .bold))
                         }
-                        .foregroundColor(isSaving ? Theme.accent : Theme.toolbarActive)
+                        .foregroundColor(isSaving ? Theme.accent : Theme.text(colorScheme).opacity(0.85))
                     }
                     .buttonStyle(.plain)
                     .help("File")
@@ -75,12 +75,12 @@ struct ContentView: View {
                             Text("Done")
                                 .font(Theme.buttonFont)
                                 .fontWeight(Theme.buttonWeight)
-                                .foregroundColor(Theme.toolbarActive)
+                                .foregroundColor(Theme.text(colorScheme).opacity(0.85))
                                 .padding(.horizontal, Theme.buttonPaddingH)
                                 .padding(.vertical, Theme.buttonPaddingV)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: Theme.buttonRadius)
-                                        .stroke(Theme.toolbarActive, lineWidth: Theme.buttonStroke)
+                                        .stroke(Theme.text(colorScheme).opacity(0.85), lineWidth: Theme.buttonStroke)
                                 )
                         }
                         .buttonStyle(.plain)
@@ -92,7 +92,7 @@ struct ContentView: View {
                     Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showSettings.toggle() } }) {
                         Image(systemName: "gearshape")
                             .font(.title2)
-                            .foregroundColor(showSettings ? Theme.accent : Theme.toolbarInactive)
+                            .foregroundColor(showSettings ? Theme.accent : Theme.text(colorScheme).opacity(0.4))
                     }
                     .buttonStyle(.plain)
                     .help("Settings")
@@ -101,7 +101,7 @@ struct ContentView: View {
                     Button(action: { showSoundPad = true }) {
                         Image(systemName: "tuningfork")
                             .font(.title2)
-                            .foregroundColor(showSoundPad ? Theme.accent : Theme.toolbarInactive)
+                            .foregroundColor(showSoundPad ? Theme.accent : Theme.text(colorScheme).opacity(0.4))
                     }
                     .buttonStyle(.plain)
                     .help("Choir Explorer")
@@ -110,7 +110,7 @@ struct ContentView: View {
                     Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showKeyboard.toggle(); showKeyboardStorage = showKeyboard } }) {
                         Image(systemName: "pianokeys")
                             .font(.title2)
-                            .foregroundColor(showKeyboard ? Theme.toolbarActive : Theme.toolbarInactive)
+                            .foregroundColor(showKeyboard ? Theme.text(colorScheme).opacity(0.85) : Theme.text(colorScheme).opacity(0.4))
                     }
                     .buttonStyle(.plain)
                     .help("Toggle Keyboard")
@@ -125,9 +125,9 @@ struct ContentView: View {
                 .padding(.horizontal)
                 .padding(.bottom, 12)
                 .background(WindowDragArea())
-                .background(Theme.toolbar)
+                .background(Theme.bg(colorScheme))
                 
-                Theme.divider.frame(height: 1)
+                Theme.bg(colorScheme).opacity(0.15).frame(height: 1)
                 
                 // Sequencer fills available space, keyboard is collapsible pane below
                 ZStack(alignment: .bottom) {
@@ -138,23 +138,23 @@ struct ContentView: View {
                     if showKeyboard {
                         KeyboardView(midiService: midiService, audioMonitor: audioMonitor)
                             .frame(height: 150)
-                            .background(Theme.window)
-                            .overlay(alignment: .top) {
-                                // Inner shadow at top edge
-                                LinearGradient(
-                                    colors: [Color.black.opacity(0.2), Color.black.opacity(0.07), Color.black.opacity(0)],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                                .frame(height: 28)
-                                .allowsHitTesting(false)
-                            }
+                            .background(Theme.bg(colorScheme))
+                            // .overlay(alignment: .top) {
+                            //     // Inner shadow at top edge
+                            //     LinearGradient(
+                            //         colors: [Color.black.opacity(0.2), Color.black.opacity(0.07), Color.black.opacity(0)],
+                            //         startPoint: .top,
+                            //         endPoint: .bottom
+                            //     )
+                            //     .frame(height: 28)
+                            //     .allowsHitTesting(false)
+                            // }
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .background(Theme.window)
+            .background(Theme.bg(colorScheme))
             .onTapGesture {
                 if isTitleFocused { isTitleFocused = false }
             }
@@ -164,7 +164,7 @@ struct ContentView: View {
                 HStack(spacing: 0) {
                     SettingsPanelView(midiService: midiService, showSettings: $showSettings)
                         .frame(width: 280)
-                        .background(Theme.surface)
+                        .background(Theme.bg(colorScheme))
                         .transition(.move(edge: .leading))
                     
                     // Dimmed overlay to close

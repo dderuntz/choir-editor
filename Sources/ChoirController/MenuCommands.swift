@@ -48,7 +48,7 @@ struct FileCommands: Commands {
                 let recents = SequencerModel.recentFileURLs()
                 if recents.isEmpty {
                     Text("No Recent Files")
-                        .foregroundColor(Theme.textSecondary)
+                        .foregroundColor(.secondary)
                 } else {
                     ForEach(recents, id: \.path) { url in
                         Button(url.deletingPathExtension().lastPathComponent) {
@@ -128,17 +128,9 @@ struct ViewCommands: Commands {
             
             Divider()
             
-            Menu("Appearance") {
+            Picker("Appearance", selection: $appearanceMode) {
                 ForEach(AppearanceMode.allCases, id: \.self) { mode in
-                    Button {
-                        appearanceMode = mode
-                    } label: {
-                        if appearanceMode == mode {
-                            Label(mode.label, systemImage: "checkmark")
-                        } else {
-                            Text(mode.label)
-                        }
-                    }
+                    Text(mode.label).tag(mode)
                 }
             }
         }

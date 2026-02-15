@@ -129,6 +129,7 @@ struct PianoRollView: View {
     @ObservedObject var model: SequencerModel
     var onNotePreview: ((SequencerNote) -> Void)?
     var scrollSync: ScrollSyncManager? = nil
+    @Environment(\.colorScheme) private var colorScheme
     
     // Shared group drag offset for multi-select move
     @State private var groupDragOffset: CGSize = .zero
@@ -157,9 +158,10 @@ struct PianoRollView: View {
                                 }
                             }
                     }
-                    .background(Theme.gridOverflow)
+                    .background(Theme.fieldColor(colorScheme))
                 }
             }
+            .background(Theme.fieldColor(colorScheme))
             .onChange(of: model.highlightedPitch) { pitch in
                 if let pitch = pitch {
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -228,7 +230,7 @@ struct PianoRollView: View {
                     Spacer()
                     Text(PitchConstants.noteName(for: p))
                         .font(.system(size: 9, design: .monospaced))
-                        .foregroundColor(p == 60 ? Theme.middleC : Theme.ivory)
+                        .foregroundColor(p == 60 ? Theme.middleC : Theme.text(colorScheme))
                         .lineLimit(1)
                     Spacer(minLength: 4)
                 }
@@ -241,7 +243,7 @@ struct PianoRollView: View {
                 .id(pitch)
             }
         }
-        .background(Theme.field)
+        .background(Theme.fieldColor(colorScheme))
     }
     
     // MARK: - Notes Layer
@@ -321,7 +323,7 @@ struct PianoRollGridBackground: View {
     var body: some View {
         ZStack {
             // Base field color
-            Theme.field
+            Theme.fieldColor(colorScheme)
             
             // Row shading for black keys + scale helper
             VStack(spacing: 0) {

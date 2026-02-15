@@ -5,6 +5,7 @@ import AppKit
 struct SoundPadView: View {
     @ObservedObject var midiService: MidiService
     @Binding var isPresented: Bool
+    @Environment(\.colorScheme) private var colorScheme
     
     @State private var selectedConsonant: UInt8 = 125  // None
     @State private var selectedVowel: UInt8 = 16       // ai (buy)
@@ -26,7 +27,7 @@ struct SoundPadView: View {
     @State private var pitchBendValue: Double = 0
     
     // Packet log
-    @State private var lastPacketLog: String = "Ready"
+    @State private var lastPacketLog: String = "READY"
     
     // Musical pattern for sweeps
     let sweepPattern: [UInt8] = [
@@ -38,14 +39,19 @@ struct SoundPadView: View {
         testNote != 60 || testVelocity != 100 || pitchBendValue != 0
     }
     
+    /// Scheme-aware text color for the explorer (swaps ivory/dark)
+    private var txt: Color { Theme.text(colorScheme) }
+    /// Scheme-aware dimmed text
+    private var txtDim: Color { txt.opacity(0.6) }
+    
     var body: some View {
         VStack(spacing: 0) {
-            // MARK: Header bar (#323232)
+            // MARK: Header bar
             HStack {
                 Text("Explorer")
                     .font(.system(size: 56, weight: .ultraLight))
                     .kerning(-1.4)
-                    .foregroundColor(Theme.explorerText)
+                    .foregroundColor(txt)
                 Spacer()
                 if hasModifiedDefaults {
                     pillButton("Reset") {
@@ -64,17 +70,17 @@ struct SoundPadView: View {
                     Text("Done")
                         .font(Theme.buttonFont)
                         .fontWeight(Theme.buttonWeight)
-                        .foregroundColor(Theme.dark)
+                        .foregroundColor(Theme.bg(colorScheme))
                         .padding(.horizontal, Theme.buttonPaddingH)
                         .padding(.vertical, Theme.buttonPaddingV)
-                        .background(Theme.ivory)
+                        .background(txt)
                         .cornerRadius(Theme.buttonRadius)
                 }
                 .buttonStyle(.plain)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 20)
-            .background(Theme.explorerHeader)
+            .background(Theme.bg(colorScheme))
             
             // MARK: Field area (green-gray)
             VStack(spacing: 0) {
@@ -84,7 +90,7 @@ struct SoundPadView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         Text("Consonants")
                             .font(.caption)
-                            .foregroundColor(Theme.explorerText.opacity(0.6))
+                            .foregroundColor(txtDim)
                             .padding(.bottom, 12)
                         
                         phonemeGrid(items: Consonant.all.map { PhonemeItem(id: $0.id, label: $0.name, subtitle: "\($0.ccValue)", ccValue: $0.ccValue) },
@@ -101,7 +107,7 @@ struct SoundPadView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         Text("Vowels")
                             .font(.caption)
-                            .foregroundColor(Theme.explorerText.opacity(0.6))
+                            .foregroundColor(txtDim)
                             .padding(.bottom, 12)
                         
                         phonemeGrid(items: Vowel.all.map { PhonemeItem(id: $0.id, label: $0.symbol, subtitle: String($0.example.prefix(4)), ccValue: $0.ccValue) },
@@ -133,7 +139,7 @@ struct SoundPadView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Text("CC Discovery")
                         .font(.caption)
-                        .foregroundColor(Theme.explorerText.opacity(0.6))
+                        .foregroundColor(txtDim)
                         .textCase(.uppercase)
                         .padding(.bottom, 12)
                     
@@ -189,17 +195,16 @@ struct SoundPadView: View {
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 20)
-            .background(Theme.explorerField)
+            .background(Theme.fieldColor(colorScheme))
             
-            // MARK: Console readout (black bar)
+            // MARK: Console readout (black bar — stays black)
             HStack(spacing: 0) {
                 Text("SEND →")
                     .font(.system(size: 11, design: .monospaced))
-                    .fontWeight(.bold)
-                    .foregroundColor(Theme.explorerText)
+                    .foregroundColor(Theme.field)
                 Text("  C:\(selectedConsonant)  V:\(selectedVowel)")
                     .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(Theme.explorerText)
+                    .foregroundColor(Theme.ivory)
                 Spacer()
                 Text(lastPacketLog)
                     .font(.system(size: 11, design: .monospaced))
@@ -261,11 +266,11 @@ struct SoundPadView: View {
                 }
             }
             .font(.system(size: 12, weight: isSelected ? .bold : .regular))
-            .foregroundColor(isSelected ? Theme.dark : Theme.explorerText)
+            .foregroundColor(isSelected ? Theme.dark : txt)
             if let sub = item.subtitle {
                 Text(sub)
                     .font(.system(size: 8))
-                    .foregroundColor(isSelected ? Theme.dark.opacity(0.5) : Theme.explorerText.opacity(0.5))
+                    .foregroundColor(isSelected ? Theme.dark.opacity(0.5) : txt.opacity(0.5))
             }
         }
         .frame(maxWidth: .infinity)
@@ -293,18 +298,18 @@ struct SoundPadView: View {
             HStack(spacing: 4) {
                 Text(label)
                     .font(.caption)
-                    .foregroundColor(Theme.explorerText.opacity(0.6))
+                    .foregroundColor(txtDim)
                 Text(display)
                     .font(.caption)
                     .fontWeight(.medium)
-                    .foregroundColor(Theme.explorerText)
+                    .foregroundColor(txt)
                     .monospacedDigit()
             }
             .frame(minWidth: 80, alignment: .leading)
             
             Slider(value: value, in: range)
-                .tint(Theme.explorerHeader)
-                .accentColor(Theme.explorerHeader)
+                .tint(Theme.bg(colorScheme))
+                .accentColor(Theme.bg(colorScheme))
         }
     }
     
@@ -315,13 +320,13 @@ struct SoundPadView: View {
             Text(label)
                 .font(Theme.buttonFont)
                 .fontWeight(Theme.buttonWeight)
-                .foregroundColor(accent ? Theme.dark : Theme.toolbarActive)
+                .foregroundColor(accent ? Theme.dark : txt.opacity(0.85))
                 .padding(.horizontal, Theme.buttonPaddingH)
                 .padding(.vertical, Theme.buttonPaddingV)
                 .background(accent ? Theme.accent : Color.clear)
                 .overlay(
                     RoundedRectangle(cornerRadius: Theme.buttonRadius)
-                        .stroke(accent ? Color.clear : Theme.toolbarActive, lineWidth: Theme.buttonStroke)
+                        .stroke(accent ? Color.clear : txt.opacity(0.85), lineWidth: Theme.buttonStroke)
                 )
                 .cornerRadius(Theme.buttonRadius)
         }
@@ -336,7 +341,7 @@ struct SoundPadView: View {
         HStack(spacing: 4) {
             Text(label)
                 .font(.caption)
-                .foregroundColor(Theme.explorerText.opacity(0.6))
+                .foregroundColor(txtDim)
                 .frame(minWidth: 80, alignment: .leading)
             
             Picker("", selection: selection) {
@@ -380,8 +385,8 @@ struct SoundPadView: View {
                 }
             }
             .labelsHidden()
-            .tint(Theme.explorerText)
-            .accentColor(Theme.explorerText)
+            .tint(txt)
+            .accentColor(txt)
         }
     }
     

@@ -9,6 +9,7 @@ struct SliderWithDefault: View {
     let displayText: String
     var displayWidth: CGFloat = 30
     var snap: ((Double) -> Double)? = nil
+    @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
         HStack {
@@ -16,8 +17,8 @@ struct SliderWithDefault: View {
                 .font(Theme.toolbarFont)
                 .frame(width: 80, alignment: .leading)
             Slider(value: $value, in: range)
-                .tint(Theme.ivory)
-                .accentColor(Theme.ivory)
+                .tint(Theme.text(colorScheme))
+                .accentColor(Theme.text(colorScheme))
                 .onChange(of: value) { val in
                     if let snap = snap { value = snap(val) }
                 }
@@ -41,7 +42,7 @@ struct SliderWithDefault: View {
             let fraction = (defaultValue - range.lowerBound) / (range.upperBound - range.lowerBound)
             let x = trackInset + trackWidth * CGFloat(fraction)
             Circle()
-                .fill(Theme.ivory.opacity(nearDefault ? 0 : 0.35))
+                .fill(Theme.text(colorScheme).opacity(nearDefault ? 0 : 0.35))
                 .frame(width: 6, height: 6)
                 .position(x: x, y: geo.size.height / 2)
                 .allowsHitTesting(false)
