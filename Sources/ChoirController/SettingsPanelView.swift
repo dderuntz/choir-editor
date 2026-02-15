@@ -11,9 +11,15 @@ struct SettingsPanelView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Header — lines up with doc title (same horizontal padding)
             HStack {
-                Text("Setup")
-                    .font(.system(size: 56, weight: .ultraLight))
-                    .kerning(-1.4)
+                HStack(alignment: .top, spacing: 2) {
+                    Text("Setup")
+                        .font(.system(size: 56, weight: .ultraLight))
+                        .kerning(-1.4)
+                    Image(systemName: "nose")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(Theme.text(colorScheme))
+                        .offset(x: 2, y: 11)
+                }
                 Spacer()
                 Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showSettings = false } }) {
                     Image(systemName: "xmark")
