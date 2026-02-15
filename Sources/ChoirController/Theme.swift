@@ -40,11 +40,6 @@ enum Theme {
     
     static let blackKeyRow = Color.black.opacity(0.06)
     
-    static func outOfScale(_ scheme: ColorScheme, isBlackKey: Bool) -> Color {
-        let base: Double = 0.08
-        return Color.red.opacity(isBlackKey ? base * 2 : base)
-    }
-    
     // MARK: Notes
     
     /// Note color based on pitch: ivory for white keys, dark for black keys

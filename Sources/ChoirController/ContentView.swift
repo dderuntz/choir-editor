@@ -15,6 +15,21 @@ struct WindowDragArea: NSViewRepresentable {
     }
 }
 
+/// Blocks window dragging in this area (used with isMovableByWindowBackground).
+struct NonDraggableArea: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NonDraggableView()
+        view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        view.setContentHuggingPriority(.defaultLow, for: .vertical)
+        return view
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+    
+    private class NonDraggableView: NSView {
+        override var mouseDownCanMoveWindow: Bool { false }
+    }
+}
+
 struct ContentView: View {
     @EnvironmentObject var bluetoothManager: BluetoothMidiManager
     @EnvironmentObject var model: SequencerModel
@@ -124,7 +139,6 @@ struct ContentView: View {
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 12)
-                .background(WindowDragArea())
                 .background(Theme.bg(colorScheme))
                 
                 Theme.bg(colorScheme).opacity(0.15).frame(height: 1)
@@ -133,11 +147,13 @@ struct ContentView: View {
                 ZStack(alignment: .bottom) {
                     SequencerView(midiService: midiService, audioMonitor: audioMonitor)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(NonDraggableArea())
                         .padding(.bottom, showKeyboard ? 150 : 0)
                     
                     if showKeyboard {
                         KeyboardView(midiService: midiService, audioMonitor: audioMonitor)
                             .frame(height: 150)
+                            .background(NonDraggableArea())
                             .background(Theme.bg(colorScheme))
                             // .overlay(alignment: .top) {
                             //     // Inner shadow at top edge

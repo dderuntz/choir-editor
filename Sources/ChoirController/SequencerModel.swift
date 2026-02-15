@@ -198,6 +198,11 @@ class SequencerModel: ObservableObject {
                 guard let index = notes.firstIndex(where: { $0.id == id }) else { continue }
                 inheritPhoneme(into: &notes[index])
             }
+            // Remove any non-selected notes fully covered by moved notes
+            let movedNotes = notes.filter { selectedNoteIds.contains($0.id) }
+            for mover in movedNotes {
+                removeCoveredNotes(by: mover)
+            }
             markDirty()
         }
     }
@@ -225,6 +230,20 @@ class SequencerModel: ObservableObject {
             markDirty()
         }
         return note
+    }
+    
+    /// Duplicate a note in place and select the copy (for alt-drag)
+    @discardableResult
+    func duplicateNote(id: UUID) -> SequencerNote? {
+        guard let original = notes.first(where: { $0.id == id }) else { return nil }
+        var copy = original
+        copy.id = UUID()
+        withUndo("Duplicate Note") {
+            notes.append(copy)
+            selectNote(copy.id)
+            markDirty()
+        }
+        return copy
     }
     
     func deleteNote(id: UUID) {
@@ -256,6 +275,7 @@ class SequencerModel: ObservableObject {
             notes[index].startBeat = snap(beat)
             notes[index].pitch = PitchConstants.clampPitch(pitch)
             inheritPhoneme(into: &notes[index])
+            removeCoveredNotes(by: notes[index])
             markDirty()
         }
     }
@@ -266,6 +286,16 @@ class SequencerModel: ObservableObject {
             guard let index = notes.firstIndex(where: { $0.id == id }) else { return }
             notes[index].duration = max(snap(duration), GridConstants.minDuration)
             markDirty()
+        }
+    }
+    
+    /// Remove notes that are fully covered (same pitch, start-to-end) by the given note
+    private func removeCoveredNotes(by cover: SequencerNote) {
+        let coverEnd = cover.startBeat + cover.duration
+        notes.removeAll { other in
+            guard other.id != cover.id, other.pitch == cover.pitch else { return false }
+            let otherEnd = other.startBeat + other.duration
+            return other.startBeat >= cover.startBeat && otherEnd <= coverEnd
         }
     }
     

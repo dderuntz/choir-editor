@@ -11,6 +11,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
+        // Allow dragging the window from any background area
+        // (interactive areas opt out via NonDraggableArea)
+        DispatchQueue.main.async {
+            NSApp.windows.forEach { $0.isMovableByWindowBackground = true }
+        }
         // iOS-style overlay scrollbars (no track, just the knob, shown when scrolling)
         UserDefaults.standard.set("WhenScrolling", forKey: "AppleShowScrollBars")
     }
