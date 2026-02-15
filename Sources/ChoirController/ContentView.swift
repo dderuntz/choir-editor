@@ -326,6 +326,12 @@ struct ContentView: View {
             menu.addItem(recentItem)
         }
         
+        menu.addItem(NSMenuItem.separator())
+        
+        let exportItem = NSMenuItem(title: "Export as MIDI...", action: #selector(FileMenuActions.exportMIDI(_:)), keyEquivalent: "")
+        exportItem.target = target
+        menu.addItem(exportItem)
+        
         if model.currentFileURL != nil {
             menu.addItem(NSMenuItem.separator())
             let revealItem = NSMenuItem(title: "Reveal in Finder", action: #selector(FileMenuActions.revealInFinder(_:)), keyEquivalent: "")
