@@ -290,40 +290,41 @@ struct PianoRollView: View {
                 isSelected: model.selectedNoteId == note.id,
                 isInMultiSelect: isInGroup,
                 groupDragOffset: isInGroup ? groupDragOffset : .zero,
-                onSelect: {
-                    // If already multi-selected, just update primary (keep group)
-                    if model.selectedNoteIds.count > 1 && model.selectedNoteIds.contains(note.id) {
-                        model.selectedNoteId = note.id
-                    } else {
-                        model.selectNote(note.id)
+                actions: NoteActions(
+                    onSelect: {
+                        if model.selectedNoteIds.count > 1 && model.selectedNoteIds.contains(note.id) {
+                            model.selectedNoteId = note.id
+                        } else {
+                            model.selectNote(note.id)
+                        }
+                        onNotePreview?(note)
+                    },
+                    onShiftSelect: {
+                        model.toggleNoteInSelection(note.id)
+                    },
+                    onMove: { newBeat, newPitch in
+                        model.moveNote(id: note.id, toBeat: newBeat, pitch: newPitch)
+                    },
+                    onResize: { newDuration in
+                        model.resizeNote(id: note.id, duration: newDuration)
+                    },
+                    onDuplicate: {
+                        model.duplicateNote(id: note.id)?.id
+                    },
+                    onDuplicateMove: { dupId, newBeat, newPitch in
+                        model.moveNote(id: dupId, toBeat: newBeat, pitch: newPitch)
+                    },
+                    onCancelDuplicate: { dupId in
+                        model.deleteNote(id: dupId)
+                    },
+                    onGroupDragChanged: { offset in
+                        groupDragOffset = offset
+                    },
+                    onGroupMoveEnded: { beatDelta, pitchDelta in
+                        model.moveSelectedNotes(beatDelta: beatDelta, pitchDelta: pitchDelta)
+                        groupDragOffset = .zero
                     }
-                    onNotePreview?(note)
-                },
-                onShiftSelect: {
-                    model.toggleNoteInSelection(note.id)
-                },
-                onMove: { newBeat, newPitch in
-                    model.moveNote(id: note.id, toBeat: newBeat, pitch: newPitch)
-                },
-                onResize: { newDuration in
-                    model.resizeNote(id: note.id, duration: newDuration)
-                },
-                onDuplicate: {
-                    model.duplicateNote(id: note.id)?.id
-                },
-                onDuplicateMove: { dupId, newBeat, newPitch in
-                    model.moveNote(id: dupId, toBeat: newBeat, pitch: newPitch)
-                },
-                onCancelDuplicate: { dupId in
-                    model.deleteNote(id: dupId)
-                },
-                onGroupDragChanged: { offset in
-                    groupDragOffset = offset
-                },
-                onGroupMoveEnded: { beatDelta, pitchDelta in
-                    model.moveSelectedNotes(beatDelta: beatDelta, pitchDelta: pitchDelta)
-                    groupDragOffset = .zero
-                }
+                )
             )
             .equatable()
         }
@@ -491,6 +492,24 @@ struct SubdivisionGridShape: Shape {
     }
 }
 
+// MARK: - Note Action Callbacks
+
+struct NoteActions {
+    // Selection
+    var onSelect: () -> Void
+    var onShiftSelect: () -> Void
+    // Single note
+    var onMove: (Double, UInt8) -> Void
+    var onResize: (Double) -> Void
+    // Duplicate (alt-drag)
+    var onDuplicate: (() -> UUID?)?
+    var onDuplicateMove: ((UUID, Double, UInt8) -> Void)?
+    var onCancelDuplicate: ((UUID) -> Void)?
+    // Multi-select group
+    var onGroupDragChanged: ((CGSize) -> Void)?
+    var onGroupMoveEnded: ((Double, Int) -> Void)?
+}
+
 // MARK: - Note Rectangle View
 
 struct NoteRectView: View, @preconcurrency Equatable {
@@ -498,15 +517,7 @@ struct NoteRectView: View, @preconcurrency Equatable {
     let isSelected: Bool
     let isInMultiSelect: Bool
     let groupDragOffset: CGSize
-    var onSelect: () -> Void
-    var onShiftSelect: () -> Void
-    var onMove: (Double, UInt8) -> Void
-    var onResize: (Double) -> Void
-    var onDuplicate: (() -> UUID?)?
-    var onDuplicateMove: ((UUID, Double, UInt8) -> Void)?
-    var onCancelDuplicate: ((UUID) -> Void)?
-    var onGroupDragChanged: ((CGSize) -> Void)?
-    var onGroupMoveEnded: ((Double, Int) -> Void)?
+    var actions: NoteActions
     
     static func == (lhs: NoteRectView, rhs: NoteRectView) -> Bool {
         lhs.note == rhs.note &&
@@ -629,9 +640,9 @@ struct NoteRectView: View, @preconcurrency Equatable {
                     hasFiredDragStart = true
                     let isShift = NSEvent.modifierFlags.contains(.shift)
                     if isShift {
-                        onShiftSelect()
+                        actions.onShiftSelect()
                     } else {
-                        onSelect()
+                        actions.onSelect()
                     }
                 }
                 
@@ -641,12 +652,12 @@ struct NoteRectView: View, @preconcurrency Equatable {
                 // Alt-drag: duplicate note on first real drag movement
                 if !didDuplicate && NSEvent.modifierFlags.contains(.option) {
                     didDuplicate = true
-                    duplicatedNoteId = onDuplicate?()
+                    duplicatedNoteId = actions.onDuplicate?()
                 }
                 
                 // Use isInMultiSelect (updated by SwiftUI after selection change)
                 if isInMultiSelect {
-                    onGroupDragChanged?(value.translation)
+                    actions.onGroupDragChanged?(value.translation)
                 } else {
                     dragOffset = value.translation
                 }
@@ -660,27 +671,26 @@ struct NoteRectView: View, @preconcurrency Equatable {
                 
                 if let dupId = duplicatedNoteId {
                     if landedOnOriginal {
-                        // Dragged back to original position — discard the copy
-                        onCancelDuplicate?(dupId)
+                        actions.onCancelDuplicate?(dupId)
                     } else {
                         let newBeat = max(0, note.startBeat + beatDelta)
                         let rawPitch = Int(note.pitch) + pitchDelta
                         let newPitch = PitchConstants.clampPitch(UInt8(clamping: max(0, rawPitch)))
-                        onDuplicateMove?(dupId, newBeat, newPitch)
+                        actions.onDuplicateMove?(dupId, newBeat, newPitch)
                     }
                 } else if dist > 4 {
                     if isInMultiSelect {
-                        onGroupMoveEnded?(beatDelta, pitchDelta)
+                        actions.onGroupMoveEnded?(beatDelta, pitchDelta)
                     } else {
                         let newBeat = max(0, note.startBeat + beatDelta)
                         let rawPitch = Int(note.pitch) + pitchDelta
                         let newPitch = PitchConstants.clampPitch(UInt8(clamping: max(0, rawPitch)))
-                        onMove(newBeat, newPitch)
+                        actions.onMove(newBeat, newPitch)
                     }
                 }
                 
                 dragOffset = .zero
-                onGroupDragChanged?(.zero)
+                actions.onGroupDragChanged?(.zero)
                 hasFiredDragStart = false
                 didDuplicate = false
                 duplicatedNoteId = nil
@@ -698,7 +708,7 @@ struct NoteRectView: View, @preconcurrency Equatable {
                 let beatDelta = PianoRollLayout.beatForX(value.translation.width)
                 let newDuration = max(GridConstants.minDuration, note.duration + beatDelta)
                 resizeOffset = 0
-                onResize(newDuration)
+                actions.onResize(newDuration)
             }
     }
 }
