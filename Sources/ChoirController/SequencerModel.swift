@@ -144,6 +144,9 @@ class SequencerModel: ObservableObject {
         return scaleType.intervals.contains(interval)
     }
     
+    // Undo
+    let undoManager = UndoManager()
+    
     // File state
     @Published var currentFileURL: URL? = nil
     @Published var hasUnsavedChanges: Bool = false
@@ -180,19 +183,20 @@ class SequencerModel: ObservableObject {
     
     /// Move all selected notes by a delta
     func moveSelectedNotes(beatDelta: Double, pitchDelta: Int) {
-        for id in selectedNoteIds {
-            guard let index = notes.firstIndex(where: { $0.id == id }) else { continue }
-            let newBeat = max(0, notes[index].startBeat + beatDelta)
-            notes[index].startBeat = snap(newBeat)
-            let rawPitch = Int(notes[index].pitch) + pitchDelta
-            notes[index].pitch = PitchConstants.clampPitch(UInt8(clamping: max(0, rawPitch)))
+        withUndo("Move Notes") {
+            for id in selectedNoteIds {
+                guard let index = notes.firstIndex(where: { $0.id == id }) else { continue }
+                let newBeat = max(0, notes[index].startBeat + beatDelta)
+                notes[index].startBeat = snap(newBeat)
+                let rawPitch = Int(notes[index].pitch) + pitchDelta
+                notes[index].pitch = PitchConstants.clampPitch(UInt8(clamping: max(0, rawPitch)))
+            }
+            for id in selectedNoteIds {
+                guard let index = notes.firstIndex(where: { $0.id == id }) else { continue }
+                inheritPhoneme(into: &notes[index])
+            }
+            markDirty()
         }
-        // Inherit phonemes at landing positions
-        for id in selectedNoteIds {
-            guard let index = notes.firstIndex(where: { $0.id == id }) else { continue }
-            inheritPhoneme(into: &notes[index])
-        }
-        markDirty()
     }
     
     func clearSelection() {
@@ -211,58 +215,70 @@ class SequencerModel: ObservableObject {
             startBeat: snappedBeat,
             duration: max(duration, GridConstants.minDuration)
         )
-        // Inherit consonant/vowel from any existing note at the same beat
         inheritPhoneme(into: &note)
-        notes.append(note)
-        selectNote(note.id)
-        markDirty()
+        withUndo("Add Note") {
+            notes.append(note)
+            selectNote(note.id)
+            markDirty()
+        }
         return note
     }
     
     func deleteNote(id: UUID) {
-        notes.removeAll { $0.id == id }
-        selectedNoteIds.remove(id)
-        if selectedNoteId == id {
-            selectedNoteId = selectedNoteIds.first
+        withUndo("Delete Note") {
+            notes.removeAll { $0.id == id }
+            selectedNoteIds.remove(id)
+            if selectedNoteId == id {
+                selectedNoteId = selectedNoteIds.first
+            }
+            markDirty()
         }
-        markDirty()
     }
     
     func deleteSelectedNote() {
         guard !selectedNoteIds.isEmpty else { return }
-        for id in selectedNoteIds {
-            notes.removeAll { $0.id == id }
+        withUndo("Delete Notes") {
+            for id in selectedNoteIds {
+                notes.removeAll { $0.id == id }
+            }
+            clearSelection()
+            markDirty()
         }
-        clearSelection()
-        markDirty()
     }
     
     func moveNote(id: UUID, toBeat beat: Double, pitch: UInt8) {
-        guard let index = notes.firstIndex(where: { $0.id == id }) else { return }
-        notes[index].startBeat = snap(beat)
-        notes[index].pitch = PitchConstants.clampPitch(pitch)
-        // Inherit consonant/vowel from notes already at the landing beat
-        inheritPhoneme(into: &notes[index])
-        markDirty()
+        guard notes.firstIndex(where: { $0.id == id }) != nil else { return }
+        withUndo("Move Note") {
+            guard let index = notes.firstIndex(where: { $0.id == id }) else { return }
+            notes[index].startBeat = snap(beat)
+            notes[index].pitch = PitchConstants.clampPitch(pitch)
+            inheritPhoneme(into: &notes[index])
+            markDirty()
+        }
     }
     
     func resizeNote(id: UUID, duration: Double) {
-        guard let index = notes.firstIndex(where: { $0.id == id }) else { return }
-        notes[index].duration = max(snap(duration), GridConstants.minDuration)
-        markDirty()
+        guard notes.firstIndex(where: { $0.id == id }) != nil else { return }
+        withUndo("Resize Note") {
+            guard let index = notes.firstIndex(where: { $0.id == id }) else { return }
+            notes[index].duration = max(snap(duration), GridConstants.minDuration)
+            markDirty()
+        }
     }
     
     func updateNote(id: UUID, _ transform: (inout SequencerNote) -> Void) {
-        guard let index = notes.firstIndex(where: { $0.id == id }) else { return }
-        let oldConsonant = notes[index].consonant
-        let oldVowel = notes[index].vowel
-        transform(&notes[index])
-        // If consonant or vowel changed, propagate to all notes at the same beat
-        let note = notes[index]
-        if note.consonant != oldConsonant || note.vowel != oldVowel {
-            propagatePhoneme(from: note)
+        guard notes.firstIndex(where: { $0.id == id }) != nil else { return }
+        withUndo("Edit Note") {
+            guard let index = notes.firstIndex(where: { $0.id == id }) else { return }
+            let oldConsonant = notes[index].consonant
+            let oldVowel = notes[index].vowel
+            transform(&notes[index])
+            let note = notes[index]
+            if note.consonant != oldConsonant || note.vowel != oldVowel {
+                propagatePhoneme(from: note)
+            }
+            markDirty()
         }
-        markDirty()
     }
     
     // MARK: - Helpers
@@ -396,6 +412,32 @@ class SequencerModel: ObservableObject {
     
     static func clearRecentFiles() {
         UserDefaults.standard.removeObject(forKey: "recentFiles")
+    }
+    
+    /// Save a snapshot of the current notes for undo, then call the mutation block.
+    func withUndo(_ actionName: String = "Edit Notes", _ mutation: () -> Void) {
+        let snapshot = notes
+        let selId = selectedNoteId
+        let selIds = selectedNoteIds
+        undoManager.registerUndo(withTarget: self) { model in
+            // Save current state for redo before restoring
+            let redoSnapshot = model.notes
+            let redoSelId = model.selectedNoteId
+            let redoSelIds = model.selectedNoteIds
+            model.undoManager.registerUndo(withTarget: model) { m in
+                m.notes = redoSnapshot
+                m.selectedNoteId = redoSelId
+                m.selectedNoteIds = redoSelIds
+                m.markDirty()
+            }
+            model.undoManager.setActionName(actionName)
+            model.notes = snapshot
+            model.selectedNoteId = selId
+            model.selectedNoteIds = selIds
+            model.markDirty()
+        }
+        undoManager.setActionName(actionName)
+        mutation()
     }
     
     func markDirty() {

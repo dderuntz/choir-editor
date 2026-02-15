@@ -18,12 +18,10 @@ struct SequencerView: View {
             // Toolbar
             sequencerToolbar
             
-            Divider()
-            
             // Transport bar (play button + scrub zone)
             transportBar
             
-            Divider()
+            Theme.fieldBorder.frame(height: 1)
             
             // Piano Roll
             PianoRollView(
@@ -35,7 +33,7 @@ struct SequencerView: View {
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             
-            Divider()
+            Theme.divider.frame(height: 1)
             
             // Note Inspector (when a note is selected)
             if let selectedNote = model.selectedNote {
@@ -77,98 +75,106 @@ struct SequencerView: View {
     // MARK: - Toolbar
     
     private var sequencerToolbar: some View {
-        HStack(spacing: 8) {
-            // Document name
-            HStack(spacing: 4) {
-                Text(model.documentName)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                if model.hasUnsavedChanges {
-                    Circle()
-                        .fill(Theme.statusWarning)
-                        .frame(width: 6, height: 6)
-                        .help("Unsaved changes")
-                }
-            }
-            
-            Divider().frame(height: 16)
-            
-            // Beats length control
-            HStack(spacing: 4) {
-                Text("Bars:")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Stepper(
-                    "\(model.totalBeats / 4)",
-                    value: $model.totalBeats,
-                    in: 4...64,
-                    step: 4
-                )
-                .font(.caption)
-                .frame(width: 80)
-            }
-            
-            Divider().frame(height: 16)
-            
-            Button(action: { model.deleteSelectedNote() }) {
-                Label("Delete", systemImage: "trash")
-                    .font(.caption)
-            }
-            .disabled(model.selectedNoteIds.isEmpty)
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            
-            Button(action: clearAll) {
-                Label("Clear All", systemImage: "xmark.circle")
-                    .font(.caption)
-            }
-            .disabled(model.notes.isEmpty)
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            
-            Divider().frame(height: 16)
-            
-            // Scale helper controls
-            HStack(spacing: 4) {
-                Toggle(isOn: $model.showScaleHelper) {
+        HStack(spacing: 12) {
+            // Enable Guide group
+            Button(action: { withAnimation(.easeInOut(duration: 0.15)) { model.showScaleHelper.toggle() } }) {
+                HStack(spacing: 5) {
                     Image(systemName: "music.note.list")
-                        .font(.caption)
+                    Text("Enable guide")
                 }
-                .toggleStyle(.checkbox)
-                .controlSize(.small)
-                .help("Show scale helper")
-                
-                if model.showScaleHelper {
-                    Picker("", selection: $model.musicalKey) {
-                        ForEach(MusicalKey.allCases) { key in
-                            Text(key.name).tag(key)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(width: 50)
-                    .controlSize(.small)
-                    
-                    Picker("", selection: $model.scaleType) {
-                        ForEach(ScaleType.allCases) { scale in
-                            Text(scale.rawValue).tag(scale)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(width: 110)
-                    .controlSize(.small)
-                }
+                .foregroundColor(model.showScaleHelper ? Theme.accent : Theme.ivory.opacity(0.7))
             }
+            .buttonStyle(.plain)
+            .help("Scale guide")
+            
+            if model.showScaleHelper {
+                Picker("", selection: $model.musicalKey) {
+                    ForEach(MusicalKey.allCases) { key in
+                        Text(key.name).tag(key)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 50)
+                .controlSize(.small)
+                
+                Picker("", selection: $model.scaleType) {
+                    ForEach(ScaleType.allCases) { scale in
+                        Text(scale.rawValue).tag(scale)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 110)
+                .controlSize(.small)
+                
+                Button(action: { withAnimation(.easeInOut(duration: 0.15)) { model.showScaleHelper = false } }) {
+                    Text("Clear guide")
+                        .foregroundColor(Theme.ivory.opacity(0.5))
+                }
+                .buttonStyle(.plain)
+            }
+            
+            Rectangle()
+                .fill(Theme.ivory.opacity(0.15))
+                .frame(width: 1, height: 16)
+            
+            // Bar navigation: < X Bars >
+            HStack(spacing: 6) {
+                Button(action: { if model.totalBeats > 4 { model.totalBeats -= 4 } }) {
+                    Image(systemName: "chevron.left.circle.fill")
+                        .foregroundColor(model.totalBeats > 4 ? Theme.ivory.opacity(0.7) : Theme.ivory.opacity(0.2))
+                }
+                .buttonStyle(.plain)
+                .disabled(model.totalBeats <= 4)
+                
+                Text("\(model.totalBeats / 4) Bars")
+                    .foregroundColor(Theme.ivory.opacity(0.7))
+                    .monospacedDigit()
+                
+                Button(action: { if model.totalBeats < 64 { model.totalBeats += 4 } }) {
+                    Image(systemName: "chevron.right.circle.fill")
+                        .foregroundColor(model.totalBeats < 64 ? Theme.ivory.opacity(0.7) : Theme.ivory.opacity(0.2))
+                }
+                .buttonStyle(.plain)
+                .disabled(model.totalBeats >= 64)
+            }
+            
+            Rectangle()
+                .fill(Theme.ivory.opacity(0.15))
+                .frame(width: 1, height: 16)
+            
+            // Loop toggle
+            Button(action: { model.isLooping.toggle() }) {
+                Label("Loop", systemImage: "repeat")
+                    .foregroundColor(model.isLooping ? Theme.accent : Theme.ivory.opacity(0.7))
+            }
+            .buttonStyle(.plain)
+            .help(model.isLooping ? "Looping" : "Loop")
             
             Spacer()
             
-            Text("\(model.notes.count) notes")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .monospacedDigit()
+            // Clear button (right-aligned)
+            Button(action: {
+                if model.selectedNoteIds.isEmpty {
+                    clearAll()
+                } else {
+                    model.deleteSelectedNote()
+                }
+            }) {
+                Label(
+                    model.selectedNoteIds.isEmpty
+                        ? "Clear Notes"
+                        : "Clear Selection (\(model.selectedNoteIds.count))",
+                    systemImage: "xmark.circle.fill"
+                )
+                .foregroundColor(Theme.ivory.opacity(0.7))
+            }
+            .buttonStyle(.plain)
+            .disabled(model.notes.isEmpty && model.selectedNoteIds.isEmpty)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(Theme.surface.opacity(0.5))
+        .font(Theme.toolbarFont)
+        .padding(.horizontal)
+        .frame(height: 32)
+        .background(Theme.dark)
     }
     
     // MARK: - Transport Bar
@@ -176,26 +182,16 @@ struct SequencerView: View {
     private var transportBar: some View {
         HStack(spacing: 0) {
             // Play/Stop + Loop buttons (aligned with piano key column)
-            HStack(spacing: 4) {
-                Button(action: { togglePlayback() }) {
-                    Image(systemName: model.isPlaying ? "stop.fill" : "play.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(model.isPlaying ? .red : Theme.playhead)
-                }
-                .buttonStyle(.plain)
-                .help(model.isPlaying ? "Stop" : "Play")
-                
-                Button(action: { model.isLooping.toggle() }) {
-                    Image(systemName: "repeat")
-                        .font(.system(size: 11))
-                        .foregroundColor(model.isLooping ? Theme.accent : .secondary)
-                }
-                .buttonStyle(.plain)
-                .help(model.isLooping ? "Looping" : "Loop")
+            Button(action: { togglePlayback() }) {
+                Image(systemName: model.isPlaying ? "stop.fill" : "play.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(Theme.dark)
             }
+            .buttonStyle(.plain)
+            .help(model.isPlaying ? "Stop" : "Play")
             .frame(width: PianoRollLayout.pianoKeyWidth)
             
-            Divider().frame(height: 24)
+            Theme.dark.opacity(0.15).frame(width: 1)
             
             // Scrub zone (same width as the grid, scrolls in sync)
             ScrollView(.horizontal, showsIndicators: false) {
@@ -203,17 +199,17 @@ struct SequencerView: View {
                     // Beat markers
                     scrubBackground
                     
-                    // Playhead line
+                    // Playhead line (dark on gold transport)
                     Rectangle()
-                        .fill(Theme.playhead)
-                        .frame(width: 2, height: 28)
+                        .fill(Theme.dark)
+                        .frame(width: 2, height: 32)
                         .offset(x: PianoRollLayout.xForBeat(model.playheadBeat))
                         .allowsHitTesting(false)
                         .animation(nil, value: model.playheadBeat)
                 }
                 .frame(
                     width: PianoRollLayout.gridWidth(beats: model.totalBeats),
-                    height: 28
+                    height: 32
                 )
                 .contentShape(Rectangle())
                 .gesture(
@@ -233,8 +229,8 @@ struct SequencerView: View {
                 }
             }
         }
-        .frame(height: 28)
-        .background(Theme.playhead.opacity(0.08))
+        .frame(height: 32)
+        .background(model.isPlaying ? Theme.green : Theme.accent)
     }
     
     private var scrubBackground: some View {
@@ -252,20 +248,20 @@ struct SequencerView: View {
                 path.addLine(to: CGPoint(x: x, y: size.height))
                 context.stroke(
                     path,
-                    with: .color(.gray.opacity(isMeasure ? 0.5 : 0.2)),
-                    lineWidth: isMeasure ? 1 : 0.5
+                    with: .color(Theme.dark.opacity(isMeasure ? 0.4 : 0.15)),
+                    lineWidth: 0.5
                 )
                 
                 if isMeasure && beat < totalBeats {
                     let bar = (beat / 4) + 1
-                    let text = Text("\(bar)").font(Theme.labelSmall.weight(.medium)).foregroundColor(.secondary)
+                    let text = Text("\(bar)").font(Theme.labelSmall.weight(.medium)).foregroundColor(Theme.dark)
                     context.draw(text, at: CGPoint(x: x + 8, y: size.height / 2))
                 }
             }
         }
         .frame(
             width: PianoRollLayout.gridWidth(beats: model.totalBeats),
-            height: 28
+            height: 32
         )
     }
     
@@ -459,8 +455,11 @@ struct SequencerView: View {
     }
     
     private func clearAll() {
-        model.notes.removeAll()
-        model.clearSelection()
+        model.withUndo("Clear All") {
+            model.notes.removeAll()
+            model.clearSelection()
+            model.markDirty()
+        }
     }
 }
 

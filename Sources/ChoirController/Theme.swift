@@ -5,9 +5,14 @@ import AppKit
 
 enum Theme {
     
-    // MARK: Brand Accent
+    // MARK: Core Palette
     
     static let accent = Color(red: 0xCA / 255.0, green: 0xB6 / 255.0, blue: 0x1D / 255.0) // #CAB61D
+    static let ivory = Color(red: 0xEA/255, green: 0xE8/255, blue: 0xE4/255)   // #EAE8E4
+    static let dark = Color(red: 0x32/255, green: 0x32/255, blue: 0x32/255)     // #323232
+    static let field = Color(red: 0x8A/255, green: 0x8C/255, blue: 0x7F/255)    // #8A8C7F
+    static let console = Color(red: 0x1A/255, green: 0x1A/255, blue: 0x1A/255)  // near-black
+    static let green = Color(red: 0x00/255, green: 0x87/255, blue: 0x38/255)    // #008738
     
     // MARK: Playhead & Transport
     
@@ -15,39 +20,38 @@ enum Theme {
     
     // MARK: Grid
     
-    static func gridLine(_ scheme: ColorScheme) -> Color {
-        Color.gray.opacity(scheme == .dark ? 0.4 : 0.3)
-    }
-    
-    static func gridSubdivision(_ scheme: ColorScheme) -> Color {
-        Color.gray.opacity(scheme == .dark ? 0.25 : 0.15)
-    }
+    static let gridLine = Color.black.opacity(0.15)
+    static let gridBar = Color.black.opacity(0.35)       // bar boundaries & piano key column
+    static let gridSubdivision = Color.black.opacity(0.08)
+    // Pre-blended: field (#8A8C7F) darkened ~12% toward black
+    static let fieldBorder = Color(red: 0x7A/255.0, green: 0x7C/255.0, blue: 0x70/255.0)
     
     static func blackKeyRow(_ scheme: ColorScheme) -> Color {
-        scheme == .dark
-            ? Color.white.opacity(0.05)
-            : Color.black.opacity(0.08)
+        Color.black.opacity(0.06)
     }
     
     static func outOfScale(_ scheme: ColorScheme, isBlackKey: Bool) -> Color {
-        let base: Double = scheme == .dark ? 0.10 : 0.06
+        let base: Double = 0.08
         return Color.red.opacity(isBlackKey ? base * 2 : base)
     }
     
     // MARK: Notes
     
-    static func noteColor(vowel: UInt8, colorScheme: ColorScheme) -> Color {
-        let hue = Double(vowel) / 127.0
-        let sat = colorScheme == .dark ? 0.65 : 0.6
-        let brt = colorScheme == .dark ? 0.75 : 0.85
-        return Color(hue: hue, saturation: sat, brightness: brt)
+    /// Note color based on pitch: ivory for white keys, dark for black keys
+    static func noteColor(pitch: UInt8) -> Color {
+        PitchConstants.isBlackKey(pitch) ? dark : ivory
+    }
+    
+    /// Label color (inverted for contrast against note)
+    static func noteLabelColor(pitch: UInt8) -> Color {
+        PitchConstants.isBlackKey(pitch) ? ivory : dark
     }
     
     static let noteStroke = Color.white
     
     // MARK: Status Indicators
     
-    static let statusConnected = accent
+    static let statusConnected = green
     static let statusWarning = Color.orange
     static let middleC = accent
     
@@ -68,25 +72,16 @@ enum Theme {
     
     // MARK: Keyboard Keys
     
-    static func whiteKey(_ scheme: ColorScheme, pressed: Bool) -> Color {
-        if pressed {
-            return scheme == .dark ? Color(white: 0.55) : Color.gray.opacity(0.4)
-        }
-        return scheme == .dark ? Color(white: 0.85) : .white
+    static func whiteKey(pressed: Bool) -> Color {
+        pressed ? ivory.opacity(0.6) : ivory
     }
     
-    static func blackKey(_ scheme: ColorScheme, pressed: Bool) -> Color {
-        if pressed {
-            return scheme == .dark ? Color(white: 0.30) : Color(white: 0.35)
-        }
-        return scheme == .dark ? Color(white: 0.10) : Color(white: 0.15)
+    static func blackKey(pressed: Bool) -> Color {
+        pressed ? dark.opacity(0.6) : dark
     }
     
-    static func keyBorder(_ scheme: ColorScheme, isBlack: Bool) -> Color {
-        if isBlack {
-            return scheme == .dark ? Color(white: 0.05) : Color.black
-        }
-        return scheme == .dark ? Color.gray.opacity(0.4) : Color.gray.opacity(0.3)
+    static func keyBorder(isBlack: Bool) -> Color {
+        dark.opacity(isBlack ? 0.3 : 0.15)
     }
     
     // MARK: Typography
@@ -101,7 +96,8 @@ enum Theme {
     
     // MARK: Toolbar
     
-    static let toolbar = Color(red: 0x32/255, green: 0x32/255, blue: 0x32/255)   // #323232
+    static let toolbar = dark
+    static let toolbarFont: Font = .system(size: 12)
     
     // MARK: Pill Button Tokens
     
@@ -112,11 +108,15 @@ enum Theme {
     static let buttonRadius: CGFloat = 14
     static let buttonStroke: CGFloat = 1.5
     
-    // MARK: Explorer Panel
+    // MARK: Dividers
     
-    static let explorerText = Color(red: 0xEA/255, green: 0xE8/255, blue: 0xE4/255)     // #EAE8E4
-    static let explorerHeader = Color(red: 0x32/255, green: 0x32/255, blue: 0x32/255)   // #323232
-    static let explorerField = Color(red: 0x8A/255, green: 0x8C/255, blue: 0x7F/255)    // #8A8C7F
-    static let explorerConsole = Color(red: 0x1A/255, green: 0x1A/255, blue: 0x1A/255)  // near-black
-    static let explorerGridBorder = Color.black.opacity(0.15)
+    static let divider = dark.opacity(0.15)
+    
+    // MARK: Explorer Panel (aliases for backward compat)
+    
+    static let explorerText = ivory
+    static let explorerHeader = dark
+    static let explorerField = field
+    static let explorerConsole = console
+    static let explorerGridBorder = divider
 }
