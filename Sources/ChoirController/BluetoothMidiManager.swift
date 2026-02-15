@@ -32,10 +32,21 @@ class BluetoothMidiManager: NSObject, ObservableObject {
             print("⚠️ Bluetooth not powered on. Cannot open BLE MIDI window.")
             return
         }
+        // Reuse existing window if still open
+        if let existing = btleWindowController, existing.window?.isVisible == true {
+            existing.window?.makeKeyAndOrderFront(nil)
+            return
+        }
         let wc = CABTLEMIDIWindowController()
         wc.showWindow(nil)
-        btleWindowController = wc // Prevent deallocation
+        btleWindowController = wc
         print("📡 Opened Apple Bluetooth MIDI configuration window.")
+    }
+    
+    @MainActor
+    func closeBluetoothMIDIWindow() {
+        btleWindowController?.close()
+        btleWindowController = nil
     }
     
     // MARK: - Central-mode scanning (legacy, kept for reference)
