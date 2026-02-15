@@ -13,6 +13,15 @@ struct SequencerView: View {
     // Scroll sync between scrub zone and piano roll grid
     @StateObject private var scrollSync = ScrollSyncManager()
     
+    /// X position of the callout arrow (note center, accounting for scroll offset)
+    private var noteArrowX: CGFloat {
+        guard let note = model.selectedNote else { return 0 }
+        let pianoOffset = PianoRollLayout.pianoKeyWidth + 1 // piano keys + divider
+        let noteCenterX = PianoRollLayout.xForBeat(note.startBeat)
+            + CGFloat(note.duration) * PianoRollLayout.beatWidth / 2
+        return pianoOffset + noteCenterX - scrollSync.horizontalOffset
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
             // Toolbar
@@ -32,35 +41,38 @@ struct SequencerView: View {
                 scrollSync: scrollSync
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            
-            Theme.divider.frame(height: 1)
-            
-            // Note Inspector (when a note is selected)
-            if let selectedNote = model.selectedNote {
-                NoteInspectorView(
-                    note: selectedNote,
-                    onUpdate: { updatedNote in
-                        model.updateNote(id: updatedNote.id) { note in
-                            note.consonant = updatedNote.consonant
-                            note.vowel = updatedNote.vowel
-                            note.velocity = updatedNote.velocity
-                            note.vibrato = updatedNote.vibrato
-                            note.reverb = updatedNote.reverb
-                        }
-                    },
-                    onPlay: { note in
-                        playNoteForDuration(note)
-                    },
-                    onDelete: {
-                        model.deleteSelectedNote()
-                    }
-                )
-                .id(selectedNote.id) // Force fresh view per note so @State resets
-                .frame(height: 90)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
+            .padding(.bottom, model.selectedNote != nil ? 70 : 0)
+            .animation(.easeInOut(duration: 0.15), value: model.selectedNote != nil)
         }
-        .animation(.easeInOut(duration: 0.15), value: model.selectedNoteId)
+        .overlay(alignment: .bottom) {
+            // Note Inspector (always alive, overlays bottom edge)
+            NoteInspectorView(
+                note: model.selectedNote ?? SequencerNote.placeholder,
+                arrowX: noteArrowX,
+                onUpdate: { updatedNote in
+                    model.updateNote(id: updatedNote.id) { note in
+                        note.consonant = updatedNote.consonant
+                        note.vowel = updatedNote.vowel
+                        note.velocity = updatedNote.velocity
+                        note.vibrato = updatedNote.vibrato
+                        note.reverb = updatedNote.reverb
+                    }
+                },
+                onPlay: { note in
+                    playNoteForDuration(note)
+                },
+                onDelete: {
+                    model.deleteSelectedNote()
+                }
+            )
+            .id(model.selectedNoteId ?? UUID())
+            .compositingGroup()
+            .shadow(color: Color.black.opacity(0.3), radius: 12, x: 0, y: -4)
+            .offset(y: model.selectedNote != nil ? 0 : 70)
+            .opacity(model.selectedNote != nil ? 1 : 0)
+            .allowsHitTesting(model.selectedNote != nil)
+            .animation(.easeInOut(duration: 0.15), value: model.selectedNote != nil)
+        }
         .onDeleteCommand {
             model.deleteSelectedNote()
         }
@@ -465,19 +477,38 @@ struct SequencerView: View {
 
 // MARK: - Note Inspector
 
+// MARK: - Callout Arrow Shape
+
+struct CalloutArrow: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))     // tip
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))  // bottom-right
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))  // bottom-left
+        path.closeSubpath()
+        return path
+    }
+}
+
 struct NoteInspectorView: View {
     let note: SequencerNote
+    var arrowX: CGFloat = 0  // horizontal position of arrow from leading edge
     var onUpdate: (SequencerNote) -> Void
     var onPlay: (SequencerNote) -> Void
     var onDelete: () -> Void
     
-    // Local editing state synced from the note
+    // Local editing state synced from the note (view is recreated via .id() on selection change)
     @State private var consonant: UInt8 = 125
     @State private var vowel: UInt8 = 0
     @State private var velocity: Double = 100
     @State private var vibrato: Double = 64
     @State private var reverb: Double = 32
-    @State private var isSyncing = false
+    
+    private var isBlackKey: Bool { PitchConstants.isBlackKey(note.pitch) }
+    private var bg: Color { isBlackKey ? Theme.dark : Theme.ivory }
+    private var fg: Color { isBlackKey ? Theme.ivory : Theme.dark }
+    private var fgDim: Color { fg.opacity(0.5) }
+    private var dividerColor: Color { fg.opacity(0.15) }
     
     var body: some View {
         HStack(spacing: 16) {
@@ -486,131 +517,109 @@ struct NoteInspectorView: View {
                 Text(PitchConstants.noteName(for: note.pitch))
                     .font(.title3)
                     .fontWeight(.semibold)
-                Text("Beat \(note.startBeat, specifier: "%.2f") | \(note.duration, specifier: "%.2f")b")
+                    .foregroundColor(fg)
+                Text("Beat \(Int(note.startBeat + 1))")
                     .font(.caption2)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(fgDim)
                     .monospacedDigit()
             }
-            .frame(width: 70)
+            .frame(width: 50, alignment: .leading)
             
-            Divider().frame(height: 50)
+            dividerColor.frame(width: 1, height: 40)
             
             // Consonant picker
-            VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
                 Text("Consonant")
-                    .font(Theme.labelSmall)
-                    .foregroundColor(.secondary)
+                    .font(.caption)
+                    .foregroundColor(fgDim)
                 Picker("", selection: $consonant) {
                     ForEach(Consonant.all) { c in
                         Text(c.name).tag(c.ccValue)
                     }
                 }
                 .labelsHidden()
-                .frame(width: 70)
+                .frame(width: 80)
                 .controlSize(.small)
+                .tint(fg)
+                .accentColor(fg)
                 .onChange(of: consonant) { _ in pushUpdate() }
             }
             
             // Vowel picker
-            VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
                 Text("Vowel")
-                    .font(Theme.labelSmall)
-                    .foregroundColor(.secondary)
+                    .font(.caption)
+                    .foregroundColor(fgDim)
                 Picker("", selection: $vowel) {
                     ForEach(Vowel.all) { v in
-                        Text("\(v.symbol) \(v.example)").tag(v.ccValue)
+                        Text(v.ccValue == 0 ? "Random" : "\(v.symbol) \(v.example)").tag(v.ccValue)
                     }
                 }
                 .labelsHidden()
-                .frame(width: 100)
+                .frame(width: 110)
                 .controlSize(.small)
+                .tint(fg)
+                .accentColor(fg)
                 .onChange(of: vowel) { _ in pushUpdate() }
             }
             
-            Divider().frame(height: 50)
-            
             // Velocity
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Velocity")
-                    .font(Theme.labelSmall)
-                    .foregroundColor(.secondary)
-                HStack(spacing: 4) {
-                    Slider(value: $velocity, in: 1...127, step: 1)
-                        .frame(width: 80)
-                        .onChange(of: velocity) { _ in pushUpdate() }
-                    Text("\(Int(velocity))")
-                        .font(.caption2).monospacedDigit()
-                        .frame(width: 24)
-                }
-            }
+            inspectorSlider(label: "Velocity", value: $velocity, range: 1...127) { pushUpdate() }
             
             // Vibrato
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Vibrato")
-                    .font(Theme.labelSmall)
-                    .foregroundColor(.secondary)
-                HStack(spacing: 4) {
-                    Slider(value: $vibrato, in: 0...127, step: 1)
-                        .frame(width: 60)
-                        .onChange(of: vibrato) { _ in pushUpdate() }
-                    Text("\(Int(vibrato))")
-                        .font(.caption2).monospacedDigit()
-                        .frame(width: 24)
-                }
-            }
+            inspectorSlider(label: "Vibrato", value: $vibrato, range: 0...127) { pushUpdate() }
             
             // Reverb
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Reverb")
-                    .font(Theme.labelSmall)
-                    .foregroundColor(.secondary)
-                HStack(spacing: 4) {
-                    Slider(value: $reverb, in: 0...127, step: 1)
-                        .frame(width: 60)
-                        .onChange(of: reverb) { _ in pushUpdate() }
-                    Text("\(Int(reverb))")
-                        .font(.caption2).monospacedDigit()
-                        .frame(width: 24)
-                }
-            }
+            inspectorSlider(label: "Reverb", value: $reverb, range: 0...127) { pushUpdate() }
             
-            Divider().frame(height: 50)
+            Spacer()
             
-            // Play button
+            // Test button
             Button(action: { onPlay(currentNote()) }) {
-                Label("Play", systemImage: "play.fill")
-                    .font(.caption)
+                HStack(spacing: 5) {
+                    Image(systemName: "ear")
+                    Text("Test")
+                }
+                .font(Theme.toolbarFont)
+                .foregroundColor(Theme.dark)
+                .padding(.horizontal, Theme.buttonPaddingH)
+                .padding(.vertical, Theme.buttonPaddingV)
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.buttonRadius)
+                        .fill(Theme.accent)
+                )
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
+            .buttonStyle(.plain)
             
             // Delete
             Button(action: onDelete) {
                 Image(systemName: "trash")
-                    .font(.caption)
+                    .font(.system(size: 16))
+                    .foregroundColor(fg.opacity(0.5))
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .tint(.red)
-            
-            Spacer()
+            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Theme.surface)
+        .padding(.horizontal)
+        .frame(height: 70)
+        .background(bg)
+        .overlay(alignment: .topLeading) {
+            // Callout arrow pointing up toward the note
+            CalloutArrow()
+                .fill(bg)
+                .frame(width: 14, height: 8)
+                .offset(x: arrowX - 7, y: -8)
+                .allowsHitTesting(false)
+        }
+        .environment(\.colorScheme, isBlackKey ? .dark : .light)
         .onAppear { syncFromNote() }
-        .onChange(of: note.id) { _ in syncFromNote() }
     }
     
     private func syncFromNote() {
-        isSyncing = true
         consonant = note.consonant
         vowel = note.vowel
         velocity = Double(note.velocity)
         vibrato = Double(note.vibrato)
         reverb = Double(note.reverb)
-        // Defer clearing the flag so all onChange handlers see isSyncing = true
-        DispatchQueue.main.async { isSyncing = false }
     }
     
     private func currentNote() -> SequencerNote {
@@ -624,7 +633,27 @@ struct NoteInspectorView: View {
     }
     
     private func pushUpdate() {
-        guard !isSyncing else { return }
         onUpdate(currentNote())
+    }
+    
+    private func inspectorSlider(label: String, value: Binding<Double>, range: ClosedRange<Double>, onChange: @escaping () -> Void) -> some View {
+        HStack(spacing: 4) {
+            HStack(spacing: 4) {
+                Text(label)
+                    .font(.caption)
+                    .foregroundColor(fgDim)
+                Text("\(Int(value.wrappedValue))")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(fg)
+                    .monospacedDigit()
+            }
+            .frame(minWidth: 48, alignment: .leading)
+            
+            Slider(value: value, in: range)
+                .tint(fg)
+                .accentColor(fg)
+                .onChange(of: value.wrappedValue) { _ in onChange() }
+        }
     }
 }

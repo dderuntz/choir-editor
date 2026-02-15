@@ -20,6 +20,8 @@ enum Theme {
     
     // MARK: Grid
     
+    static let gridOverflow = Color(red: 0x67/255.0, green: 0x68/255.0, blue: 0x5F/255.0)       // #67685F — grid past-bars area
+    static let transportOverflow = Color(red: 0x9F/255.0, green: 0x91/255.0, blue: 0x22/255.0) // #9F9122 — transport past-bars area
     static let gridLine = Color.black.opacity(0.15)
     static let gridBar = Color.black.opacity(0.35)       // bar boundaries & piano key column
     static let gridSubdivision = Color.black.opacity(0.08)

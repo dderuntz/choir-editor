@@ -60,7 +60,17 @@ struct SoundPadView: View {
                         lastPacketLog = "Reset to defaults"
                     }
                 }
-                pillButton("Done") { isPresented = false }
+                Button(action: { isPresented = false }) {
+                    Text("Done")
+                        .font(Theme.buttonFont)
+                        .fontWeight(Theme.buttonWeight)
+                        .foregroundColor(Theme.dark)
+                        .padding(.horizontal, Theme.buttonPaddingH)
+                        .padding(.vertical, Theme.buttonPaddingV)
+                        .background(Theme.ivory)
+                        .cornerRadius(Theme.buttonRadius)
+                }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 20)
@@ -243,9 +253,15 @@ struct SoundPadView: View {
     
     private func phonemeCell(item: PhonemeItem, isSelected: Bool, onSelect: @escaping (UInt8) -> Void, onRelease: @escaping () -> Void) -> some View {
         VStack(spacing: 1) {
-            Text(item.label)
-                .font(.system(size: 12, weight: isSelected ? .bold : .regular))
-                .foregroundColor(Theme.explorerText)
+            Group {
+                if item.label == "?" || item.label == "Random" {
+                    Image(systemName: "shuffle")
+                } else {
+                    Text(item.label)
+                }
+            }
+            .font(.system(size: 12, weight: isSelected ? .bold : .regular))
+            .foregroundColor(Theme.explorerText)
             if let sub = item.subtitle {
                 Text(sub)
                     .font(.system(size: 8))
@@ -364,6 +380,8 @@ struct SoundPadView: View {
                 }
             }
             .labelsHidden()
+            .tint(Theme.explorerText)
+            .accentColor(Theme.explorerText)
         }
     }
     

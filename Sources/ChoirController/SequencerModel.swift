@@ -15,6 +15,9 @@ struct SequencerNote: Identifiable, Equatable, Codable {
     var vowel: UInt8 = 0        // CC3 (Random default)
     var vibrato: UInt8 = 64     // CC1
     var reverb: UInt8 = 32      // CC4
+    
+    /// Dummy note used when inspector is visible but no note is selected
+    static let placeholder = SequencerNote(pitch: 60, startBeat: 0, duration: 1)
 }
 
 // MARK: - Choir Document (file format)

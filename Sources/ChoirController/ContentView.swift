@@ -139,8 +139,16 @@ struct ContentView: View {
                         KeyboardView(midiService: midiService, audioMonitor: audioMonitor)
                             .frame(height: 150)
                             .background(Theme.window)
-                            .compositingGroup()
-                            .shadow(color: Theme.keyboardShadow(colorScheme), radius: 12, x: 0, y: -4)
+                            .overlay(alignment: .top) {
+                                // Inner shadow at top edge
+                                LinearGradient(
+                                    colors: [Color.black.opacity(0.2), Color.black.opacity(0.07), Color.black.opacity(0)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                                .frame(height: 28)
+                                .allowsHitTesting(false)
+                            }
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
@@ -182,7 +190,6 @@ struct ContentView: View {
                         onOpenBluetoothWindow: { bluetoothManager.showBluetoothMIDIWindow() }
                     )
                     .frame(width: 300)
-                    .background(Theme.surface)
                     .transition(.move(edge: .trailing))
                 }
             }

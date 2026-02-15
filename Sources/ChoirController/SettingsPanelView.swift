@@ -4,10 +4,11 @@ import SwiftUI
 struct SettingsPanelView: View {
     @ObservedObject var midiService: MidiService
     @Binding var showSettings: Bool
+    @AppStorage("localAudioEnabled") private var localAudioEnabled = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header — matches doc title style
+            // Header — lines up with doc title (same horizontal padding)
             HStack {
                 Text("Setup")
                     .font(.system(size: 56, weight: .ultraLight))
@@ -21,17 +22,15 @@ struct SettingsPanelView: View {
                 .buttonStyle(.plain)
             }
             .padding(.horizontal)
-            .padding(.vertical, 12)
+            .padding(.bottom, 12)
             .background(Theme.surface)
-            
-            Divider()
             
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     // Sequencer Settings
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Sequencer")
-                            .font(.caption)
+                            .font(Theme.toolbarFont)
                             .foregroundColor(.secondary)
                             .textCase(.uppercase)
                         
@@ -49,7 +48,7 @@ struct SettingsPanelView: View {
                     // Voice Controls
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Global Choir Effects")
-                            .font(.caption)
+                            .font(Theme.toolbarFont)
                             .foregroundColor(.secondary)
                             .textCase(.uppercase)
                         
@@ -58,6 +57,12 @@ struct SettingsPanelView: View {
                     
                     Divider()
                     
+                    Toggle("Local Synth Monitor", isOn: $localAudioEnabled)
+                        .font(Theme.toolbarFont)
+                        .tint(Theme.ivory)
+                        .accentColor(Theme.ivory)
+                        .controlSize(.small)
+                    
                     Button(action: {
                         midiService.tempo = 100
                         midiService.minNoteDuration = 0.28
@@ -65,12 +70,13 @@ struct SettingsPanelView: View {
                         midiService.reverb = ChoirDefaults.reverb
                     }) {
                         Text("Reset Defaults")
-                            .font(.caption)
+                            .font(Theme.toolbarFont)
                             .foregroundColor(.secondary)
                     }
                     .buttonStyle(.plain)
                 }
                 .padding()
+                .tint(Theme.ivory)
             }
         }
     }

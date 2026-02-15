@@ -13,15 +13,18 @@ struct SliderWithDefault: View {
     var body: some View {
         HStack {
             Text(label)
-                .font(.caption)
+                .font(Theme.toolbarFont)
                 .frame(width: 80, alignment: .leading)
             Slider(value: $value, in: range)
+                .tint(Theme.ivory)
+                .accentColor(Theme.ivory)
                 .onChange(of: value) { val in
                     if let snap = snap { value = snap(val) }
                 }
                 .background(defaultDot)
             Text(displayText)
-                .font(.caption).monospacedDigit()
+                .font(Theme.toolbarFont)
+                .monospacedDigit()
                 .frame(width: displayWidth)
         }
     }

@@ -8,6 +8,8 @@ import Combine
 class ScrollSyncManager: ObservableObject {
     private var scrollViews: [String: NSScrollView] = [:]
     private var activeScroller: String? = nil
+    /// Current horizontal scroll offset (published for SwiftUI arrow positioning, etc.)
+    @Published var horizontalOffset: CGFloat = 0
     
     func register(_ id: String, scrollView: NSScrollView) {
         scrollViews[id] = scrollView
@@ -17,6 +19,7 @@ class ScrollSyncManager: ObservableObject {
         // Prevent re-entry: if another scroller is active, ignore
         guard activeScroller == nil || activeScroller == id else { return }
         activeScroller = id
+        horizontalOffset = offset
         for (key, sv) in scrollViews where key != id {
             let current = sv.contentView.bounds.origin.x
             if abs(current - offset) > 0.5 {
@@ -155,6 +158,7 @@ struct PianoRollView: View {
                                 }
                             }
                     }
+                    .background(Theme.gridOverflow)
                 }
             }
             .onChange(of: model.highlightedPitch) { pitch in
@@ -225,10 +229,7 @@ struct PianoRollView: View {
                     Spacer()
                     Text(PitchConstants.noteName(for: p))
                         .font(.system(size: 9, design: .monospaced))
-                        .foregroundColor(
-                            p == 60 ? Theme.middleC :
-                            PitchConstants.isBlackKey(p) ? Theme.ivory.opacity(0.5) : Theme.ivory.opacity(0.8)
-                        )
+                        .foregroundColor(p == 60 ? Theme.middleC : Theme.ivory)
                         .lineLimit(1)
                     Spacer(minLength: 4)
                 }
@@ -280,6 +281,7 @@ struct PianoRollView: View {
                     groupDragOffset = .zero
                 }
             )
+            .equatable()
         }
     }
     
@@ -292,16 +294,20 @@ struct PianoRollView: View {
                 width: PianoRollLayout.gridWidth(beats: model.totalBeats),
                 height: PianoRollLayout.gridHeight()
             )
-            .onTapGesture { location in
-                let beat = PianoRollLayout.beatForX(location.x)
-                let pitch = PianoRollLayout.pitchForY(location.y)
-                
-                // Only add if no existing note at this position
-                if model.noteAt(beat: beat, pitch: pitch) == nil {
-                    let note = model.addNote(atBeat: beat, pitch: pitch, duration: 1.0)
-                    onNotePreview?(note)
-                }
-            }
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                    .onEnded { value in
+                        // Only fire if it was a click (not a drag)
+                        let dist = abs(value.translation.width) + abs(value.translation.height)
+                        guard dist < 4 else { return }
+                        let beat = PianoRollLayout.beatForX(value.location.x)
+                        let pitch = PianoRollLayout.pitchForY(value.location.y)
+                        if model.noteAt(beat: beat, pitch: pitch) == nil {
+                            let note = model.addNote(atBeat: beat, pitch: pitch, duration: 1.0)
+                            onNotePreview?(note)
+                        }
+                    }
+            )
     }
 }
 
@@ -419,7 +425,7 @@ struct SubdivisionGridShape: Shape {
 
 // MARK: - Note Rectangle View
 
-struct NoteRectView: View {
+struct NoteRectView: View, @preconcurrency Equatable {
     let note: SequencerNote
     let isSelected: Bool
     let isInMultiSelect: Bool
@@ -431,6 +437,13 @@ struct NoteRectView: View {
     var onGroupDragChanged: ((CGSize) -> Void)?
     var onGroupMoveEnded: ((Double, Int) -> Void)?
     @Environment(\.colorScheme) private var colorScheme
+    
+    static func == (lhs: NoteRectView, rhs: NoteRectView) -> Bool {
+        lhs.note == rhs.note &&
+        lhs.isSelected == rhs.isSelected &&
+        lhs.isInMultiSelect == rhs.isInMultiSelect &&
+        lhs.groupDragOffset == rhs.groupDragOffset
+    }
     
     // Visual-only offsets (no model mutation during drag = no flicker)
     @State private var dragOffset = CGSize.zero
@@ -447,7 +460,6 @@ struct NoteRectView: View {
     private var isResizing: Bool { resizeOffset != 0 }
     
     private var noteColor: Color {
-        if isSelected || isInMultiSelect { return .accentColor }
         return Theme.noteColor(pitch: note.pitch)
     }
     
@@ -477,8 +489,8 @@ struct NoteRectView: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: 3)
                         .stroke(
-                            (isSelected || isInMultiSelect) ? Theme.noteStroke : noteColor.opacity(0.5),
-                            lineWidth: isSelected ? 1.5 : (isInMultiSelect ? 1.0 : 0.5)
+                            (isSelected || isInMultiSelect) ? Theme.accent : noteColor.opacity(0.5),
+                            lineWidth: (isSelected || isInMultiSelect) ? 2 : 0.5
                         )
                 )
                 .overlay(noteLabel, alignment: .leading)
@@ -502,25 +514,35 @@ struct NoteRectView: View {
     @ViewBuilder
     private var noteLabel: some View {
         if visualWidth > 28 {
-            Text(phonemeLabel)
-                .font(Theme.labelSmall)
-                .foregroundColor(
-                    (isSelected || isInMultiSelect)
-                        ? .white
-                        : Theme.noteLabelColor(pitch: note.pitch)
-                )
-                .lineLimit(1)
-                .padding(.leading, 3)
+            let c = Consonant.all.first { $0.ccValue == note.consonant }
+            let v = Vowel.all.first { $0.ccValue == note.vowel }
+            let isRandomCons = (c?.name == "Random")
+            let isNoneCons = (c?.name == "None")
+            let isRandomVowel = (v?.ccValue == 0)
+            
+            HStack(spacing: 1) {
+                if isRandomCons && isRandomVowel {
+                    // Both random → just show "Random"
+                    Text("Random")
+                } else if isRandomCons {
+                    // Random cons + specific vowel → shuffle + vowel
+                    Image(systemName: "shuffle")
+                    Text(v?.symbol ?? "")
+                } else if isRandomVowel {
+                    // Specific cons + random vowel → cons + shuffle
+                    if !isNoneCons { Text(c?.name ?? "") }
+                    Image(systemName: "shuffle")
+                } else {
+                    // Specific cons + specific vowel
+                    if !isNoneCons { Text(c?.name ?? "") }
+                    Text(v?.symbol ?? "")
+                }
+            }
+            .font(Theme.labelSmall)
+            .foregroundColor(Theme.noteLabelColor(pitch: note.pitch))
+            .lineLimit(1)
+            .padding(.leading, 3)
         }
-    }
-    
-    private var phonemeLabel: String {
-        let c = Consonant.all.first { $0.ccValue == note.consonant }?.name ?? ""
-        let v = Vowel.all.first { $0.ccValue == note.vowel }?.symbol ?? ""
-        if c == "None" || c == "Random" {
-            return v
-        }
-        return "\(c)\(v)"
     }
     
     // MARK: - Move Gesture
