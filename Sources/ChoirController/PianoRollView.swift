@@ -134,6 +134,10 @@ struct PianoRollView: View {
     // Shared group drag offset for multi-select move
     @State private var groupDragOffset: CGSize = .zero
     
+    // Marquee selection state
+    @State private var marqueeOrigin: CGPoint? = nil
+    @State private var marqueeRect: CGRect? = nil
+    
     var body: some View {
         // Vertical scroll wraps both piano keys and grid together
         ScrollViewReader { proxy in
@@ -208,7 +212,20 @@ struct PianoRollView: View {
                     .allowsHitTesting(false)
             }
             
-            // 6. Playhead line (green, full height)
+            // 6. Marquee selection rectangle
+            if let rect = marqueeRect {
+                Rectangle()
+                    .fill(Theme.accent.opacity(0.1))
+                    .overlay(
+                        Rectangle()
+                            .strokeBorder(Theme.accent.opacity(0.6), lineWidth: 1, antialiased: false)
+                    )
+                    .frame(width: rect.width, height: rect.height)
+                    .offset(x: rect.minX, y: rect.minY)
+                    .allowsHitTesting(false)
+            }
+            
+            // 7. Playhead line (green, full height)
             playheadLine
         }
         .coordinateSpace(name: "pianoGrid")
@@ -341,18 +358,66 @@ struct PianoRollView: View {
             )
             .gesture(
                 DragGesture(minimumDistance: 0, coordinateSpace: .local)
-                    .onEnded { value in
-                        // Only fire if it was a click (not a drag)
+                    .onChanged { value in
+                        let isShift = NSEvent.modifierFlags.contains(.shift)
                         let dist = abs(value.translation.width) + abs(value.translation.height)
-                        guard dist < 4 else { return }
-                        let beat = PianoRollLayout.beatForX(value.location.x)
-                        let pitch = PianoRollLayout.pitchForY(value.location.y)
-                        if model.noteAt(beat: beat, pitch: pitch) == nil {
-                            let note = model.addNote(atBeat: beat, pitch: pitch, duration: 1.0)
-                            onNotePreview?(note)
+                        
+                        if isShift && dist > 4 {
+                            // Start or update marquee
+                            if marqueeOrigin == nil {
+                                marqueeOrigin = value.startLocation
+                            }
+                            if let origin = marqueeOrigin {
+                                let rect = CGRect(
+                                    x: min(origin.x, value.location.x),
+                                    y: min(origin.y, value.location.y),
+                                    width: abs(value.location.x - origin.x),
+                                    height: abs(value.location.y - origin.y)
+                                )
+                                marqueeRect = rect
+                                
+                                // Live-update multi-select set without changing primary
+                                let hitIds = notesIntersecting(rect: rect)
+                                model.selectedNoteIds = hitIds
+                            }
+                        }
+                    }
+                    .onEnded { value in
+                        if marqueeRect != nil {
+                            // Marquee drag ended — finalize primary selection
+                            model.selectedNoteId = model.selectedNoteIds.first
+                            marqueeRect = nil
+                            marqueeOrigin = nil
+                        } else {
+                            // Regular click to add a note
+                            let dist = abs(value.translation.width) + abs(value.translation.height)
+                            guard dist < 4 else { return }
+                            let beat = PianoRollLayout.beatForX(value.location.x)
+                            let pitch = PianoRollLayout.pitchForY(value.location.y)
+                            if model.noteAt(beat: beat, pitch: pitch) == nil {
+                                let note = model.addNote(atBeat: beat, pitch: pitch, duration: 1.0)
+                                onNotePreview?(note)
+                            }
                         }
                     }
             )
+    }
+    
+    /// Returns IDs of notes whose visual rect intersects the given rect.
+    private func notesIntersecting(rect: CGRect) -> Set<UUID> {
+        var ids = Set<UUID>()
+        for note in model.notes {
+            let noteRect = CGRect(
+                x: PianoRollLayout.xForBeat(note.startBeat),
+                y: PianoRollLayout.yForPitch(note.pitch),
+                width: CGFloat(note.duration) * PianoRollLayout.beatWidth,
+                height: PianoRollLayout.rowHeight
+            )
+            if rect.intersects(noteRect) {
+                ids.insert(note.id)
+            }
+        }
+        return ids
     }
 }
 

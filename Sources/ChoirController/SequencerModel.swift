@@ -207,6 +207,12 @@ class SequencerModel: ObservableObject {
         }
     }
     
+    /// Replace the entire selection with a set of note IDs (marquee select)
+    func selectNotes(_ ids: Set<UUID>) {
+        selectedNoteIds = ids
+        selectedNoteId = ids.first
+    }
+    
     func clearSelection() {
         selectedNoteId = nil
         selectedNoteIds.removeAll()
@@ -257,7 +263,21 @@ class SequencerModel: ObservableObject {
         }
     }
     
+    /// Set to true to trigger a confirmation alert before deleting multiple notes
+    @Published var pendingDeleteConfirm = false
+    
+    /// Request deletion — confirms first if multiple notes are selected
     func deleteSelectedNote() {
+        guard !selectedNoteIds.isEmpty else { return }
+        if selectedNoteIds.count > 1 {
+            pendingDeleteConfirm = true
+        } else {
+            confirmDeleteSelected()
+        }
+    }
+    
+    /// Actually delete the selected notes (call after confirmation)
+    func confirmDeleteSelected() {
         guard !selectedNoteIds.isEmpty else { return }
         withUndo("Delete Notes") {
             for id in selectedNoteIds {

@@ -27,6 +27,7 @@ struct ChoirControllerApp: App {
     @StateObject private var bluetoothManager = BluetoothMidiManager()
     @StateObject private var midiService = MidiService()
     @StateObject private var sequencerModel = SequencerModel()
+    @StateObject private var audioMonitor = AudioMonitorService()
     
     init() {
         // Ensure the app activates properly when run from command line
@@ -45,6 +46,7 @@ struct ChoirControllerApp: App {
                 .environmentObject(bluetoothManager)
                 .environmentObject(midiService)
                 .environmentObject(sequencerModel)
+                .environmentObject(audioMonitor)
                 .preferredColorScheme(appearanceMode.colorScheme)
                 .tint(Theme.accent)
         }
@@ -54,7 +56,8 @@ struct ChoirControllerApp: App {
             FileCommands(model: sequencerModel)
             EditCommands(model: sequencerModel)
             ViewCommands()
-            MidiCommands(midiService: midiService, bluetoothManager: bluetoothManager)
+            MidiCommands(midiService: midiService, bluetoothManager: bluetoothManager, audioMonitor: audioMonitor)
+            HelpCommands()
         }
     }
 }
