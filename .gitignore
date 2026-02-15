@@ -11,3 +11,8 @@ ChoirController.app/
 firmware/
 *.tfw
 default.profraw
+# Distribution
+export/
+*.xcarchive/
+ExportOptions.plist
+.release/
