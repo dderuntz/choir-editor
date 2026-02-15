@@ -1,6 +1,9 @@
 import Foundation
 @preconcurrency import AVFoundation
 import Combine
+import os
+
+private let log = Logger(subsystem: "com.choir-arranger", category: "audio")
 
 /// Manages the AVAudioEngine plumbing and active synth engine.
 /// Supports hot-swapping between SynthEngine implementations.
@@ -128,7 +131,7 @@ class AudioMonitorService: ObservableObject {
             try newEngine.start()
             isSetUp = true
         } catch {
-            print("Audio Engine failed to start: \(error)")
+            log.error("Audio Engine failed to start: \(error)")
         }
     }
 

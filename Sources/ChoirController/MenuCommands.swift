@@ -1,4 +1,7 @@
 import SwiftUI
+import os
+
+private let log = Logger(subsystem: "com.choir-arranger", category: "menu")
 
 // MARK: - Appearance Mode
 
@@ -55,7 +58,7 @@ struct FileCommands: Commands {
                             do {
                                 try model.load(from: url)
                             } catch {
-                                print("Error opening recent: \(error)")
+                                log.error("Error opening recent: \(error)")
                             }
                         }
                     }

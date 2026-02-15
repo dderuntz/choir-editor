@@ -473,11 +473,10 @@ struct SequencerView: View {
         midiService.sendNoteOn(note: pitch, velocity: note.velocity)
         if localAudioEnabled { audioMonitor.playNote(note: pitch, velocity: note.velocity, vibrato: note.vibrato, reverb: note.reverb, vowel: note.vowel, consonant: note.consonant) }
         
-        print("🔊 play pitch=\(pitch) for \(String(format: "%.2f", durationSeconds))s")
+        
         
         // Schedule stop
         DispatchQueue.main.asyncAfter(deadline: .now() + durationSeconds) { [self] in
-            print("🔊 stop pitch=\(pitch)")
             midiService.sendNoteOff(note: pitch)
             if localAudioEnabled { audioMonitor.stopNote(note: pitch) }
         }

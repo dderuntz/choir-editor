@@ -88,7 +88,7 @@ final class AnimaleSampleLibrary: @unchecked Sendable {
 
             guard let url = bundle.url(forResource: name, withExtension: "wav", subdirectory: "AnimaleSounds")
                           ?? bundle.url(forResource: name, withExtension: "wav") else {
-                print("AnimaleSampleLibrary: missing \(name).wav")
+                // Missing sample — use fallback sine
                 samples[i] = makeFallbackSine()
                 continue
             }
@@ -106,11 +106,10 @@ final class AnimaleSampleLibrary: @unchecked Sendable {
                     samples[i] = Array(UnsafeBufferPointer(start: data[0], count: Int(buffer.frameLength)))
                 }
             } catch {
-                print("AnimaleSampleLibrary: error loading \(name).wav: \(error)")
                 samples[i] = makeFallbackSine()
             }
         }
-        print("AnimaleSampleLibrary: loaded \(samples.count) samples")
+        
     }
 
     private func makeFallbackSine() -> [Float] {
