@@ -4,6 +4,8 @@ A native macOS sequencer for arranging and performing with [Teenage Engineering'
 
 Built on protocol research from [jetztgradnet/Choirama](https://github.com/jetztgradnet/Choirama).
 
+![Choir Arranger](docs/screenshot.png)
+
 ## Features
 
 - **Piano Roll Sequencer**: Add, drag, and resize MIDI notes on a grid. Each note carries pitch, velocity, and Choir-specific phoneme controls (consonant, vowel, vibrato, reverb).
