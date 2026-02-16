@@ -20,3 +20,10 @@ alwaysApply: false
 - **PianoKey**: Handle touch logic internally. Use `DragGesture(minimumDistance: 0)`.
 - **Styling**: Middle C (60) is Yellow.
 - **Resizability**: Support dynamic window sizing where possible.
+
+## macOS Control Styling (macOS 26)
+- **Borderless Pickers**: Use `.buttonStyle(.borderless)` to remove the grey system chrome from Picker controls. Combine with `.fixedSize()` so they shrink to fit the current selection.
+- **Overriding accent color on borderless Pickers**: `.foregroundColor` and `.accentColor` do NOT work. Use `.tint(Theme.dark)` combined with `.foregroundStyle(Theme.dark)` to override the accent-colored selected text.
+- **Bordered Picker sizing**: Omitting both `.frame(width:)` and `.fixedSize()` lets the bordered macOS Picker auto-size to its widest option — same as `.fixedSize()` but cleaner. No need to specify either.
+- **Button border radius on macOS**: `.buttonBorderShape(.roundedRectangle(radius:))` is ignored by macOS system button chrome. To get custom corner radius, use `.buttonStyle(.plain)` and manually draw the background with `RoundedRectangle(cornerRadius:)` + `.clipShape()`.
+- **Custom Toggle switch**: The system `.toggleStyle(.switch)` doesn't allow customizing the knob color. Use `IvorySwitchStyle` (in Theme.swift) for a custom switch with a glass knob and themed track colors.

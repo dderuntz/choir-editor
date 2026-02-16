@@ -132,18 +132,23 @@ struct ViewCommands: Commands {
     
     var body: some Commands {
         CommandGroup(after: .toolbar) {
-            Toggle("Show Keyboard", isOn: $showKeyboard)
-                .keyboardShortcut("k", modifiers: [.command, .shift])
-            
-            Toggle("Show Setup (Inhale)", isOn: $showSettings)
+            Toggle("Intake (Settings)", isOn: $showSettings)
                 .keyboardShortcut(",", modifiers: .command)
-            
-            Divider()
-            
-            Button("Explore") {
+
+            Button("Compose") {
+                NotificationCenter.default.post(name: .showComposer, object: nil)
+            }
+            .keyboardShortcut("e", modifiers: [.command, .shift])
+
+            Button("Listen (MIDI Tests)") {
                 NotificationCenter.default.post(name: .showSoundPad, object: nil)
             }
             .keyboardShortcut("p", modifiers: [.command, .shift])
+
+            Divider()
+
+            Toggle("Show Keyboard", isOn: $showKeyboard)
+                .keyboardShortcut("k", modifiers: [.command, .shift])
             
             Divider()
             
@@ -185,10 +190,29 @@ struct ComposerCommands: Commands {
 
     var body: some Commands {
         CommandMenu("Composer") {
+            Button("Open Composer") {
+                NotificationCenter.default.post(name: .showComposer, object: nil)
+            }
+            .keyboardShortcut("e", modifiers: [.command, .shift])
+
+            Divider()
+
             Picker("Lyric Style", selection: $lyricStyle) {
                 ForEach(LyricStyle.allCases) { style in
                     Text(style.label).tag(style)
                 }
+            }
+        }
+    }
+}
+
+// MARK: - About Panel
+
+struct AboutCommands: Commands {
+    var body: some Commands {
+        CommandGroup(replacing: .appInfo) {
+            Button("About Choir Arranger") {
+                AppDelegate.showAboutPanel()
             }
         }
     }

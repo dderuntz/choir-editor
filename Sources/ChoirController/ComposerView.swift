@@ -34,18 +34,20 @@ struct ComposerView: View {
     }
 
     var body: some View {
+        let hasText = !composerModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let buttonBg = Color(red: 0xD8/255, green: 0xD6/255, blue: 0xD3/255)
+
         GeometryReader { geo in
-        ZStack {
-            // Tight group: label + field + buttons
-            let hasText = !composerModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        VStack(spacing: 0) {
+            // MARK: Text Entry Area (centered, max 640)
             VStack(alignment: .leading, spacing: 8) {
-                // Label
-                Text("What shall they sing?")
+                Spacer()
+
+                Text("What shall we sing?")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(Theme.text(colorScheme).opacity(hasText ? 0.4 : 1.0))
                     .padding(.bottom, 8)
 
-                // Text editor (grows with lines, max 3)
                 ZStack(alignment: .topLeading) {
                     if composerModel.inputText.isEmpty {
                         Text("prompt or lyric")
@@ -77,15 +79,13 @@ struct ComposerView: View {
                     }
                 }
 
-                // Action buttons
-                let buttonBg = Color(red: 0xD8/255, green: 0xD6/255, blue: 0xD3/255)
                 HStack(spacing: 8) {
                     let btnHeight: CGFloat = 16
                     let summonDisabled = !hasText || composerModel.isProcessing
                     Button(action: {
                         Task { await composerModel.summonSong() }
                     }) {
-                        Label(composerModel.isProcessing ? "Summoning…" : "Summon Lyrics",
+                        Label(composerModel.isProcessing ? "Summoning…" : "Summon a Lyric",
                               systemImage: composerModel.isProcessing ? "ellipsis" : "eyebrow")
                             .foregroundColor(Theme.dark.opacity(summonDisabled ? 0.3 : 1))
                             .frame(height: btnHeight)
@@ -109,100 +109,146 @@ struct ComposerView: View {
                 }
                 .padding(.top, 4)
 
-                // Phoneme pills + bouncing ball
-                if !composerModel.phonemes.isEmpty {
-                    ZStack(alignment: .topLeading) {
-                        phonemeStrip(leadingPad: 0)
-                            .modifier(ScrollClipDisabledModifier())
-
-                        // Bouncing ball
-                        if composerModel.isPlaying {
-                            Circle()
-                                .fill(Theme.green)
-                                .frame(width: 10, height: 10)
-                                .offset(x: ballX - 5, y: ballY - 3)
-                        }
-                    }
-                    .onPreferenceChange(ChipCenterKey.self) { chipCenters = $0 }
-                    // Snap ball to first chip when play starts
-                    .onChange(of: composerModel.isPlaying) { playing in
-                        if playing, let cx = chipCenters[0] {
-                            ballX = cx
-                            ballY = 0
-                        }
-                    }
-                    .onChange(of: composerModel.currentPlayIndex) { newIndex in
-                        guard let idx = newIndex, let cx = chipCenters[idx] else { return }
-
-                        let nextCx = chipCenters[idx + 1] ?? cx
-                        let distance = abs(nextCx - cx)
-                        let arcHeight = -min(50, max(16, max(distance, 30) * 0.35))
-                        // Full arc = note duration + gap — ball never sits still
-                        let fullArc = Double(composerModel.currentArcDuration) / 1000.0
-                        let halfArc = fullArc * 0.5
-
-                        // Very steep curves: near-vertical launch/drop, long hang at apex
-                        let steepOut = Animation.timingCurve(0, 0, 0.05, 1, duration: halfArc)
-                        let steepIn = Animation.timingCurve(0.95, 0, 1, 1, duration: halfArc)
-
-                        // Phase 1 — UP: steep launch, linear X travel
-                        withAnimation(steepOut) {
-                            ballY = arcHeight
-                        }
-                        withAnimation(.linear(duration: halfArc)) {
-                            ballX = (cx + nextCx) / 2
-                        }
-
-                        // Phase 2 — DOWN: steep drop, linear X arrival
-                        DispatchQueue.main.asyncAfter(deadline: .now() + halfArc) {
-                            withAnimation(steepIn) {
-                                ballY = 0
-                            }
-                            withAnimation(.linear(duration: halfArc)) {
-                                ballX = nextCx
-                            }
-                        }
-                    }
-                    .padding(.top, 48)
+                // Error / status
+                if let error = composerModel.errorMessage {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundColor(.red.opacity(0.7))
                 }
 
-                // Play + Key/Scale
-                if !composerModel.phonemes.isEmpty {
+                if let status = composerModel.llmStatusMessage, !composerModel.isLLMAvailable {
+                    Label(status, systemImage: "info.circle")
+                        .font(.caption)
+                        .foregroundColor(Theme.text(colorScheme).opacity(0.4))
+                }
+
+                Spacer()
+            }
+            .frame(maxWidth: 640)
+            .frame(maxWidth: .infinity, maxHeight: composerModel.phonemes.isEmpty ? .infinity : geo.size.height * 0.5)
+            .padding(.horizontal)
+            .padding(.bottom, 28)
+
+            // MARK: Phoneme Area (full width)
+            if !composerModel.phonemes.isEmpty {
+                // Hairline divider
+                Theme.fieldColor(colorScheme)
+                    .frame(height: 1)
+
+                Spacer()
+
+                ZStack(alignment: .topLeading) {
+                    phonemeStrip(leadingPad: 0)
+
+                    // Bouncing ball
+                    if composerModel.isPlaying {
+                        Circle()
+                            .fill(Theme.green)
+                            .frame(width: 10, height: 10)
+                            .offset(x: ballX - 5, y: ballY - 3)
+                    }
+                }
+                .onPreferenceChange(ChipCenterKey.self) { chipCenters = $0 }
+                .onChange(of: composerModel.isPlaying) { playing in
+                    if playing, let cx = chipCenters[0] {
+                        ballX = cx
+                        ballY = 0
+                    }
+                }
+                .onChange(of: composerModel.currentPlayIndex) { newIndex in
+                    guard let idx = newIndex, let cx = chipCenters[idx] else { return }
+
+                    let nextCx = chipCenters[idx + 1] ?? cx
+                    let distance = abs(nextCx - cx)
+                    let arcHeight = -min(50, max(16, max(distance, 30) * 0.35))
+                    let fullArc = Double(composerModel.currentArcDuration) / 1000.0
+                    let halfArc = fullArc * 0.5
+
+                    let steepOut = Animation.timingCurve(0, 0, 0.05, 1, duration: halfArc)
+                    let steepIn = Animation.timingCurve(0.95, 0, 1, 1, duration: halfArc)
+
+                    withAnimation(steepOut) {
+                        ballY = arcHeight
+                    }
+                    withAnimation(.linear(duration: halfArc)) {
+                        ballX = (cx + nextCx) / 2
+                    }
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + halfArc) {
+                        withAnimation(steepIn) {
+                            ballY = 0
+                        }
+                        withAnimation(.linear(duration: halfArc)) {
+                            ballX = nextCx
+                        }
+                    }
+                }
+                .padding(.top, 48)
+                .padding(.horizontal)
+
+                Spacer()
+
+                // Instruction caption
+                Text("Shift-click a chip to add choir")
+                    .font(.system(size: 11))
+                    .foregroundColor(Theme.text(colorScheme).opacity(0.35))
+                    .padding(.horizontal)
+                    .padding(.vertical, 4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                // Phoneme toolbar (ZStack for true center play button)
+                ZStack {
+                    let btnHeight: CGFloat = 16
+
+                    // Key/Scale (left)
+                    HStack {
+                        HStack(spacing: 4) {
+                            Image(systemName: "music.note.list")
+                                .foregroundColor(Theme.text(colorScheme).opacity(0.5))
+
+                            Picker("", selection: $sequencerModel.musicalKey) {
+                                ForEach(MusicalKey.allCases) { key in
+                                    Text(key.name).tag(key)
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(width: 52)
+
+                            Picker("", selection: $sequencerModel.scaleType) {
+                                ForEach(ScaleType.allCases) { scale in
+                                    Text(scale.rawValue).tag(scale)
+                                }
+                            }
+                            .labelsHidden()
+                        }
+                        Spacer()
+                    }
+
+                    // Play (true center)
+                    Button(action: {
+                        if composerModel.isPlaying {
+                            composerModel.stop()
+                            audioMonitor.stopNote(note: 60)
+                        } else {
+                            composerModel.playPhonemes(audioMonitor: audioMonitor)
+                        }
+                    }) {
+                        Label(composerModel.isPlaying ? "Stop" : "Play",
+                              systemImage: composerModel.isPlaying ? "stop.fill" : "play.fill")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(Theme.dark)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 10)
+                    }
+                    .buttonStyle(.plain)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14)
+                            .fill(composerModel.isPlaying ? Theme.green : Theme.accent)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+
+                    // Actions (right)
                     HStack(spacing: 8) {
-                        let btnHeight: CGFloat = 16
-
-                        Button(action: {
-                            if composerModel.isPlaying {
-                                composerModel.stop()
-                                audioMonitor.stopNote(note: 60)
-                            } else {
-                                composerModel.playPhonemes(audioMonitor: audioMonitor)
-                            }
-                        }) {
-                            Label(composerModel.isPlaying ? "Stop" : "Play",
-                                  systemImage: composerModel.isPlaying ? "stop.fill" : "play.fill")
-                                .foregroundColor(Theme.dark)
-                                .frame(height: btnHeight)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(composerModel.isPlaying ? Theme.green : Theme.accent)
-
-                        Picker("", selection: $sequencerModel.musicalKey) {
-                            ForEach(MusicalKey.allCases) { key in
-                                Text(key.name).tag(key)
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(width: 52)
-
-                        Picker("", selection: $sequencerModel.scaleType) {
-                            ForEach(ScaleType.allCases) { scale in
-                                Text(scale.rawValue).tag(scale)
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(width: 130)
-
                         Spacer()
 
                         Button(action: {
@@ -211,7 +257,7 @@ struct ComposerView: View {
                                 onDismiss?()
                             }
                         }) {
-                            Label("Add to Sequencer", systemImage: "rectangle.grid.1x3")
+                            Label("Copy to Grid", systemImage: "document.on.document")
                                 .foregroundColor(Theme.dark)
                                 .frame(height: btnHeight)
                         }
@@ -245,39 +291,17 @@ struct ComposerView: View {
                         }
                     }
                     .animation(.easeInOut(duration: 0.2), value: composerModel.canUndo)
-                    .controlSize(.regular)
-                    .padding(.top, 8)
-
-                    // Instruction caption
-                    Text("Shift-click a chip to add choir")
-                        .font(.system(size: 11))
-                        .foregroundColor(Theme.text(colorScheme).opacity(0.35))
-                        .padding(.top, 4)
                 }
-
-                // Error / status
-                if let error = composerModel.errorMessage {
-                    Label(error, systemImage: "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundColor(.red.opacity(0.7))
-                }
-
-                if let status = composerModel.llmStatusMessage, !composerModel.isLLMAvailable {
-                    Label(status, systemImage: "info.circle")
-                        .font(.caption)
-                        .foregroundColor(Theme.text(colorScheme).opacity(0.4))
-                }
+                .controlSize(.regular)
+                .padding(.horizontal)
+                .padding(.top, 16)
+                .padding(.bottom, 10)
             }
-            .frame(maxWidth: 640)
-            .position(x: geo.size.width / 2, y: geo.size.height * 0.40)
 
             // Bottom keyboard divider
-            VStack(spacing: 0) {
-                Spacer()
-                if showKeyboard {
-                    Theme.dark.opacity(0.15)
-                        .frame(height: 1)
-                }
+            if showKeyboard {
+                Theme.dark.opacity(0.15)
+                    .frame(height: 1)
             }
         }
         }
@@ -295,6 +319,8 @@ struct ComposerView: View {
     // MARK: - Phoneme Strip
 
     private func phonemeStrip(leadingPad: CGFloat = 0) -> some View {
+        GeometryReader { containerGeo in
+        ScrollViewReader { scrollProxy in
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 0) {
                 ForEach(Array(composerModel.phonemes.enumerated()), id: \.element.id) { index, phoneme in
@@ -314,6 +340,7 @@ struct ComposerView: View {
                         onDelete: { composerModel.deletePhoneme(phoneme) }
                     )
                     .padding(.leading, index == 0 ? 0 : isNewWord ? 12 : 1)
+                    .id(index)
                     .background(
                         GeometryReader { chipGeo in
                             Color.clear.preference(
@@ -375,8 +402,31 @@ struct ComposerView: View {
             }
             .padding(.leading, leadingPad)
             .padding(.vertical, 8)
+            .frame(minWidth: containerGeo.size.width, alignment: .center)
         }
         .coordinateSpace(name: "phonemeStrip")
+        .onChange(of: composerModel.currentPlayIndex) { idx in
+            guard let idx = idx else { return }
+            let total = composerModel.phonemes.count
+            // Only scroll every 4 chips (or on the last one)
+            guard idx % 4 == 0 || idx >= total - 1 else { return }
+            // Look ahead ~6 chips so the ball has room
+            let target = min(idx + 6, total - 1)
+            withAnimation(.linear(duration: 2.0)) {
+                scrollProxy.scrollTo(target, anchor: UnitPoint(x: 0.33, y: 0.5))
+            }
+        }
+        .onChange(of: composerModel.isPlaying) { playing in
+            if !playing {
+                withAnimation(.easeInOut(duration: 1.2)) {
+                    scrollProxy.scrollTo(0, anchor: .leading)
+                }
+            }
+        }
+        }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .modifier(ScrollClipDisabledModifier())
     }
 }
 

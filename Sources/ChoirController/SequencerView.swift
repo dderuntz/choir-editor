@@ -98,84 +98,59 @@ struct SequencerView: View {
     
     private var sequencerToolbar: some View {
         HStack(spacing: 12) {
-            // Enable Guide group
-            Button(action: { withAnimation(.easeInOut(duration: 0.15)) { model.showScaleHelper.toggle() } }) {
-                HStack(spacing: 5) {
-                    Image(systemName: "music.note.list")
-                    if !model.showScaleHelper {
-                        Text("Enable guide")
+            // Scale guide — key picker doubles as on/off
+            HStack(spacing: 4) {
+                Image(systemName: "music.note.list")
+                    .foregroundColor(Theme.text(colorScheme).opacity(model.showScaleHelper ? 1 : 0.5))
+
+                Picker("", selection: Binding(
+                get: { model.showScaleHelper ? model.musicalKey.rawValue : -1 },
+                set: { newValue in
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        if newValue == -1 {
+                            model.showScaleHelper = false
+                        } else {
+                            model.musicalKey = MusicalKey(rawValue: newValue) ?? .C
+                            model.showScaleHelper = true
+                        }
                     }
                 }
-                .foregroundColor(model.showScaleHelper ? Theme.accent : Theme.text(colorScheme).opacity(0.7))
+            )) {
+                Text("No Scale").tag(-1)
+                ForEach(MusicalKey.allCases) { key in
+                    Text(key.name).tag(key.rawValue)
+                }
             }
-            .buttonStyle(.plain)
-            .help("Scale guide")
-            
-            if model.showScaleHelper {
-                Picker("", selection: $model.musicalKey) {
-                    ForEach(MusicalKey.allCases) { key in
-                        Text(key.name).tag(key)
+            .labelsHidden()
+            .frame(width: model.showScaleHelper ? 50 : 90)
+            .controlSize(.regular)
+
+                if model.showScaleHelper {
+                    Picker("", selection: $model.scaleType) {
+                        ForEach(ScaleType.allCases) { scale in
+                            Text(scale.rawValue).tag(scale)
+                        }
                     }
+                    .labelsHidden()
+                    .controlSize(.regular)
                 }
-                .labelsHidden()
-                .frame(width: 50)
-                .controlSize(.small)
-                .tint(Theme.text(colorScheme).opacity(0.7))
-                .accentColor(Theme.text(colorScheme).opacity(0.7))
-                
-                Picker("", selection: $model.scaleType) {
-                    ForEach(ScaleType.allCases) { scale in
-                        Text(scale.rawValue).tag(scale)
-                    }
-                }
-                .labelsHidden()
-                .frame(width: 110)
-                .controlSize(.small)
-                .tint(Theme.text(colorScheme).opacity(0.7))
-                .accentColor(Theme.text(colorScheme).opacity(0.7))
-                
-                Button(action: { withAnimation(.easeInOut(duration: 0.15)) { model.showScaleHelper = false } }) {
-                    Text("Clear guide")
-                        .foregroundColor(Theme.text(colorScheme).opacity(0.5))
-                }
-                .buttonStyle(.plain)
             }
             
-            Rectangle()
-                .fill(Theme.text(colorScheme).opacity(0.15))
-                .frame(width: 1, height: 16)
-            
-            // Bar navigation: < X Bars >
-            HStack(spacing: 6) {
-                Button(action: { if model.totalBeats > 4 { model.totalBeats -= 4 } }) {
-                    Image(systemName: "chevron.left.circle.fill")
-                        .foregroundColor(model.totalBeats > 4 ? Theme.text(colorScheme).opacity(0.7) : Theme.text(colorScheme).opacity(0.2))
-                }
-                .buttonStyle(.plain)
-                .disabled(model.totalBeats <= 4)
-                
-                Text("\(model.totalBeats / 4) Bars")
-                    .foregroundColor(Theme.text(colorScheme).opacity(0.7))
-                    .monospacedDigit()
-                
-                Button(action: { if model.totalBeats < 64 { model.totalBeats += 4 } }) {
-                    Image(systemName: "chevron.right.circle.fill")
-                        .foregroundColor(model.totalBeats < 64 ? Theme.text(colorScheme).opacity(0.7) : Theme.text(colorScheme).opacity(0.2))
-                }
-                .buttonStyle(.plain)
-                .disabled(model.totalBeats >= 64)
-            }
-            
-            Rectangle()
-                .fill(Theme.text(colorScheme).opacity(0.15))
-                .frame(width: 1, height: 16)
+            // Bar navigation
+            Stepper("\(model.totalBeats / 4) Bars", value: Binding(
+                get: { model.totalBeats / 4 },
+                set: { model.totalBeats = $0 * 4 }
+            ), in: 1...16)
+            .monospacedDigit()
+            .controlSize(.small)
+            .tint(Theme.fieldLight)
             
             // Loop toggle
-            Button(action: { model.isLooping.toggle() }) {
-                Label("Loop", systemImage: "repeat")
-                    .foregroundColor(model.isLooping ? Theme.accent : Theme.text(colorScheme).opacity(0.7))
+            Toggle(isOn: $model.isLooping) {
+                Text("Loop")
+                    .opacity(model.isLooping ? 1 : 0.4)
             }
-            .buttonStyle(.plain)
+            .toggleStyle(IvorySwitchStyle())
             .help(model.isLooping ? "Looping" : "Loop")
             
             Spacer()
@@ -188,20 +163,19 @@ struct SequencerView: View {
                     model.deleteSelectedNote()
                 }
             }) {
-                Label(
-                    model.selectedNoteIds.isEmpty
-                        ? "Clear Notes"
-                        : "Clear Selection (\(model.selectedNoteIds.count))",
-                    systemImage: "xmark.circle.fill"
-                )
-                .foregroundColor(Theme.text(colorScheme).opacity(0.7))
+                Text(model.selectedNoteIds.isEmpty
+                    ? "Clear All"
+                    : "Clear Selection (\(model.selectedNoteIds.count))")
+                .foregroundColor(Theme.dark)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderless)
+            .controlSize(.regular)
+            .tint(nil)
             .disabled(model.notes.isEmpty && model.selectedNoteIds.isEmpty)
         }
         .font(Theme.toolbarFont)
         .padding(.horizontal)
-        .frame(height: 32)
+        .padding(.vertical, 8)
         .background(Theme.bg(colorScheme))
     }
     

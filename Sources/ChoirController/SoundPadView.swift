@@ -50,13 +50,13 @@ struct SoundPadView: View {
         VStack(spacing: 0) {
             // MARK: Header bar
             HStack {
-                Text("Explore")
+                Text("Listen")
                     .font(.system(size: 56, weight: .ultraLight))
                     .kerning(-1.4)
                     .foregroundColor(txt)
                 Spacer()
                 if hasModifiedDefaults {
-                    pillButton("Reset") {
+                    Button(action: {
                         pitchBendValue = 0
                         discoveryCC = 5
                         discoveryCCValue = 64
@@ -66,19 +66,14 @@ struct SoundPadView: View {
                         testNote = 60
                         testVelocity = 100
                         lastPacketLog = "Reset to defaults"
+                    }) {
+                        Text("Reset")
                     }
                 }
                 Button(action: { isPresented = false }) {
                     Text("Done")
-                        .font(Theme.buttonFont)
-                        .fontWeight(Theme.buttonWeight)
-                        .foregroundColor(Theme.bg(colorScheme))
-                        .padding(.horizontal, Theme.buttonPaddingH)
-                        .padding(.vertical, Theme.buttonPaddingV)
-                        .background(txt)
-                        .cornerRadius(Theme.buttonRadius)
                 }
-                .buttonStyle(.plain)
+                .tint(nil)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 20)
@@ -316,23 +311,12 @@ struct SoundPadView: View {
     }
     
     // MARK: - Pill Button
-    
+
     private func pillButton(_ label: String, accent: Bool = false, disabled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
-                .font(Theme.buttonFont)
-                .fontWeight(Theme.buttonWeight)
-                .foregroundColor(accent ? Theme.dark : txt.opacity(0.85))
-                .padding(.horizontal, Theme.buttonPaddingH)
-                .padding(.vertical, Theme.buttonPaddingV)
-                .background(accent ? Theme.accent : Color.clear)
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.buttonRadius)
-                        .stroke(accent ? Color.clear : txt.opacity(0.85), lineWidth: Theme.buttonStroke)
-                )
-                .cornerRadius(Theme.buttonRadius)
         }
-        .buttonStyle(.plain)
+        .tint(accent ? Theme.accent : nil)
         .disabled(disabled)
         .opacity(disabled ? 0.4 : 1)
     }
