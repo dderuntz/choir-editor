@@ -73,7 +73,7 @@ struct ContentView: View {
                     .help("File")
                     
                     TextField("Untitled", text: $editingTitle, onCommit: { commitTitleEdit(); isTitleFocused = false })
-                        .font(.system(size: showComposer ? 24 : 56, weight: .ultraLight))
+                        .font(.system(size: showComposer ? 24 : 56, weight: showComposer ? .light : .ultraLight))
                         .kerning(showComposer ? -0.5 : -1.4)
                         .textFieldStyle(.plain)
                         .focused($isTitleFocused)
@@ -117,7 +117,7 @@ struct ContentView: View {
                             .foregroundColor(showSettings ? Theme.text(colorScheme) : Theme.text(colorScheme).opacity(0.4))
                     }
                     .buttonStyle(.plain)
-                    .help("Setup")
+                    .help("Inhale")
                     
                     // Composer toggle
                     Button(action: {
@@ -136,7 +136,7 @@ struct ContentView: View {
                             }
                     }
                     .buttonStyle(.plain)
-                    .help("Composer")
+                    .help("Compose")
                     
                     // Explorer (tuning fork)
                     Button(action: { showSoundPad = true }) {
@@ -145,7 +145,7 @@ struct ContentView: View {
                             .foregroundColor(showSoundPad ? Theme.text(colorScheme) : Theme.text(colorScheme).opacity(0.4))
                     }
                     .buttonStyle(.plain)
-                    .help("Choir Explorer")
+                    .help("Explore")
                     
                     // Keyboard toggle
                     Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showKeyboard.toggle(); showKeyboardStorage = showKeyboard } }) {
@@ -154,7 +154,7 @@ struct ContentView: View {
                             .foregroundColor(showKeyboard ? Theme.text(colorScheme).opacity(0.85) : Theme.text(colorScheme).opacity(0.4))
                     }
                     .buttonStyle(.plain)
-                    .help("Toggle Keyboard")
+                    .help("Express")
                     
                     // Connection status indicator (tappable to open Bluetooth setup)
                     ConnectionStatusView(midiService: midiService)

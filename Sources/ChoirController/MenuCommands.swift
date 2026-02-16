@@ -128,12 +128,12 @@ struct ViewCommands: Commands {
             Toggle("Show Keyboard", isOn: $showKeyboard)
                 .keyboardShortcut("k", modifiers: [.command, .shift])
             
-            Toggle("Show Setup", isOn: $showSettings)
+            Toggle("Show Setup (Inhale)", isOn: $showSettings)
                 .keyboardShortcut(",", modifiers: .command)
             
             Divider()
             
-            Button("Choir Explorer") {
+            Button("Explore") {
                 NotificationCenter.default.post(name: .showSoundPad, object: nil)
             }
             .keyboardShortcut("p", modifiers: [.command, .shift])
