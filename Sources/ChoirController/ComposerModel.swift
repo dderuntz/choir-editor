@@ -187,9 +187,9 @@ class ComposerModel: ObservableObject {
         phonemes = ComposerPersistence.loadPhonemes()
     }
 
-    // Scale settings
-    @Published var musicalKey: MusicalKey = .C
-    @Published var scaleType: ScaleType = .pentatonicMajor
+    // Scale — synced from SequencerModel by ComposerView
+    var musicalKey: MusicalKey = .C
+    var scaleType: ScaleType = .pentatonicMajor
 
     // Speed multiplier (1.0 = normal, 1.5 = slower, 2.5 = slowest)
     @Published var speedMultiplier: Double = 1.0
@@ -638,12 +638,23 @@ class ComposerModel: ObservableObject {
         errorMessage = nil
     }
 
+    // Step index for keyboard-driven playback (loops through chips)
+    private var keyboardStepIndex: Int = 0
+
     @MainActor
-    func playSinglePhoneme(_ phoneme: ChoirPhoneme, audioMonitor: AudioMonitorService) {
+    func playNextChip(note: UInt8, audioMonitor: AudioMonitorService) {
+        guard !phonemes.isEmpty else { return }
+        let phoneme = phonemes[keyboardStepIndex % phonemes.count]
+        playSinglePhoneme(phoneme, audioMonitor: audioMonitor, pitchOverride: note)
+        keyboardStepIndex = (keyboardStepIndex + 1) % phonemes.count
+    }
+
+    @MainActor
+    func playSinglePhoneme(_ phoneme: ChoirPhoneme, audioMonitor: AudioMonitorService, pitchOverride: UInt8? = nil) {
         stop()
         let idx = phonemes.firstIndex(where: { $0.id == phoneme.id }) ?? 0
         currentPlayIndex = idx
-        let pitch = pitchForPhoneme(index: idx, weight: phoneme.weight, total: phonemes.count)
+        let pitch = pitchOverride ?? pitchForPhoneme(index: idx, weight: phoneme.weight, total: phonemes.count)
         let velocity = velocityForWeight(phoneme.weight)
         print("[Composer] tap: \(phoneme.text) → \(phoneme.consonantName)·\(phoneme.vowelSymbol) w\(phoneme.weight) note \(pitch)\(phoneme.isEnsemble ? " 🎵ensemble" : "")")
         var activePitches: [UInt8]
