@@ -68,9 +68,10 @@ struct ChoirControllerApp: App {
         .windowResizability(.contentSize)
         .commands {
             FileCommands(model: sequencerModel)
-            EditCommands(model: sequencerModel)
+            EditCommands(model: sequencerModel, composerModel: composerModel)
             ViewCommands()
             MidiCommands(midiService: midiService, bluetoothManager: bluetoothManager, audioMonitor: audioMonitor)
+            ComposerCommands()
             HelpCommands()
         }
     }

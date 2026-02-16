@@ -28,6 +28,11 @@ struct ComposerView: View {
 
     private var lineHeight: CGFloat { 62 }
 
+    private var editorLineCount: Int {
+        let newlines = composerModel.inputText.components(separatedBy: "\n").count
+        return max(1, min(3, newlines))
+    }
+
     var body: some View {
         GeometryReader { geo in
         ZStack {
@@ -40,7 +45,7 @@ struct ComposerView: View {
                     .foregroundColor(Theme.text(colorScheme).opacity(hasText ? 0.4 : 1.0))
                     .padding(.bottom, 8)
 
-                // Text editor (grows with lines, max 4)
+                // Text editor (grows with lines, max 3)
                 ZStack(alignment: .topLeading) {
                     if composerModel.inputText.isEmpty {
                         Text("prompt or lyric")
@@ -57,13 +62,12 @@ struct ComposerView: View {
                         .scrollContentBackground(.hidden)
                         .focused($isTextFocused)
                 }
-                .frame(minHeight: lineHeight, maxHeight: lineHeight * 4)
-                .fixedSize(horizontal: false, vertical: true)
+                .frame(height: CGFloat(editorLineCount) * lineHeight)
                 .onChange(of: composerModel.inputText) { newValue in
                     var capped = newValue
                     let lines = capped.components(separatedBy: "\n")
-                    if lines.count > 4 {
-                        capped = lines.prefix(4).joined(separator: "\n")
+                    if lines.count > 3 {
+                        capped = lines.prefix(3).joined(separator: "\n")
                     }
                     if capped.count > 120 {
                         capped = String(capped.prefix(120))
@@ -76,13 +80,15 @@ struct ComposerView: View {
                 // Action buttons
                 let buttonBg = Color(red: 0xD8/255, green: 0xD6/255, blue: 0xD3/255)
                 HStack(spacing: 8) {
+                    let btnHeight: CGFloat = 16
                     let summonDisabled = !hasText || composerModel.isProcessing
                     Button(action: {
                         Task { await composerModel.summonSong() }
                     }) {
-                        Label(composerModel.isProcessing ? "Summoning…" : "Summon Song",
+                        Label(composerModel.isProcessing ? "Summoning…" : "Summon Lyrics",
                               systemImage: composerModel.isProcessing ? "ellipsis" : "eyebrow")
                             .foregroundColor(Theme.dark.opacity(summonDisabled ? 0.3 : 1))
+                            .frame(height: btnHeight)
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(buttonBg.opacity(summonDisabled ? 0.4 : 1))
@@ -95,6 +101,7 @@ struct ComposerView: View {
                         Label(composerModel.isProcessing ? "Thinking…" : "Reveal Phonemes",
                               systemImage: composerModel.isProcessing ? "ellipsis" : "eye")
                             .foregroundColor(Theme.dark.opacity(revealDisabled ? 0.3 : 1))
+                            .frame(height: btnHeight)
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(buttonBg.opacity(revealDisabled ? 0.4 : 1))
@@ -106,7 +113,7 @@ struct ComposerView: View {
                 if !composerModel.phonemes.isEmpty {
                     ZStack(alignment: .topLeading) {
                         phonemeStrip(leadingPad: 0)
-                            .scrollClipDisabled()
+                            .modifier(ScrollClipDisabledModifier())
 
                         // Bouncing ball
                         if composerModel.isPlaying {
@@ -161,7 +168,9 @@ struct ComposerView: View {
 
                 // Play + Key/Scale
                 if !composerModel.phonemes.isEmpty {
-                    HStack(spacing: 12) {
+                    HStack(spacing: 8) {
+                        let btnHeight: CGFloat = 16
+
                         Button(action: {
                             if composerModel.isPlaying {
                                 composerModel.stop()
@@ -173,6 +182,7 @@ struct ComposerView: View {
                             Label(composerModel.isPlaying ? "Stop" : "Play",
                                   systemImage: composerModel.isPlaying ? "stop.fill" : "play.fill")
                                 .foregroundColor(Theme.dark)
+                                .frame(height: btnHeight)
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(composerModel.isPlaying ? Theme.green : Theme.accent)
@@ -193,14 +203,6 @@ struct ComposerView: View {
                         .labelsHidden()
                         .frame(width: 130)
 
-                        Picker("", selection: $composerModel.speedMultiplier) {
-                            Text("Normal Speed").tag(1.0)
-                            Text("Slower").tag(1.25)
-                            Text("Slowest").tag(1.5)
-                        }
-                        .labelsHidden()
-                        .frame(width: 90)
-
                         Spacer()
 
                         Button(action: {
@@ -211,10 +213,39 @@ struct ComposerView: View {
                         }) {
                             Label("Add to Sequencer", systemImage: "rectangle.grid.1x3")
                                 .foregroundColor(Theme.dark)
+                                .frame(height: btnHeight)
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(buttonBg)
+
+                        Button(action: {
+                            composerModel.stop()
+                            composerModel.clearPhonemes()
+                        }) {
+                            Image(systemName: "trash")
+                                .foregroundColor(Theme.dark)
+                                .frame(height: btnHeight)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(buttonBg)
+                        .help("Clear phonemes")
+
+                        if composerModel.canUndo {
+                            Button(action: {
+                                composerModel.undo()
+                            }) {
+                                Image(systemName: "arrow.uturn.backward")
+                                    .foregroundColor(Theme.dark)
+                                    .frame(height: btnHeight)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(buttonBg)
+                            .help("Undo")
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                        }
                     }
+                    .animation(.easeInOut(duration: 0.2), value: composerModel.canUndo)
+                    .controlSize(.regular)
                     .padding(.top, 8)
 
                     // Instruction caption
@@ -265,13 +296,24 @@ struct ComposerView: View {
 
     private func phonemeStrip(leadingPad: CGFloat = 0) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
+            HStack(spacing: 0) {
                 ForEach(Array(composerModel.phonemes.enumerated()), id: \.element.id) { index, phoneme in
+                    let isNewWord = index > 0 && phoneme.wordIndex != composerModel.phonemes[index - 1].wordIndex
+                    let isLastOfWord = index == composerModel.phonemes.count - 1 || composerModel.phonemes[index + 1].wordIndex != phoneme.wordIndex
+                    let isFirstOfWord = index == 0 || isNewWord
+                    let position: WordPosition = {
+                        if isFirstOfWord && isLastOfWord { return .only }
+                        if isFirstOfWord { return .first }
+                        if isLastOfWord { return .last }
+                        return .middle
+                    }()
                     PhonemeChip(
                         phoneme: phoneme,
                         isActive: composerModel.currentPlayIndex == index,
+                        wordPosition: position,
                         onDelete: { composerModel.deletePhoneme(phoneme) }
                     )
+                    .padding(.leading, index == 0 ? 0 : isNewWord ? 12 : 1)
                     .background(
                         GeometryReader { chipGeo in
                             Color.clear.preference(
@@ -291,6 +333,18 @@ struct ComposerView: View {
                     .onLongPressGesture(minimumDuration: 0.4) {
                         composerModel.toggleEnsemble(phoneme)
                     }
+                    .contextMenu {
+                        Button("Insert Before") {
+                            composerModel.insertPhoneme(relativeTo: phoneme, before: true)
+                        }
+                        Button("Insert After") {
+                            composerModel.insertPhoneme(relativeTo: phoneme, before: false)
+                        }
+                        Divider()
+                        Button("Delete", role: .destructive) {
+                            composerModel.deletePhoneme(phoneme)
+                        }
+                    }
                     .popover(isPresented: Binding(
                         get: { inspectedPhonemeId == phoneme.id },
                         set: { if !$0 { inspectedPhonemeId = nil } }
@@ -307,7 +361,7 @@ struct ComposerView: View {
                     }
                 }
 
-                // Thumbs up + trash at end of strip
+                // Thumbs up at end of strip
                 Button(action: { composerModel.approveResult() }) {
                     Image(systemName: composerModel.isApproved ? "hand.thumbsup.fill" : "hand.thumbsup")
                         .font(.title2)
@@ -318,18 +372,6 @@ struct ComposerView: View {
                 .help(composerModel.isApproved
                       ? "Saved (\(composerModel.savedExampleCount) examples)"
                       : "Approve — save as training example")
-
-                Button(action: {
-                    composerModel.stop()
-                    composerModel.clearAll()
-                }) {
-                    Image(systemName: "trash")
-                        .font(.title2)
-                        .foregroundColor(Theme.text(colorScheme).opacity(0.3))
-                }
-                .buttonStyle(.plain)
-                .padding(.leading, 6)
-                .help("Clear all")
             }
             .padding(.leading, leadingPad)
             .padding(.vertical, 8)
@@ -340,35 +382,60 @@ struct ComposerView: View {
 
 // MARK: - Phoneme Chip
 
+enum WordPosition {
+    case only      // single-chip word → fully rounded
+    case first     // left rounded, right sharp
+    case middle    // both sides sharp
+    case last      // left sharp, right rounded
+}
+
 struct PhonemeChip: View {
     let phoneme: ChoirPhoneme
     let isActive: Bool
+    var wordPosition: WordPosition = .only
     var onDelete: (() -> Void)? = nil
     @Environment(\.colorScheme) private var colorScheme
     @State private var isHovered = false
     @State private var bump: CGFloat = 0
     @State private var flashGreen = false
 
+    private var isRandomCons: Bool { phoneme.consonantCC == 0 }
+    private var isRandomVowel: Bool { phoneme.vowelCC == 0 }
+
     private var phonemeLabel: String {
         let c = Consonant.all.first { $0.ccValue == phoneme.consonantCC }
         let v = Vowel.all.first { $0.ccValue == phoneme.vowelCC }
         let isNone = (c?.name == "None")
-        let cPart = isNone ? "" : (c?.name ?? "")
-        let vPart = v?.symbol ?? ""
+        let cPart = (isNone || isRandomCons) ? "" : (c?.name ?? "")
+        let vPart = isRandomVowel ? "" : (v?.symbol ?? "")
         return cPart + vPart
     }
 
     var body: some View {
         VStack(spacing: 2) {
-            Text(phoneme.text)
-                .font(.system(size: 13, weight: .regular))
-                .foregroundColor(Theme.ivory)
+            if isRandomCons && isRandomVowel {
+                Image(systemName: "shuffle")
+                    .font(.system(size: 13))
+                    .foregroundColor(Theme.ivory)
+            } else {
+                Text(phoneme.text)
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundColor(Theme.ivory)
+            }
 
-            if !phonemeLabel.isEmpty || phoneme.isEnsemble {
+            if !phonemeLabel.isEmpty || isRandomCons || isRandomVowel || phoneme.isEnsemble {
                 HStack(spacing: 3) {
+                    if isRandomCons && !isRandomVowel {
+                        Image(systemName: "shuffle")
+                            .font(.system(size: 8))
+                    }
                     if !phonemeLabel.isEmpty {
                         Text(phonemeLabel)
                             .font(.system(size: 10))
+                    }
+                    if isRandomVowel && !isRandomCons {
+                        Image(systemName: "shuffle")
+                            .font(.system(size: 8))
                     }
                     if phoneme.isEnsemble {
                         Image(systemName: "person.3.fill")
@@ -381,9 +448,14 @@ struct PhonemeChip: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(flashGreen ? Theme.green : Theme.dark)
-                .animation(.easeOut(duration: 0.3), value: flashGreen)
+            UnevenRoundedRectangle(
+                topLeadingRadius: wordPosition == .middle || wordPosition == .last ? 4 : 10,
+                bottomLeadingRadius: wordPosition == .middle || wordPosition == .last ? 4 : 10,
+                bottomTrailingRadius: wordPosition == .middle || wordPosition == .first ? 4 : 10,
+                topTrailingRadius: wordPosition == .middle || wordPosition == .first ? 4 : 10
+            )
+            .fill(flashGreen ? Theme.green : Theme.dark)
+            .animation(.easeOut(duration: 0.3), value: flashGreen)
         )
         .overlay(alignment: .topTrailing) {
             if isHovered, let onDelete {
@@ -492,5 +564,17 @@ struct PhonemeInspector: View {
         }
         .frame(width: 136)
         .padding(12)
+    }
+}
+
+// MARK: - Availability Wrapper
+
+private struct ScrollClipDisabledModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content.scrollClipDisabled()
+        } else {
+            content
+        }
     }
 }

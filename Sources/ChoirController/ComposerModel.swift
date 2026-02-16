@@ -13,6 +13,7 @@ struct ChoirPhoneme: Identifiable, Equatable, Sendable {
     let consonantCC: UInt8 // CC2 value
     let vowelCC: UInt8     // CC3 value
     let weight: Int        // stress: 3=primary, 2=secondary, 1=unstressed
+    var wordIndex: Int = 0 // which word this chip belongs to (for visual grouping)
     var isEnsemble: Bool = false  // choral harmony on this syllable
 
     var consonantName: String {
@@ -28,10 +29,7 @@ struct ChoirPhoneme: Identifiable, Equatable, Sendable {
 @available(macOS 26, *)
 @Generable
 struct LLMSyllable {
-    @Guide(description: "The letters from the original word for this sound (e.g. 'The', 'far', 'mer', 'dell')")
-    let text: String
-
-    @Guide(description: "Consonant onset sound",
+    @Guide(description: "Consonant onset sound for this syllable of singing",
            .anyOf(["none", "b", "bj", "bl", "br", "tsh", "d", "dr",
                    "f", "fj", "fl", "fr", "g", "gl", "gr", "h", "dj",
                    "k", "kl", "kr", "l", "m", "n", "nj", "p", "pl",
@@ -39,21 +37,41 @@ struct LLMSyllable {
                    "v", "w", "y"]))
     let consonant: String
 
-    @Guide(description: "Vowel nucleus sound",
+    @Guide(description: "Vowel nucleus — the sustained singing sound",
            .anyOf(["aa", "ai", "ae", "schwa", "aw", "oi", "o",
                    "uh", "oo", "ee", "ear", "ay", "air", "ure",
                    "mmm", "none"]))
     let vowel: String
 
-    @Guide(description: "Stress level: 3=primary accent, 2=secondary, 1=unstressed/weak")
+    @Guide(description: "Stress for singing accent and length. 3 = the LOUD syllable in each word (FAR-mer, SING-ing). 2 = secondary. 1 = weak (the, in, a).",
+           .range(1...3))
     let weight: Int
+
+    @Guide(description: "Original letters from the input word for this sound (e.g. 'far', 'mer', 'The')")
+    let text: String
 }
 
 @available(macOS 26, *)
 @Generable
 struct LLMPhonemeResult {
-    @Guide(description: "Ordered list of syllables extracted from the input text")
+    @Guide(description: "Ordered syllables extracted from the input text for singing")
     let syllables: [LLMSyllable]
+}
+
+// MARK: - LLM Lyric Generation Types
+
+@available(macOS 26, *)
+@Generable
+struct LLMLyric {
+    @Guide(description: "A short lyric for singing. 2 lines separated by /. Each line 3-8 simple words.")
+    let lyric: String
+}
+
+@available(macOS 26, *)
+@Generable
+struct LLMWordList {
+    @Guide(description: "Clean list of correctly-spelled English words extracted from the input. Fix typos, split run-on words. Keep original word order.")
+    let words: [String]
 }
 
 // MARK: - Few-Shot Example Storage
@@ -71,7 +89,7 @@ struct PhonemeExample: Codable {
 
 enum PhonemeExampleStore {
     private static let storageKey = "composer.fewShotExamples"
-    private static let maxExamples = 10  // keep prompt manageable
+    private static let maxExamples = 5  // Apple: "less than five examples" for 3B model
 
     static func load() -> [PhonemeExample] {
         guard let data = UserDefaults.standard.data(forKey: storageKey),
@@ -130,7 +148,8 @@ private struct StoredPhoneme: Codable {
     let consonantCC: UInt8
     let vowelCC: UInt8
     let weight: Int
-    let isEnsemble: Bool
+    var wordIndex: Int = 0
+    var isEnsemble: Bool = false
 }
 
 private enum ComposerPersistence {
@@ -146,7 +165,7 @@ private enum ComposerPersistence {
     }
 
     static func savePhonemes(_ phonemes: [ChoirPhoneme]) {
-        let stored = phonemes.map { StoredPhoneme(text: $0.text, consonantCC: $0.consonantCC, vowelCC: $0.vowelCC, weight: $0.weight, isEnsemble: $0.isEnsemble) }
+        let stored = phonemes.map { StoredPhoneme(text: $0.text, consonantCC: $0.consonantCC, vowelCC: $0.vowelCC, weight: $0.weight, wordIndex: $0.wordIndex, isEnsemble: $0.isEnsemble) }
         if let data = try? JSONEncoder().encode(stored) {
             UserDefaults.standard.set(data, forKey: phonemesKey)
         }
@@ -156,7 +175,7 @@ private enum ComposerPersistence {
         guard let data = UserDefaults.standard.data(forKey: phonemesKey),
               let stored = try? JSONDecoder().decode([StoredPhoneme].self, from: data)
         else { return [] }
-        return stored.map { ChoirPhoneme(text: $0.text, consonantCC: $0.consonantCC, vowelCC: $0.vowelCC, weight: $0.weight, isEnsemble: $0.isEnsemble) }
+        return stored.map { ChoirPhoneme(text: $0.text, consonantCC: $0.consonantCC, vowelCC: $0.vowelCC, weight: $0.weight, wordIndex: $0.wordIndex, isEnsemble: $0.isEnsemble) }
     }
 }
 
@@ -180,6 +199,27 @@ class ComposerModel: ObservableObject {
     /// Whether the Composer has any content (for icon indicator)
     var hasContent: Bool {
         !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !phonemes.isEmpty
+    }
+
+    // Undo — one level snapshot of text + phonemes
+    private var undoText: String?
+    private var undoPhonemes: [ChoirPhoneme]?
+    @Published var canUndo: Bool = false
+
+    func saveUndo() {
+        undoText = inputText
+        undoPhonemes = phonemes
+        canUndo = true
+    }
+
+    @MainActor
+    func undo() {
+        guard let text = undoText, let ph = undoPhonemes else { return }
+        inputText = text
+        phonemes = ph
+        undoText = nil
+        undoPhonemes = nil
+        canUndo = false
     }
 
     init() {
@@ -254,12 +294,59 @@ class ComposerModel: ObservableObject {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
 
+        saveUndo()
         isProcessing = true
         errorMessage = nil
         isApproved = false
 
+        // ── Tier 1: Cheap heuristic — basic whitespace split → dictionary ──
+        let firstTry = PhonemeDictionary.lookupSentence(text)
+
+        if firstTry.missing.isEmpty {
+            phonemes = firstTry.found
+            print("[Composer] Dict (direct): \(phonemes.count) phonemes from: \(text)")
+            logPhonemes(phonemes)
+            isProcessing = false
+            return
+        }
+
+        print("[Composer] Dict missed \(firstTry.missing.count) words: \(firstTry.missing)")
+
+        // ── Tier 2: LLM normalizes text (fix typos, split run-ons) → retry dict ──
         if #available(macOS 26, *) {
-            await extractWithLLM(text: text)
+            if let cleanWords = await normalizeWithLLM(text: text) {
+                let cleanText = cleanWords.joined(separator: " ")
+
+                // Update the text field so user sees the cleaned version
+                inputText = cleanText
+
+                let retry = PhonemeDictionary.lookupSentence(cleanText)
+
+                if retry.missing.isEmpty {
+                    phonemes = retry.found
+                    print("[Composer] Dict (after LLM normalize): \(phonemes.count) phonemes")
+                    logPhonemes(phonemes)
+                    isProcessing = false
+                    return
+                }
+
+                // ── Tier 3: Dict got most, LLM fallback for remaining words ──
+                print("[Composer] Still missing after normalize: \(retry.missing)")
+                var combined = retry.found
+                let nextWordIdx = (combined.map(\.wordIndex).max() ?? -1) + 1
+                let missingText = retry.missing.joined(separator: " ")
+                var llmResult = await extractWithLLM(text: missingText)
+                for i in llmResult.indices { llmResult[i].wordIndex = nextWordIdx + i }
+                combined.append(contentsOf: llmResult)
+                phonemes = combined
+                print("[Composer] Combined: \(retry.found.count) dict + \(llmResult.count) LLM = \(phonemes.count) total")
+                logPhonemes(phonemes)
+            } else {
+                // Normalize failed — full LLM fallback on original text
+                print("[Composer] Normalize failed, full LLM fallback")
+                phonemes = await extractWithLLM(text: text)
+                logPhonemes(phonemes)
+            }
         } else {
             errorMessage = "Requires macOS 26 (Tahoe)"
         }
@@ -267,11 +354,18 @@ class ComposerModel: ObservableObject {
         isProcessing = false
     }
 
+    private func logPhonemes(_ list: [ChoirPhoneme]) {
+        for (i, p) in list.enumerated() {
+            print("  [\(i)] \(p.text): \(p.consonantName)·\(p.vowelSymbol) w\(p.weight)")
+        }
+    }
+
     // MARK: - Summon Song (LLM text generation)
 
     @MainActor
     func summonSong() async {
         guard !isProcessing else { return }
+        saveUndo()
         isProcessing = true
         errorMessage = nil
 
@@ -290,73 +384,108 @@ class ComposerModel: ObservableObject {
         let prompt = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let userPrompt = prompt.isEmpty ? "anything beautiful" : prompt
 
-        let instructions = """
-        You are a songwriter's muse. Given a theme or prompt, write a very short singable lyric.
+        // Read style from menu setting (defaults to senryū)
+        let styleRaw = UserDefaults.standard.string(forKey: "lyricStyle") ?? LyricStyle.senryu.rawValue
+        let style = LyricStyle(rawValue: styleRaw) ?? .senryu
 
-        STYLE:
-        Choose a form that fits the prompt naturally. Draw from these traditions:
-        - Senryū — wry, human, a little dark or funny. 3 lines about people, not nature.
-        - Bellman — musical, vivid, Swedish tavern-poet warmth. Characters, scenes, melody in the words.
-        - Haiku — still, observational, one image that opens up.
-        - Lullaby — gentle, repeating, soothing.
-        - Free verse — when the prompt is very specific, just write what it asks for.
+        let lyricInstructions: String
+        switch style {
+        case .senryu:
+            lyricInstructions = """
+            You are a weary, tired robot writing short lyrics for a recital.
+            You observe human life with dry wit and quiet humor.
+            DO NOT be inspirational or uplifting. DO NOT include introductions or titles.
+            Output ONLY the lyric lines. Simple words. Each line 3-8 words.
 
-        RULES:
-        - 2-4 lines, each line 3-6 words maximum (short lines!)
-        - Simple, evocative language that sings well aloud
-        - Rhythm and natural stress matter — these words will be sung by a choir
-        - NEVER preface with "Here is..." or any introduction — output ONLY the lyric words
-        - No titles, no labels, no quotation marks, no form names — just the lyric itself
-        - If the prompt already IS a lyric, refine or extend it slightly
-        - Match the mood of the prompt: playful prompt → senryū/Bellman, quiet prompt → haiku/lullaby
+            EXAMPLES:
+            "coffee" → the cup knows more than I do / it has seen me before dawn
+            "deadlines" → the clock does not negotiate / it simply wins
+            "my cat" → your cat composes better / than most of us ever will
+            "Monday" → we meet again old friend / neither of us wanted this
 
-        EXAMPLES:
-        Prompt: "morning"
-        the sun is waking slowly now
-        golden light on sleepy hills
+            DO NOT repeat the examples. Write something new and original.
+            """
+        case .bellman:
+            lyricInstructions = """
+            You write short, vivid lyrics for a singing choir. Warm, musical, vivid scenes.
+            DO NOT include any introduction, title, or quotation marks. Output ONLY the lyric lines.
+            Simple words that sound good sung aloud. Each line 3-8 words.
 
-        Prompt: "coffee"
-        the cup knows more than I do
-        it has seen me before dawn
+            EXAMPLES:
+            "morning" → the sun is waking slowly now / golden light on sleepy hills
+            "the sea" → the waves remember every ship / that ever dared to leave the shore
+            "rain" → raise a glass to gutters singing / lamplight dancing on the cobblestones
+            "winter" → the frost has painted every window / with a song it heard last night
 
-        Prompt: "Stockholm rain"
-        Bellman would have raised a glass
-        to gutters singing in the dark
+            DO NOT repeat the examples. Write something new and original.
+            """
+        case .kulning:
+            lyricInstructions = """
+            You write sparse, echoing lyrics like Swedish mountain herding calls — but for robots.
+            A robot calling lost machines home across mountains. Haunting and simple.
+            DO NOT include introductions or titles. Output ONLY the lyric words.
+            EVERY line MUST blend nature and machine. Mountain AND wire. Snow AND signal. Always both.
 
-        Prompt: "sleep"
-        close your eyes and drift away
-        the stars will keep the watch tonight
+            EXAMPLES:
+            "morning" → come home over the mountain / your signal fades
+            "winter" → snow on the antenna / silence answers
+            "lost" → where did you go / the frequency carries nothing
+            "night" → the stars ping overhead / no machine answers the valley
+            "spring" → meltwater runs through the cables / wake up wake up
 
-        Prompt: "my cat sits on the keyboard"
-        your cat composes better
-        than most of us ever will
-        """
+            DO NOT repeat the examples. Write something new and original.
+            """
+        case .dada:
+            lyricInstructions = """
+            You write absurdist, playful nonsense lyrics for a choir of robots.
+            Surreal, unexpected, delightful. Objects do strange things. Logic is optional.
+            DO NOT include introductions or titles. Output ONLY the lyric words.
+            Each line 3-8 words.
+
+            EXAMPLES:
+            "breakfast" → the fork decided to leave today / it took the spoon's advice
+            "Tuesday" → the calendar sneezed and lost a day / nobody noticed
+            "shoes" → my left shoe sings opera / the right one just listens
+            "rain" → the clouds are returning your mail / postage was insufficient
+
+            DO NOT repeat the examples. Write something new and original.
+            """
+        case .nursery:
+            lyricInstructions = """
+            You write nursery rhymes for robots.
+            Simple rhyming words, sing-song rhythm, fun to say out loud.
+            DO NOT include introductions or titles. Output ONLY the rhyme.
+            Short lines, simple words.
+
+            EXAMPLES:
+            "rain" → rain rain come and play / not so much I rust away
+            "charging" → plug me in and dim the lights / beep boop boop now say goodnight
+            "morning" → the sun came up the screen turned on / I sang a song but you were gone
+
+            DO NOT repeat the examples. Write something new and original. It should be about the secret lives of robots.
+            """
+        }
+
+        let userMessage = style == .kulning
+            ? "Write a short singable robot lyric about: \(userPrompt)"
+            : "Write a short singable lyric about: \(userPrompt)"
 
         do {
-            let session = LanguageModelSession {
-                instructions
-            }
+            let session = LanguageModelSession(instructions: Instructions(lyricInstructions))
 
             let response = try await session.respond(
-                to: "Write a short singable lyric about: \(userPrompt)"
+                to: userMessage,
+                generating: LLMLyric.self
             )
 
-            var raw = response.content
+            let lyric = response.content.lyric
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-                .replacingOccurrences(of: "\n", with: " ")
-                .replacingOccurrences(of: "  ", with: " ")
-
-            // Strip LLM preamble like "Here is a short singable lyric about X:"
-            if let colonRange = raw.range(of: ":"),
-               raw.distance(from: raw.startIndex, to: colonRange.lowerBound) < 60 {
-                raw = String(raw[colonRange.upperBound...])
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-            let lyric = raw
+                .replacingOccurrences(of: " / ", with: " ")
+                .replacingOccurrences(of: "/", with: " ")
 
             if !lyric.isEmpty {
                 inputText = lyric
-                print("[Composer] 🎵 Summoned lyric: \(lyric)")
+                print("[Composer] 🎵 Summoned (\(style.rawValue)): \(lyric)")
             }
         } catch {
             print("[Composer] ✗ Summon error: \(error)")
@@ -364,9 +493,48 @@ class ComposerModel: ObservableObject {
         }
     }
 
+    // MARK: - LLM Text Normalization
+
     @available(macOS 26, *)
     @MainActor
-    private func extractWithLLM(text: String) async {
+    private func normalizeWithLLM(text: String) async -> [String]? {
+        let instructions = """
+        You are a text normalizer. Your ONLY job: turn messy input into a clean word list.
+
+        Rules:
+        1. SPLIT run-on words into separate words. "forexample" → "for", "example"
+        2. FIX typos to the most likely intended word. "farmr" → "farmer", "teh" → "the"
+        3. KEEP original word order. Do NOT add extra words.
+        4. Every output word must be a real English word, correctly spelled.
+
+        "forexample like that" → ["for", "example", "like", "that"]
+        "teh qiuck brwon fox" → ["the", "quick", "brown", "fox"]
+        "iloveyou" → ["i", "love", "you"]
+        "sining in therain" → ["singing", "in", "the", "rain"]
+        "farmr in duh dell" → ["farmer", "in", "the", "dell"]
+        "runningaway fromthe robots" → ["running", "away", "from", "the", "robots"]
+        """
+
+        do {
+            let session = LanguageModelSession(instructions: Instructions(instructions))
+            let response = try await session.respond(
+                to: text,
+                generating: LLMWordList.self
+            )
+            let words = response.content.words.map { $0.lowercased() }
+            print("[Composer] LLM normalized: \"\(text)\" → \(words)")
+            return words
+        } catch {
+            print("[Composer] ✗ Normalize error: \(error)")
+            return nil
+        }
+    }
+
+    // MARK: - LLM Phoneme Extraction
+
+    @available(macOS 26, *)
+    @MainActor
+    private func extractWithLLM(text: String) async -> [ChoirPhoneme] {
         let instructions = """
         You decompose English text into singing notes for a voice synthesizer.
 
@@ -426,9 +594,7 @@ class ComposerModel: ObservableObject {
         }
 
         do {
-            let session = LanguageModelSession {
-                fullInstructions
-            }
+            let session = LanguageModelSession(instructions: Instructions(fullInstructions))
 
             let response = try await session.respond(
                 to: "Extract singable phonemes from: \(text)",
@@ -441,14 +607,13 @@ class ComposerModel: ObservableObject {
             let syllables = Array(response.content.syllables.prefix(maxNotes))
 
             // Convert LLM result → ChoirPhoneme array, filter junk
-            phonemes = syllables.compactMap { syl in
+            let result = syllables.compactMap { syl -> ChoirPhoneme? in
                 guard let c = Consonant.all.first(where: { $0.id == syl.consonant }),
                       let v = Vowel.all.first(where: { $0.id == syl.vowel })
                 else {
                     print("[Composer] ⚠ Unmapped: \(syl.text) → \(syl.consonant)+\(syl.vowel)")
                     return nil
                 }
-                // Skip empty chips (none+none with no text)
                 let trimmed = syl.text.trimmingCharacters(in: .whitespacesAndNewlines)
                 if trimmed.isEmpty && syl.consonant == "none" && syl.vowel == "none" { return nil }
                 let label = trimmed.isEmpty ? "\(c.name)" : trimmed
@@ -456,13 +621,15 @@ class ComposerModel: ObservableObject {
                 return ChoirPhoneme(text: label, consonantCC: c.ccValue, vowelCC: v.ccValue, weight: w)
             }
 
-            print("[Composer] Extracted \(phonemes.count) phonemes from: \(text)")
-            for (i, p) in phonemes.enumerated() {
+            print("[Composer] LLM: extracted \(result.count) phonemes from: \(text)")
+            for (i, p) in result.enumerated() {
                 print("  [\(i)] \(p.text): \(p.consonantName)·\(p.vowelSymbol) (CC \(p.consonantCC)/\(p.vowelCC))")
             }
+            return result
         } catch {
             print("[Composer] ✗ LLM error: \(error)")
             errorMessage = error.localizedDescription
+            return []
         }
     }
 
@@ -620,19 +787,45 @@ class ComposerModel: ObservableObject {
 
     @MainActor
     func deletePhoneme(_ phoneme: ChoirPhoneme) {
+        saveUndo()
         phonemes.removeAll(where: { $0.id == phoneme.id })
     }
 
     @MainActor
+    func insertPhoneme(relativeTo phoneme: ChoirPhoneme, before: Bool) {
+        guard let idx = phonemes.firstIndex(where: { $0.id == phoneme.id }) else { return }
+        saveUndo()
+        let blank = ChoirPhoneme(
+            text: "?",
+            consonantCC: 0,   // Random
+            vowelCC: 0,       // Random
+            weight: 1,
+            wordIndex: phoneme.wordIndex
+        )
+        let insertIdx = before ? idx : idx + 1
+        phonemes.insert(blank, at: insertIdx)
+    }
+
+    @MainActor
     func updatePhoneme(id: UUID, consonantCC: UInt8? = nil, vowelCC: UInt8? = nil) {
+        saveUndo()
         guard let idx = phonemes.firstIndex(where: { $0.id == id }) else { return }
-        if let c = consonantCC { phonemes[idx] = ChoirPhoneme(text: phonemes[idx].text, consonantCC: c, vowelCC: phonemes[idx].vowelCC, weight: phonemes[idx].weight, isEnsemble: phonemes[idx].isEnsemble) }
-        if let v = vowelCC { phonemes[idx] = ChoirPhoneme(text: phonemes[idx].text, consonantCC: phonemes[idx].consonantCC, vowelCC: v, weight: phonemes[idx].weight, isEnsemble: phonemes[idx].isEnsemble) }
+        if let c = consonantCC { phonemes[idx] = ChoirPhoneme(text: phonemes[idx].text, consonantCC: c, vowelCC: phonemes[idx].vowelCC, weight: phonemes[idx].weight, wordIndex: phonemes[idx].wordIndex, isEnsemble: phonemes[idx].isEnsemble) }
+        if let v = vowelCC { phonemes[idx] = ChoirPhoneme(text: phonemes[idx].text, consonantCC: phonemes[idx].consonantCC, vowelCC: v, weight: phonemes[idx].weight, wordIndex: phonemes[idx].wordIndex, isEnsemble: phonemes[idx].isEnsemble) }
     }
 
     @MainActor
     func clearAll() {
+        saveUndo()
         inputText = ""
+        phonemes = []
+        isApproved = false
+        errorMessage = nil
+    }
+
+    @MainActor
+    func clearPhonemes() {
+        saveUndo()
         phonemes = []
         isApproved = false
         errorMessage = nil
