@@ -26,10 +26,22 @@ Forgetting this means the Xcode build silently uses stale code.
   Then build normally. If Xcode still doesn't see it, **one** Clean Build (Shift+Cmd+K) fixes it.
 - **SPM**: `swift build` / `swift run` always reads fresh source — good for quick verification.
 
+## Bundle resources
+- **Xcode**: Use `Bundle.main` only. `Bundle.module` is SPM-only and will fail in Xcode even inside `#if SWIFT_PACKAGE` guards.
+- **Adding resource files** (e.g. `cmudict.txt`): Create a symlink like source files, then manually add to Xcode's "Copy Bundle Resources" build phase.
+- **SPM**: Add resources in `Package.swift` via `.copy("filename")` in the target's `resources` array.
+
+## Xcode Canvas / #Playground
+- `#Playground` blocks can run any async Swift code, not just LLM calls.
+- Canvas won't preview APIs requiring a higher deployment target than the project minimum, even with `@available` guards. The project's `MACOSX_DEPLOYMENT_TARGET` must match (currently set to 26.0).
+- `@Generable` structs must be at file scope (not inside `#Playground` blocks) with `@available(macOS 26, *)` if the deployment target is lower than 26.
+- When the deployment target IS 26+, `@available` annotations are unnecessary.
+
 ## Dependencies
 - **MIDIKit**: Core MIDI handling.
 - **CoreBluetooth**: Native BLE scanning.
 - **AVFoundation**: Local audio synthesis.
+- **CMU Pronouncing Dictionary**: `cmudict.txt` (134k words, ARPAbet notation) bundled as a resource for phoneme lookup.
 
 ## Debugging
 - **Audio Hangs**: If app freezes on note press, check `AudioMonitorService` / `FormantEngine` for locks/allocations in render block.

@@ -24,7 +24,8 @@ let package = Package(
             ],
             resources: [
                 .process("Assets.xcassets"),
-                .copy("AnimaleSounds")
+                .copy("AnimaleSounds"),
+                .copy("cmudict.txt")
             ]
         ),
         .testTarget(

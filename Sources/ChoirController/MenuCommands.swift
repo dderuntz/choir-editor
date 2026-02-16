@@ -91,12 +91,19 @@ struct FileCommands: Commands {
 
 struct EditCommands: Commands {
     @ObservedObject var model: SequencerModel
+    @ObservedObject var composerModel: ComposerModel
     
     var body: some Commands {
         CommandGroup(replacing: .undoRedo) {
-            Button("Undo") { model.undoManager.undo() }
+            Button("Undo") {
+                if composerModel.canUndo {
+                    composerModel.undo()
+                } else {
+                    model.undoManager.undo()
+                }
+            }
                 .keyboardShortcut("z", modifiers: .command)
-                .disabled(!model.undoManager.canUndo)
+                .disabled(!model.undoManager.canUndo && !composerModel.canUndo)
             
             Button("Redo") { model.undoManager.redo() }
                 .keyboardShortcut("z", modifiers: [.command, .shift])
@@ -143,6 +150,44 @@ struct ViewCommands: Commands {
             Picker("Appearance", selection: $appearanceMode) {
                 ForEach(AppearanceMode.allCases, id: \.self) { mode in
                     Text(mode.label).tag(mode)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Lyric Style
+
+enum LyricStyle: String, CaseIterable, Identifiable {
+    case senryu = "senryu"
+    case bellman = "bellman"
+    case kulning = "kulning"
+    case dada = "dada"
+    case nursery = "nursery"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .senryu: return "Senryū (Wry Robot)"
+        case .bellman: return "Bellman (Warm Scenes)"
+        case .kulning: return "Kulning (Mountain Signals)"
+        case .dada: return "Dada (Absurdist)"
+        case .nursery: return "Nursery (Dark Rhymes)"
+        }
+    }
+}
+
+// MARK: - Composer Menu Commands
+
+struct ComposerCommands: Commands {
+    @AppStorage("lyricStyle") private var lyricStyle: LyricStyle = .senryu
+
+    var body: some Commands {
+        CommandMenu("Composer") {
+            Picker("Lyric Style", selection: $lyricStyle) {
+                ForEach(LyricStyle.allCases) { style in
+                    Text(style.label).tag(style)
                 }
             }
         }
