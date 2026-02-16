@@ -185,7 +185,7 @@ struct ContentView: View {
                     }
                     
                     if showKeyboard {
-                        KeyboardView(midiService: midiService, audioMonitor: audioMonitor)
+                        KeyboardView(midiService: midiService, audioMonitor: audioMonitor, isComposerActive: showComposer)
                             .frame(height: 150)
                             .background(NonDraggableArea())
                             .background(Theme.bg(colorScheme))

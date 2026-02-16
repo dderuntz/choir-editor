@@ -143,7 +143,7 @@ class SequencerModel: ObservableObject {
     // Scale helper
     @Published var showScaleHelper: Bool = false
     @Published var musicalKey: MusicalKey = .C
-    @Published var scaleType: ScaleType = .major
+    @Published var scaleType: ScaleType = .pentatonicMajor
     
     func isInScale(_ pitch: UInt8) -> Bool {
         let interval = (Int(pitch) - musicalKey.rawValue + 120) % 12  // +120 to keep positive

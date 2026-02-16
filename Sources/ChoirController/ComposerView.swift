@@ -177,7 +177,7 @@ struct ComposerView: View {
                         .buttonStyle(.borderedProminent)
                         .tint(composerModel.isPlaying ? Theme.green : Theme.accent)
 
-                        Picker("", selection: $composerModel.musicalKey) {
+                        Picker("", selection: $sequencerModel.musicalKey) {
                             ForEach(MusicalKey.allCases) { key in
                                 Text(key.name).tag(key)
                             }
@@ -185,7 +185,7 @@ struct ComposerView: View {
                         .labelsHidden()
                         .frame(width: 52)
 
-                        Picker("", selection: $composerModel.scaleType) {
+                        Picker("", selection: $sequencerModel.scaleType) {
                             ForEach(ScaleType.allCases) { scale in
                                 Text(scale.rawValue).tag(scale)
                             }
@@ -252,7 +252,13 @@ struct ComposerView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.bg(colorScheme))
-        .onAppear { isTextFocused = true }
+        .onAppear {
+            isTextFocused = true
+            composerModel.musicalKey = sequencerModel.musicalKey
+            composerModel.scaleType = sequencerModel.scaleType
+        }
+        .onChange(of: sequencerModel.musicalKey) { composerModel.musicalKey = $0 }
+        .onChange(of: sequencerModel.scaleType) { composerModel.scaleType = $0 }
     }
 
     // MARK: - Phoneme Strip

@@ -4,6 +4,8 @@ struct KeyboardView: View {
     var midiService: MidiService
     @ObservedObject var audioMonitor: AudioMonitorService
     @EnvironmentObject var model: SequencerModel
+    @EnvironmentObject var composerModel: ComposerModel
+    var isComposerActive: Bool = false
     @AppStorage("localAudioEnabled") private var localAudioEnabled = false
     
     // Choir vocal range (from PitchConstants)
@@ -17,6 +19,16 @@ struct KeyboardView: View {
     
     var whiteKeyCount: Int {
         (startNote...endNote).filter { !isBlackKey($0) }.count
+    }
+
+    /// Whether any scale guide is active (sequencer's toggle or composer mode)
+    private var scaleActive: Bool {
+        isComposerActive || model.showScaleHelper
+    }
+
+    /// Check if a pitch is in the active scale (shared between sequencer and composer)
+    private func noteInScale(_ pitch: UInt8) -> Bool {
+        model.isInScale(pitch)
     }
     
     var body: some View {
@@ -63,7 +75,11 @@ struct KeyboardView: View {
                     midiService: midiService,
                     model: model,
                     audioMonitor: audioMonitor,
-                    localAudioEnabled: localAudioEnabled
+                    localAudioEnabled: localAudioEnabled,
+                    outOfScale: scaleActive && !noteInScale(UInt8(note)),
+                    onComposerPress: isComposerActive && !composerModel.phonemes.isEmpty
+                        ? { composerModel.playNextChip(note: UInt8(note), audioMonitor: audioMonitor) }
+                        : nil
                 )
                 .frame(
                     width: isBlack ? blackKeyWidth : whiteKeyWidth,
@@ -105,6 +121,8 @@ struct PianoKey: View {
     @ObservedObject var model: SequencerModel
     @ObservedObject var audioMonitor: AudioMonitorService
     let localAudioEnabled: Bool
+    var outOfScale: Bool = false
+    var onComposerPress: (() -> Void)? = nil
     @Environment(\.colorScheme) private var colorScheme
     @State private var isPressed = false
     
@@ -145,6 +163,19 @@ struct PianoKey: View {
                     )
             }
         }
+            .overlay {
+                if outOfScale {
+                    HatchShape(spacing: 6)
+                        .stroke(
+                            isBlack
+                                ? Color.white.opacity(0.15)
+                                : Theme.dark.opacity(0.12),
+                            lineWidth: 1.0
+                        )
+                        .clipped()
+                        .allowsHitTesting(false)
+                }
+            }
             .overlay(alignment: .bottom) {
                 if note == 60 {
                     Text("C")
@@ -158,19 +189,25 @@ struct PianoKey: View {
                     .onChanged { _ in
                         if !isPressed {
                             isPressed = true
-                            model.highlightedPitch = note
-                            midiService.sendNoteOn(note: note)
-                            if localAudioEnabled {
-                                audioMonitor.playNote(note: note)
+                            if let composerPress = onComposerPress {
+                                composerPress()
+                            } else {
+                                model.highlightedPitch = note
+                                midiService.sendNoteOn(note: note)
+                                if localAudioEnabled {
+                                    audioMonitor.playNote(note: note)
+                                }
                             }
                         }
                     }
                     .onEnded { _ in
                         isPressed = false
-                        model.highlightedPitch = nil
-                        midiService.sendNoteOff(note: note)
-                        if localAudioEnabled {
-                            audioMonitor.stopNote(note: note)
+                        if onComposerPress == nil {
+                            model.highlightedPitch = nil
+                            midiService.sendNoteOff(note: note)
+                            if localAudioEnabled {
+                                audioMonitor.stopNote(note: note)
+                            }
                         }
                     }
             )
