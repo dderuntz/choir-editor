@@ -50,16 +50,10 @@ struct SoundPadView: View {
         VStack(spacing: 0) {
             // MARK: Header bar
             HStack {
-                HStack(alignment: .top, spacing: 2) {
-                    Text("Explorer")
-                        .font(.system(size: 56, weight: .ultraLight))
-                        .kerning(-1.4)
-                        .foregroundColor(txt)
-                    Image(systemName: "ear")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(txt)
-                        .offset(x: 2, y: 11)
-                }
+                Text("Explore")
+                    .font(.system(size: 56, weight: .ultraLight))
+                    .kerning(-1.4)
+                    .foregroundColor(txt)
                 Spacer()
                 if hasModifiedDefaults {
                     pillButton("Reset") {
