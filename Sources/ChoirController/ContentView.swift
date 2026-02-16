@@ -172,7 +172,7 @@ struct ContentView: View {
                 // Main content: Composer or Sequencer
                 ZStack(alignment: .bottom) {
                     if showComposer {
-                        ComposerView(audioMonitor: audioMonitor)
+                        ComposerView(audioMonitor: audioMonitor, onDismiss: { showComposer = false })
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .background(NonDraggableArea())
                             .padding(.bottom, showKeyboard ? 150 : 0)

@@ -198,6 +198,7 @@ class ComposerModel: ObservableObject {
     @Published var isPlaying: Bool = false
     var minNoteDuration: Int = 280 // ms, from Setup
     @Published var currentPlayIndex: Int? = nil
+    @Published var currentArcDuration: Int = 330  // ms, note + gap — full time between bounces
     private var playbackTask: Task<Void, Never>? = nil
 
     /// Check on-device LLM availability (macOS 26+ only)
@@ -264,6 +265,103 @@ class ComposerModel: ObservableObject {
         }
 
         isProcessing = false
+    }
+
+    // MARK: - Summon Song (LLM text generation)
+
+    @MainActor
+    func summonSong() async {
+        guard !isProcessing else { return }
+        isProcessing = true
+        errorMessage = nil
+
+        if #available(macOS 26, *) {
+            await generateLyric()
+        } else {
+            errorMessage = "Requires macOS 26 (Tahoe)"
+        }
+
+        isProcessing = false
+    }
+
+    @available(macOS 26, *)
+    @MainActor
+    private func generateLyric() async {
+        let prompt = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let userPrompt = prompt.isEmpty ? "anything beautiful" : prompt
+
+        let instructions = """
+        You are a songwriter's muse. Given a theme or prompt, write a very short singable lyric.
+
+        STYLE:
+        Choose a form that fits the prompt naturally. Draw from these traditions:
+        - Senryū — wry, human, a little dark or funny. 3 lines about people, not nature.
+        - Bellman — musical, vivid, Swedish tavern-poet warmth. Characters, scenes, melody in the words.
+        - Haiku — still, observational, one image that opens up.
+        - Lullaby — gentle, repeating, soothing.
+        - Free verse — when the prompt is very specific, just write what it asks for.
+
+        RULES:
+        - 2-4 lines, each line 3-6 words maximum (short lines!)
+        - Simple, evocative language that sings well aloud
+        - Rhythm and natural stress matter — these words will be sung by a choir
+        - NEVER preface with "Here is..." or any introduction — output ONLY the lyric words
+        - No titles, no labels, no quotation marks, no form names — just the lyric itself
+        - If the prompt already IS a lyric, refine or extend it slightly
+        - Match the mood of the prompt: playful prompt → senryū/Bellman, quiet prompt → haiku/lullaby
+
+        EXAMPLES:
+        Prompt: "morning"
+        the sun is waking slowly now
+        golden light on sleepy hills
+
+        Prompt: "coffee"
+        the cup knows more than I do
+        it has seen me before dawn
+
+        Prompt: "Stockholm rain"
+        Bellman would have raised a glass
+        to gutters singing in the dark
+
+        Prompt: "sleep"
+        close your eyes and drift away
+        the stars will keep the watch tonight
+
+        Prompt: "my cat sits on the keyboard"
+        your cat composes better
+        than most of us ever will
+        """
+
+        do {
+            let session = LanguageModelSession {
+                instructions
+            }
+
+            let response = try await session.respond(
+                to: "Write a short singable lyric about: \(userPrompt)"
+            )
+
+            var raw = response.content
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "\n", with: " ")
+                .replacingOccurrences(of: "  ", with: " ")
+
+            // Strip LLM preamble like "Here is a short singable lyric about X:"
+            if let colonRange = raw.range(of: ":"),
+               raw.distance(from: raw.startIndex, to: colonRange.lowerBound) < 60 {
+                raw = String(raw[colonRange.upperBound...])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            let lyric = raw
+
+            if !lyric.isEmpty {
+                inputText = lyric
+                print("[Composer] 🎵 Summoned lyric: \(lyric)")
+            }
+        } catch {
+            print("[Composer] ✗ Summon error: \(error)")
+            errorMessage = error.localizedDescription
+        }
     }
 
     @available(macOS 26, *)
@@ -439,11 +537,14 @@ class ComposerModel: ObservableObject {
         playbackTask = Task { @MainActor in
             for (index, phoneme) in phonemesToPlay.enumerated() {
                 guard !Task.isCancelled else { break }
+
+                let duration = durationForWeight(phoneme.weight)
+                let gap = Int(Double(phoneme.weight >= 3 ? 80 : 50) * speedMultiplier)
+                self.currentArcDuration = duration + gap
                 self.currentPlayIndex = index
 
                 let pitch = pitchForPhoneme(index: index, weight: phoneme.weight, total: total)
                 let velocity = velocityForWeight(phoneme.weight)
-                let duration = durationForWeight(phoneme.weight)
 
                 let ensemble = phoneme.isEnsemble
                 print("[Composer] ▶ [\(index)] \(phoneme.text): \(phoneme.consonantName)·\(phoneme.vowelSymbol) w\(phoneme.weight) → note \(pitch) vel \(velocity) \(duration)ms\(ensemble ? " 🎵ensemble" : "")")
@@ -462,8 +563,7 @@ class ComposerModel: ObservableObject {
                 try? await Task.sleep(for: .milliseconds(duration))
                 stopAll(pitches: activePitches, audioMonitor: audioMonitor)
 
-                // Gap between syllables
-                let gap = Int(Double(phoneme.weight >= 3 ? 80 : 50) * speedMultiplier)
+                // Gap between syllables (already computed above for arc)
                 try? await Task.sleep(for: .milliseconds(gap))
             }
             self.isPlaying = false
@@ -524,6 +624,13 @@ class ComposerModel: ObservableObject {
     }
 
     @MainActor
+    func updatePhoneme(id: UUID, consonantCC: UInt8? = nil, vowelCC: UInt8? = nil) {
+        guard let idx = phonemes.firstIndex(where: { $0.id == id }) else { return }
+        if let c = consonantCC { phonemes[idx] = ChoirPhoneme(text: phonemes[idx].text, consonantCC: c, vowelCC: phonemes[idx].vowelCC, weight: phonemes[idx].weight, isEnsemble: phonemes[idx].isEnsemble) }
+        if let v = vowelCC { phonemes[idx] = ChoirPhoneme(text: phonemes[idx].text, consonantCC: phonemes[idx].consonantCC, vowelCC: v, weight: phonemes[idx].weight, isEnsemble: phonemes[idx].isEnsemble) }
+    }
+
+    @MainActor
     func clearAll() {
         inputText = ""
         phonemes = []
@@ -562,5 +669,53 @@ class ComposerModel: ObservableObject {
         playbackTask = nil
         isPlaying = false
         currentPlayIndex = nil
+    }
+
+    // MARK: - Copy to Grid
+
+    @MainActor
+    func copyToGrid(sequencer: SequencerModel) {
+        guard !phonemes.isEmpty else { return }
+        stop()
+
+        let tempo = sequencer.tempo
+        let msPerBeat = 60_000.0 / tempo
+
+        // Find the end of the last existing note, snapped to next quarter beat
+        let lastEnd = sequencer.notes.map { $0.startBeat + $0.duration }.max() ?? 0
+        let startBeat = (lastEnd / 0.25).rounded(.up) * 0.25
+
+        var cursor = startBeat
+        let total = phonemes.count
+
+        for (index, phoneme) in phonemes.enumerated() {
+            let pitch = pitchForPhoneme(index: index, weight: phoneme.weight, total: total)
+            let durationMs = Double(durationForWeight(phoneme.weight))
+            let durationBeats = max(0.25, (durationMs / msPerBeat / 0.25).rounded() * 0.25)
+            let velocity = velocityForWeight(phoneme.weight)
+
+            var note = SequencerNote(
+                pitch: pitch,
+                startBeat: cursor,
+                duration: durationBeats,
+                velocity: velocity,
+                consonant: phoneme.consonantCC,
+                vowel: phoneme.vowelCC
+            )
+            note.vibrato = 64
+            note.reverb = phoneme.isEnsemble ? 48 : 32
+
+            sequencer.notes.append(note)
+            cursor += durationBeats
+        }
+
+        // Extend bars if needed
+        let neededBeats = Int((cursor / 4.0).rounded(.up)) * 4
+        if neededBeats > sequencer.totalBeats {
+            sequencer.totalBeats = min(64, neededBeats)
+        }
+
+        sequencer.hasUnsavedChanges = true
+        print("[Composer] Copied \(phonemes.count) phonemes to grid at beat \(startBeat), ending at \(cursor)")
     }
 }
