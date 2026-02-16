@@ -2,6 +2,7 @@ import SwiftUI
 
 extension Notification.Name {
     static let showSoundPad = Notification.Name("showSoundPad")
+    static let showComposer = Notification.Name("showComposer")
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -20,13 +21,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
-        // Allow dragging the window from any background area
-        // (interactive areas opt out via NonDraggableArea)
         DispatchQueue.main.async {
             NSApp.windows.forEach { $0.isMovableByWindowBackground = true }
         }
-        // iOS-style overlay scrollbars (no track, just the knob, shown when scrolling)
         UserDefaults.standard.set("WhenScrolling", forKey: "AppleShowScrollBars")
+    }
+
+    static func showAboutPanel() {
+        let credits = """
+        A sequencer for composing phoneme-based choral \
+        arrangements for robotic singing dolls.
+
+        Type or summon lyrics, reveal phonemes, tune each \
+        chip's consonant and vowel, then send the sequence \
+        over MIDI to a choir of dolls.
+
+        Intake → Compose → Listen → Express
+        """
+        let attrCredits = NSAttributedString(
+            string: credits,
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 11),
+                .foregroundColor: NSColor.secondaryLabelColor
+            ]
+        )
+        NSApplication.shared.orderFrontStandardAboutPanel(options: [
+            .credits: attrCredits
+        ])
     }
 }
 
@@ -67,6 +88,7 @@ struct ChoirControllerApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
         .commands {
+            AboutCommands()
             FileCommands(model: sequencerModel)
             EditCommands(model: sequencerModel, composerModel: composerModel)
             ViewCommands()

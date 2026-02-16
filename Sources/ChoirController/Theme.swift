@@ -98,3 +98,30 @@ enum Theme {
     /// Alias used by explorer grid borders
     static let explorerGridBorder = divider
 }
+
+// MARK: - Ivory Switch Toggle Style
+
+struct IvorySwitchStyle: ToggleStyle {
+    var onColor: Color = Theme.fieldLight
+    var offColor: Color = Theme.dark.opacity(0.10)
+    
+    func makeBody(configuration: Configuration) -> some View {
+        HStack {
+            configuration.label
+            
+            ZStack {
+                Capsule()
+                    .fill(configuration.isOn ? onColor : offColor)
+                    .frame(width: 42, height: 25)
+                
+                Circle()
+                    .fill(.ultraThinMaterial)
+                    .shadow(color: .black.opacity(0.15), radius: 1, x: 0, y: 1)
+                    .frame(width: 21, height: 21)
+                    .offset(x: configuration.isOn ? 9 : -9)
+            }
+            .animation(.easeInOut(duration: 0.15), value: configuration.isOn)
+            .onTapGesture { configuration.isOn.toggle() }
+        }
+    }
+}

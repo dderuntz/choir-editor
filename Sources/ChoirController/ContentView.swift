@@ -43,6 +43,7 @@ struct ContentView: View {
     @State private var showSettings = false
     @State private var showSoundPad = false
     @State private var showBluetoothSetup = false
+    @AppStorage("showComposer") private var showComposerStorage = false
     @State private var showComposer = false
     @AppStorage("showKeyboard") private var showKeyboardStorage = true
     @AppStorage("localAudioEnabled") private var localAudioEnabled = false
@@ -138,14 +139,14 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                     .help("Compose")
                     
-                    // Explorer (tuning fork)
+                    // Listen
                     Button(action: { showSoundPad = true }) {
                         Image(systemName: "ear")
                             .font(.title2)
                             .foregroundColor(showSoundPad ? Theme.text(colorScheme) : Theme.text(colorScheme).opacity(0.4))
                     }
                     .buttonStyle(.plain)
-                    .help("Explore")
+                    .help("Listen")
                     
                     // Keyboard toggle
                     Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showKeyboard.toggle(); showKeyboardStorage = showKeyboard } }) {
@@ -156,12 +157,21 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                     .help("Express")
                     
-                    // Connection status indicator (tappable to open Bluetooth setup)
-                    ConnectionStatusView(midiService: midiService)
-                        .onTapGesture {
-                            startBluetoothSetup()
-                        }
-                        .help(midiService.isConnected ? "MIDI Connected" : "Tap to connect Bluetooth MIDI")
+                    // Connection status indicator
+                    Button(action: { startBluetoothSetup() }) {
+                        ConnectionStatusView(midiService: midiService)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(midiService.isConnected
+                                  ? Color(red: 0xD8/255, green: 0xD6/255, blue: 0xD3/255).opacity(0.6)
+                                  : Theme.accent)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .help(midiService.isConnected ? "MIDI Connected" : "Tap to connect Bluetooth MIDI")
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 12)
@@ -237,6 +247,7 @@ struct ContentView: View {
         .frame(minWidth: 650, minHeight: 500)
         .onAppear {
             showKeyboard = showKeyboardStorage
+            showComposer = showComposerStorage
             midiService.start()
             model.loadLastFileIfAvailable()
             applyLocalAudioMode()
@@ -246,6 +257,12 @@ struct ContentView: View {
         }
         .onChange(of: showKeyboard) { newValue in
             showKeyboardStorage = newValue
+        }
+        .onChange(of: showComposerStorage) { newValue in
+            withAnimation(.easeInOut(duration: 0.25)) { showComposer = newValue }
+        }
+        .onChange(of: showComposer) { newValue in
+            showComposerStorage = newValue
         }
         .onChange(of: localAudioEnabled) { enabled in
             if enabled {
@@ -277,6 +294,9 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .showSoundPad)) { _ in
             showSoundPad = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showComposer)) { _ in
+            withAnimation(.easeInOut(duration: 0.25)) { showComposer = true }
         }
         .sheet(isPresented: $showSoundPad) {
             SoundPadView(midiService: midiService, audioMonitor: audioMonitor, isPresented: $showSoundPad)

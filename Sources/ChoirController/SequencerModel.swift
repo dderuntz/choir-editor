@@ -30,6 +30,9 @@ struct ChoirDocument: Codable {
     var tempo: Double = 100
     var totalBeats: Int = 16
     var notes: [SequencerNote] = []
+    var scaleEnabled: Bool?
+    var scaleKey: Int?
+    var scaleType: String?
 }
 
 // MARK: - Pitch Constants (non-actor-isolated for use in layout/shapes)
@@ -477,7 +480,10 @@ class SequencerModel: ObservableObject {
             version: 1,
             tempo: tempo,
             totalBeats: totalBeats,
-            notes: notes
+            notes: notes,
+            scaleEnabled: showScaleHelper,
+            scaleKey: musicalKey.rawValue,
+            scaleType: scaleType.rawValue
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -496,6 +502,9 @@ class SequencerModel: ObservableObject {
         notes = doc.notes
         totalBeats = doc.totalBeats
         tempo = doc.tempo
+        showScaleHelper = doc.scaleEnabled ?? false
+        if let key = doc.scaleKey, let mk = MusicalKey(rawValue: key) { musicalKey = mk }
+        if let st = doc.scaleType, let s = ScaleType(rawValue: st) { scaleType = s }
         clearSelection()
         currentFileURL = url
         hasUnsavedChanges = false
