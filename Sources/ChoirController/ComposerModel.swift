@@ -12,6 +12,8 @@ struct ChoirPhoneme: Identifiable, Equatable, Sendable {
     let text: String       // original syllable text
     let consonantCC: UInt8 // CC2 value
     let vowelCC: UInt8     // CC3 value
+    let weight: Int        // stress: 3=primary, 2=secondary, 1=unstressed
+    var isEnsemble: Bool = false  // choral harmony on this syllable
 
     var consonantName: String {
         Consonant.all.first(where: { $0.ccValue == consonantCC })?.name ?? "?"
@@ -42,6 +44,9 @@ struct LLMSyllable {
                    "uh", "oo", "ee", "ear", "ay", "air", "ure",
                    "mmm", "none"]))
     let vowel: String
+
+    @Guide(description: "Stress level: 3=primary accent, 2=secondary, 1=unstressed/weak")
+    let weight: Int
 }
 
 @available(macOS 26, *)
@@ -124,6 +129,8 @@ private struct StoredPhoneme: Codable {
     let text: String
     let consonantCC: UInt8
     let vowelCC: UInt8
+    let weight: Int
+    let isEnsemble: Bool
 }
 
 private enum ComposerPersistence {
@@ -139,7 +146,7 @@ private enum ComposerPersistence {
     }
 
     static func savePhonemes(_ phonemes: [ChoirPhoneme]) {
-        let stored = phonemes.map { StoredPhoneme(text: $0.text, consonantCC: $0.consonantCC, vowelCC: $0.vowelCC) }
+        let stored = phonemes.map { StoredPhoneme(text: $0.text, consonantCC: $0.consonantCC, vowelCC: $0.vowelCC, weight: $0.weight, isEnsemble: $0.isEnsemble) }
         if let data = try? JSONEncoder().encode(stored) {
             UserDefaults.standard.set(data, forKey: phonemesKey)
         }
@@ -149,7 +156,7 @@ private enum ComposerPersistence {
         guard let data = UserDefaults.standard.data(forKey: phonemesKey),
               let stored = try? JSONDecoder().decode([StoredPhoneme].self, from: data)
         else { return [] }
-        return stored.map { ChoirPhoneme(text: $0.text, consonantCC: $0.consonantCC, vowelCC: $0.vowelCC) }
+        return stored.map { ChoirPhoneme(text: $0.text, consonantCC: $0.consonantCC, vowelCC: $0.vowelCC, weight: $0.weight, isEnsemble: $0.isEnsemble) }
     }
 }
 
@@ -180,8 +187,16 @@ class ComposerModel: ObservableObject {
         phonemes = ComposerPersistence.loadPhonemes()
     }
 
+    // Scale settings
+    @Published var musicalKey: MusicalKey = .C
+    @Published var scaleType: ScaleType = .pentatonicMajor
+
+    // Speed multiplier (1.0 = normal, 1.5 = slower, 2.5 = slowest)
+    @Published var speedMultiplier: Double = 1.0
+
     // Playback
     @Published var isPlaying: Bool = false
+    var minNoteDuration: Int = 280 // ms, from Setup
     @Published var currentPlayIndex: Int? = nil
     private var playbackTask: Task<Void, Never>? = nil
 
@@ -278,26 +293,32 @@ class ComposerModel: ObservableObject {
 
         STOP after processing every word in the input. Do NOT add extra sounds.
 
+        STRESS / WEIGHT (the "weight" field):
+        3 = primary stress (the LOUD syllable: FAR-mer, SING-ing, LOVE)
+        2 = secondary stress (medium: farm-ER has secondary on "er" in compound words)
+        1 = unstressed / weak (articles, pure consonant tails: "the", "in", trailing "n")
+        Rule: every word has exactly ONE syllable with weight 3. Function words (the, in, a, and) get weight 1.
+
         WORKED EXAMPLES (text field shows original letters):
 
         "farmer" → sounds: F-AH-M-ER →
-          {text:"far", consonant:f, vowel:aa}, {text:"mer", consonant:m, vowel:schwa}
+          {text:"far", consonant:f, vowel:aa, weight:3}, {text:"mer", consonant:m, vowel:schwa, weight:1}
         "dell" → sounds: D-EH-L →
-          {text:"de", consonant:d, vowel:ae}, {text:"ll", consonant:l, vowel:schwa}
+          {text:"de", consonant:d, vowel:ae, weight:3}, {text:"ll", consonant:l, vowel:schwa, weight:1}
         "the" → sounds: TH-UH →
-          {text:"The", consonant:th, vowel:schwa}
+          {text:"The", consonant:th, vowel:schwa, weight:1}
         "in" → sounds: IH-N →
-          {text:"i", consonant:none, vowel:ee}, {text:"n", consonant:n, vowel:schwa}
+          {text:"i", consonant:none, vowel:ee, weight:1}, {text:"n", consonant:n, vowel:schwa, weight:1}
         "I" → sounds: AH-EE (diphthong) →
-          {text:"I", consonant:none, vowel:aa}, {text:"", consonant:none, vowel:ee}
+          {text:"I", consonant:none, vowel:aa, weight:3}, {text:"", consonant:none, vowel:ee, weight:1}
         "love" → sounds: L-UH-V →
-          {text:"lu", consonant:l, vowel:uh}, {text:"ve", consonant:v, vowel:schwa}
+          {text:"lu", consonant:l, vowel:uh, weight:3}, {text:"ve", consonant:v, vowel:schwa, weight:1}
         "singing" → sounds: S-IH-NG-IH-NG →
-          {text:"si", consonant:s, vowel:ee}, {text:"ngi", consonant:n, vowel:ee}, {text:"ng", consonant:n, vowel:mmm}
+          {text:"si", consonant:s, vowel:ee, weight:3}, {text:"ngi", consonant:n, vowel:ee, weight:2}, {text:"ng", consonant:n, vowel:mmm, weight:1}
 
         FULL EXAMPLE:
         "The farmer in the dell" → 8 notes, then STOP:
-          The:th+schwa, far:f+aa, mer:m+schwa, i:none+ee, n:n+schwa, The:th+schwa, de:d+ae, ll:l+schwa
+          The:th+schwa+w1, far:f+aa+w3, mer:m+schwa+w1, i:none+ee+w1, n:n+schwa+w1, The:th+schwa+w1, de:d+ae+w3, ll:l+schwa+w1
         """
 
         // Inject user-approved examples if any exist
@@ -333,7 +354,8 @@ class ComposerModel: ObservableObject {
                 let trimmed = syl.text.trimmingCharacters(in: .whitespacesAndNewlines)
                 if trimmed.isEmpty && syl.consonant == "none" && syl.vowel == "none" { return nil }
                 let label = trimmed.isEmpty ? "\(c.name)" : trimmed
-                return ChoirPhoneme(text: label, consonantCC: c.ccValue, vowelCC: v.ccValue)
+                let w = max(1, min(3, syl.weight))
+                return ChoirPhoneme(text: label, consonantCC: c.ccValue, vowelCC: v.ccValue, weight: w)
             }
 
             print("[Composer] Extracted \(phonemes.count) phonemes from: \(text)")
@@ -346,6 +368,64 @@ class ComposerModel: ObservableObject {
         }
     }
 
+    // MARK: - Scale Pitch Mapping
+
+    /// Returns sorted MIDI note numbers in the chosen scale, centered around middle C range
+    private func scaleNotes(center: UInt8 = 60, range: Int = 12) -> [UInt8] {
+        let intervals = Array(scaleType.intervals).sorted()
+        var notes: [UInt8] = []
+        let root = musicalKey.rawValue
+        for octaveOffset in -2...2 {
+            for interval in intervals {
+                let midi = root + (octaveOffset * 12) + interval + 48 // start from C3 area
+                if midi >= Int(center) - range && midi <= Int(center) + range && midi >= 36 && midi <= 84 {
+                    notes.append(UInt8(midi))
+                }
+            }
+        }
+        return notes.sorted()
+    }
+
+    /// Pick a pitch from the scale based on phoneme index and weight
+    private func pitchForPhoneme(index: Int, weight: Int, total: Int) -> UInt8 {
+        let notes = scaleNotes()
+        guard !notes.isEmpty else { return 60 }
+        let mid = notes.count / 2
+        // Stressed syllables get higher pitches, unstressed stay near center
+        let offset: Int
+        switch weight {
+        case 3: offset = Int.random(in: 1...3)   // reach up
+        case 2: offset = Int.random(in: -1...1)   // hover near center
+        default: offset = Int.random(in: -2...0)   // dip low
+        }
+        let idx = max(0, min(notes.count - 1, mid + offset))
+        return notes[idx]
+    }
+
+    /// Duration in ms based on weight + speed, logarithmic scaling
+    /// Longer base notes stretch proportionally more at slower speeds
+    private func durationForWeight(_ weight: Int) -> Int {
+        let base: Double
+        switch weight {
+        case 3: base = 500    // long hold
+        case 2: base = 380    // medium
+        default: base = 280   // brief
+        }
+        // Logarithmic: multiply = multiplier ^ (base/280)
+        // So 280ms note gets linear scaling, but 500ms note stretches more
+        let scaled = base * pow(speedMultiplier, base / 280.0)
+        return max(minNoteDuration, Int(scaled))
+    }
+
+    /// Velocity based on weight
+    private func velocityForWeight(_ weight: Int) -> UInt8 {
+        switch weight {
+        case 3: return 110
+        case 2: return 90
+        default: return 70
+        }
+    }
+
     // MARK: - Playback
 
     @MainActor
@@ -354,33 +434,88 @@ class ComposerModel: ObservableObject {
         guard !phonemes.isEmpty else { return }
 
         isPlaying = true
-        let phonemesToPlay = phonemes  // capture value type copy
+        let phonemesToPlay = phonemes
+        let total = phonemesToPlay.count
         playbackTask = Task { @MainActor in
             for (index, phoneme) in phonemesToPlay.enumerated() {
                 guard !Task.isCancelled else { break }
                 self.currentPlayIndex = index
 
-                print("[Composer] ▶ [\(index)] \(phoneme.text): \(phoneme.consonantName)·\(phoneme.vowelSymbol) (CC \(phoneme.consonantCC)/\(phoneme.vowelCC))")
+                let pitch = pitchForPhoneme(index: index, weight: phoneme.weight, total: total)
+                let velocity = velocityForWeight(phoneme.weight)
+                let duration = durationForWeight(phoneme.weight)
 
-                audioMonitor.playNote(
-                    note: 60,
-                    velocity: 100,
-                    vibrato: 64,
-                    reverb: 32,
-                    vowel: phoneme.vowelCC,
-                    consonant: phoneme.consonantCC
-                )
+                let ensemble = phoneme.isEnsemble
+                print("[Composer] ▶ [\(index)] \(phoneme.text): \(phoneme.consonantName)·\(phoneme.vowelSymbol) w\(phoneme.weight) → note \(pitch) vel \(velocity) \(duration)ms\(ensemble ? " 🎵ensemble" : "")")
 
-                // Hold note (minimum ~300ms for Choir)
-                try? await Task.sleep(for: .milliseconds(400))
-                audioMonitor.stopNote(note: 60)
+                var activePitches: [UInt8]
+                if ensemble {
+                    activePitches = playEnsemble(pitch: pitch, velocity: velocity, phoneme: phoneme, audioMonitor: audioMonitor)
+                } else {
+                    audioMonitor.playNote(
+                        note: pitch, velocity: velocity, vibrato: 64, reverb: 32,
+                        vowel: phoneme.vowelCC, consonant: phoneme.consonantCC
+                    )
+                    activePitches = [pitch]
+                }
 
-                // Gap between syllables — let the engine fully release
-                try? await Task.sleep(for: .milliseconds(100))
+                try? await Task.sleep(for: .milliseconds(duration))
+                stopAll(pitches: activePitches, audioMonitor: audioMonitor)
+
+                // Gap between syllables
+                let gap = Int(Double(phoneme.weight >= 3 ? 80 : 50) * speedMultiplier)
+                try? await Task.sleep(for: .milliseconds(gap))
             }
             self.isPlaying = false
             self.currentPlayIndex = nil
         }
+    }
+
+    @MainActor
+    func toggleEnsemble(_ phoneme: ChoirPhoneme) {
+        guard let idx = phonemes.firstIndex(where: { $0.id == phoneme.id }) else { return }
+        phonemes[idx].isEnsemble.toggle()
+    }
+
+    /// Find the nearest scale note to a target MIDI pitch
+    private func nearestScaleNote(to target: Int, in scale: [UInt8]) -> UInt8? {
+        guard !scale.isEmpty else { return nil }
+        return scale.min(by: { abs(Int($0) - target) < abs(Int($1) - target) })
+    }
+
+    /// Barbershop quartet: lead + 3 harmony voices, all snapped to scale
+    /// Tenor: ~3rd above lead, Baritone: ~3rd below, Bass: ~octave below
+    private func playEnsemble(pitch: UInt8, velocity: UInt8, phoneme: ChoirPhoneme, audioMonitor: AudioMonitorService) -> [UInt8] {
+        let scale = scaleNotes(center: pitch, range: 18)
+        var pitches: [UInt8] = [pitch]
+
+        // Lead voice
+        audioMonitor.playNote(note: pitch, velocity: velocity, vibrato: 64, reverb: 32,
+                              vowel: phoneme.vowelCC, consonant: phoneme.consonantCC)
+
+        // Quartet intervals — wider open voicing, all snapped to scale
+        let targets: [(offset: Int, velDrop: UInt8, reverb: UInt8)] = [
+            (+7,  15, 38),   // Tenor — 5th above
+            (-5,  18, 42),   // Baritone — 4th below
+            (-12, 20, 48),   // Bass — octave below
+        ]
+
+        for t in targets {
+            let raw = Int(pitch) + t.offset
+            guard let snapped = nearestScaleNote(to: raw, in: scale),
+                  snapped != pitch else { continue }  // skip duplicates
+            let hv = max(50, velocity - t.velDrop)
+            audioMonitor.playNote(note: snapped, velocity: hv, vibrato: 64, reverb: t.reverb,
+                                  vowel: phoneme.vowelCC, consonant: phoneme.consonantCC)
+            pitches.append(snapped)
+        }
+
+        print("[Composer] 🎵 quartet: \(pitches.map { String($0) }.joined(separator: " "))")
+        return pitches
+    }
+
+    private func stopAll(pitches: [UInt8], audioMonitor: AudioMonitorService) {
+        for p in pitches { audioMonitor.stopNote(note: p) }
     }
 
     @MainActor
@@ -389,19 +524,34 @@ class ComposerModel: ObservableObject {
     }
 
     @MainActor
+    func clearAll() {
+        inputText = ""
+        phonemes = []
+        isApproved = false
+        errorMessage = nil
+    }
+
+    @MainActor
     func playSinglePhoneme(_ phoneme: ChoirPhoneme, audioMonitor: AudioMonitorService) {
         stop()
-        if let idx = phonemes.firstIndex(where: { $0.id == phoneme.id }) {
-            currentPlayIndex = idx
+        let idx = phonemes.firstIndex(where: { $0.id == phoneme.id }) ?? 0
+        currentPlayIndex = idx
+        let pitch = pitchForPhoneme(index: idx, weight: phoneme.weight, total: phonemes.count)
+        let velocity = velocityForWeight(phoneme.weight)
+        print("[Composer] tap: \(phoneme.text) → \(phoneme.consonantName)·\(phoneme.vowelSymbol) w\(phoneme.weight) note \(pitch)\(phoneme.isEnsemble ? " 🎵ensemble" : "")")
+        var activePitches: [UInt8]
+        if phoneme.isEnsemble {
+            activePitches = playEnsemble(pitch: pitch, velocity: velocity, phoneme: phoneme, audioMonitor: audioMonitor)
+        } else {
+            audioMonitor.playNote(
+                note: pitch, velocity: velocity, vibrato: 64, reverb: 32,
+                vowel: phoneme.vowelCC, consonant: phoneme.consonantCC
+            )
+            activePitches = [pitch]
         }
-        print("[Composer] tap: \(phoneme.text) → \(phoneme.consonantName)·\(phoneme.vowelSymbol)")
-        audioMonitor.playNote(
-            note: 60, velocity: 100, vibrato: 64, reverb: 32,
-            vowel: phoneme.vowelCC, consonant: phoneme.consonantCC
-        )
         playbackTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(500))
-            audioMonitor.stopNote(note: 60)
+            stopAll(pitches: activePitches, audioMonitor: audioMonitor)
             self.currentPlayIndex = nil
         }
     }

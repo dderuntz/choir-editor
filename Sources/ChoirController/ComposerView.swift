@@ -53,87 +53,87 @@ struct ComposerView: View {
                 // Action buttons
                 let buttonOpacity: Double = hasText ? 0.85 : 0.35
 
+                let buttonBg = Color(red: 0xD8/255, green: 0xD6/255, blue: 0xD3/255)
                 HStack(spacing: 8) {
                     Button(action: {
                         // TODO: LLM text generation
                     }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "eyebrow")
-                            Text("Summon Song")
-                                .font(Theme.buttonFont)
-                                .fontWeight(Theme.buttonWeight)
-                        }
-                        .foregroundColor(Theme.text(colorScheme).opacity(buttonOpacity))
-                        .padding(.horizontal, Theme.buttonPaddingH)
-                        .padding(.vertical, Theme.buttonPaddingV)
-                        .overlay(
-                            Capsule()
-                                .stroke(Theme.text(colorScheme).opacity(buttonOpacity), lineWidth: Theme.buttonStroke)
-                        )
+                        Label("Summon Song", systemImage: "eyebrow")
+                            .foregroundColor(Theme.dark)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.borderedProminent)
+                    .tint(buttonBg)
                     .disabled(!hasText)
 
                     Button(action: {
                         Task { await composerModel.extractPhonemes() }
                     }) {
-                        HStack(spacing: 6) {
-                            if composerModel.isProcessing {
-                                ProgressView()
-                                    .controlSize(.small)
-                            } else {
-                                Image(systemName: "eye")
-                            }
-                            Text(composerModel.isProcessing ? "Thinking…" : "Reveal Phonemes")
-                                .font(Theme.buttonFont)
-                                .fontWeight(Theme.buttonWeight)
-                        }
-                        .foregroundColor(Theme.text(colorScheme).opacity(buttonOpacity))
-                        .padding(.horizontal, Theme.buttonPaddingH)
-                        .padding(.vertical, Theme.buttonPaddingV)
-                        .overlay(
-                            Capsule()
-                                .stroke(Theme.text(colorScheme).opacity(buttonOpacity), lineWidth: Theme.buttonStroke)
-                        )
+                        Label(composerModel.isProcessing ? "Thinking…" : "Reveal Phonemes",
+                              systemImage: composerModel.isProcessing ? "ellipsis" : "eye")
+                            .foregroundColor(Theme.dark)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.borderedProminent)
+                    .tint(buttonBg)
                     .disabled(!hasText || composerModel.isProcessing)
                 }
                 .padding(.top, 4)
 
-                // Phoneme pills (ScrollView within 640, scrolls naturally)
+                // Phoneme pills
                 if !composerModel.phonemes.isEmpty {
                     phonemeStrip(leadingPad: 0)
                         .scrollClipDisabled()
                         .padding(.top, 48)
                 }
 
-                // Play / Stop
+                // Play + Key/Scale
                 if !composerModel.phonemes.isEmpty {
-                    Button(action: {
-                        if composerModel.isPlaying {
-                            composerModel.stop()
-                            audioMonitor.stopNote(note: 60)
-                        } else {
-                            composerModel.playPhonemes(audioMonitor: audioMonitor)
+                    HStack(spacing: 12) {
+                        Button(action: {
+                            if composerModel.isPlaying {
+                                composerModel.stop()
+                                audioMonitor.stopNote(note: 60)
+                            } else {
+                                composerModel.playPhonemes(audioMonitor: audioMonitor)
+                            }
+                        }) {
+                            Label(composerModel.isPlaying ? "Stop" : "Play",
+                                  systemImage: composerModel.isPlaying ? "stop.fill" : "play.fill")
+                                .foregroundColor(Theme.dark)
                         }
-                    }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: composerModel.isPlaying ? "stop.fill" : "play.fill")
-                            Text(composerModel.isPlaying ? "Stop" : "Play")
-                                .font(Theme.buttonFont)
-                                .fontWeight(Theme.buttonWeight)
+                        .buttonStyle(.borderedProminent)
+                        .tint(composerModel.isPlaying ? Theme.green : Theme.accent)
+
+                        Picker("", selection: $composerModel.musicalKey) {
+                            ForEach(MusicalKey.allCases) { key in
+                                Text(key.name).tag(key)
+                            }
                         }
-                        .foregroundColor(Theme.dark)
-                        .padding(.horizontal, Theme.buttonPaddingH)
-                        .padding(.vertical, Theme.buttonPaddingV)
-                        .background(
-                            Capsule()
-                                .fill(composerModel.isPlaying ? Theme.green : Theme.accent)
-                        )
+                        .labelsHidden()
+                        .frame(width: 52)
+
+                        Picker("", selection: $composerModel.scaleType) {
+                            ForEach(ScaleType.allCases) { scale in
+                                Text(scale.rawValue).tag(scale)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 130)
+
+                        Picker("", selection: $composerModel.speedMultiplier) {
+                            Text("Normal").tag(1.0)
+                            Text("Slower").tag(1.25)
+                            Text("Slowest").tag(1.5)
+                        }
+                        .labelsHidden()
+                        .frame(width: 90)
                     }
-                    .buttonStyle(.plain)
                     .padding(.top, 8)
+
+                    // Instruction caption
+                    Text("Shift-click a chip to add chorus")
+                        .font(.system(size: 11))
+                        .foregroundColor(Theme.text(colorScheme).opacity(0.35))
+                        .padding(.top, 4)
                 }
 
                 // Error / status
@@ -179,21 +179,40 @@ struct ComposerView: View {
                         onDelete: { composerModel.deletePhoneme(phoneme) }
                     )
                     .onTapGesture {
-                        composerModel.playSinglePhoneme(phoneme, audioMonitor: audioMonitor)
+                        if NSEvent.modifierFlags.contains(.shift) {
+                            composerModel.toggleEnsemble(phoneme)
+                        } else {
+                            composerModel.playSinglePhoneme(phoneme, audioMonitor: audioMonitor)
+                        }
+                    }
+                    .onLongPressGesture(minimumDuration: 0.4) {
+                        composerModel.toggleEnsemble(phoneme)
                     }
                 }
 
-                // Thumbs up at end of strip
+                // Thumbs up + trash at end of strip
                 Button(action: { composerModel.approveResult() }) {
                     Image(systemName: composerModel.isApproved ? "hand.thumbsup.fill" : "hand.thumbsup")
-                        .font(.system(size: 14))
+                        .font(.title2)
                         .foregroundColor(composerModel.isApproved ? Theme.accent : Theme.text(colorScheme).opacity(0.3))
-                        .frame(width: 32, height: 32)
                 }
                 .buttonStyle(.plain)
+                .padding(.leading, 10)
                 .help(composerModel.isApproved
                       ? "Saved (\(composerModel.savedExampleCount) examples)"
                       : "Approve — save as training example")
+
+                Button(action: {
+                    composerModel.stop()
+                    composerModel.clearAll()
+                }) {
+                    Image(systemName: "trash")
+                        .font(.title2)
+                        .foregroundColor(Theme.text(colorScheme).opacity(0.3))
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 6)
+                .help("Clear all")
             }
             .padding(.leading, leadingPad)
             .padding(.vertical, 8)
@@ -210,27 +229,39 @@ struct PhonemeChip: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var isHovered = false
 
+    private var phonemeLabel: String {
+        let c = Consonant.all.first { $0.ccValue == phoneme.consonantCC }
+        let v = Vowel.all.first { $0.ccValue == phoneme.vowelCC }
+        let isNone = (c?.name == "None")
+        let cPart = isNone ? "" : (c?.name ?? "")
+        let vPart = v?.symbol ?? ""
+        return cPart + vPart
+    }
+
     var body: some View {
         VStack(spacing: 2) {
-            Text(phoneme.text)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(Theme.text(colorScheme))
-
             HStack(spacing: 3) {
-                Text(phoneme.consonantName)
-                    .font(.system(size: 10))
-                Text("·")
-                    .font(.system(size: 8))
-                Text(phoneme.vowelSymbol)
-                    .font(.system(size: 10))
+                Text(phoneme.text)
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundColor(Theme.ivory)
+                if phoneme.isEnsemble {
+                    Image(systemName: "person.3.fill")
+                        .font(.system(size: 7))
+                        .foregroundColor(Theme.ivory)
+                }
             }
-            .foregroundColor(Theme.text(colorScheme).opacity(0.4))
+
+            if !phonemeLabel.isEmpty {
+                Text(phonemeLabel)
+                    .font(.system(size: 10))
+                    .foregroundColor(Theme.ivory.opacity(0.4))
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(Theme.text(colorScheme).opacity(0.05))
+                .fill(Theme.dark)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8)
@@ -241,9 +272,9 @@ struct PhonemeChip: View {
                 Button(action: onDelete) {
                     Image(systemName: "xmark")
                         .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(Theme.text(colorScheme).opacity(0.5))
+                        .foregroundColor(Theme.dark)
                         .frame(width: 14, height: 14)
-                        .background(Circle().fill(Theme.text(colorScheme).opacity(0.1)))
+                        .background(Circle().fill(Theme.ivory))
                 }
                 .buttonStyle(.plain)
                 .offset(x: 4, y: -4)
@@ -251,6 +282,7 @@ struct PhonemeChip: View {
         }
         .onHover { isHovered = $0 }
         .animation(.easeInOut(duration: 0.15), value: isActive)
+        .animation(.easeInOut(duration: 0.15), value: phoneme.isEnsemble)
         .animation(.easeInOut(duration: 0.1), value: isHovered)
     }
 }
