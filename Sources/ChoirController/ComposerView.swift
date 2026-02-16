@@ -26,10 +26,6 @@ struct ComposerView: View {
     // Chip inspector
     @State private var inspectedPhonemeId: UUID? = nil
 
-    private var lineCount: Int {
-        max(1, composerModel.inputText.components(separatedBy: "\n").count)
-    }
-
     private var lineHeight: CGFloat { 62 }
 
     var body: some View {
@@ -78,8 +74,6 @@ struct ComposerView: View {
                 }
 
                 // Action buttons
-                let buttonOpacity: Double = hasText ? 0.85 : 0.35
-
                 let buttonBg = Color(red: 0xD8/255, green: 0xD6/255, blue: 0xD3/255)
                 HStack(spacing: 8) {
                     let summonDisabled = !hasText || composerModel.isProcessing
@@ -219,7 +213,7 @@ struct ComposerView: View {
                                 .foregroundColor(Theme.dark)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(Color(red: 0xD8/255, green: 0xD6/255, blue: 0xD3/255))
+                        .tint(buttonBg)
                     }
                     .padding(.top, 8)
 
