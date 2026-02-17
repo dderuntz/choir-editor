@@ -606,7 +606,7 @@ struct NoteRectView: View, Equatable {
     let groupDragOffset: CGSize
     var actions: NoteActions
     
-    static func == (lhs: NoteRectView, rhs: NoteRectView) -> Bool {
+    nonisolated static func == (lhs: NoteRectView, rhs: NoteRectView) -> Bool {
         lhs.note == rhs.note &&
         lhs.isSelected == rhs.isSelected &&
         lhs.isInMultiSelect == rhs.isInMultiSelect &&
