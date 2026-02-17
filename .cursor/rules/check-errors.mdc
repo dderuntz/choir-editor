@@ -1,0 +1,12 @@
+---
+description: Always check for linter/build errors after every code edit
+alwaysApply: true
+---
+
+# Check Errors After Every Edit
+
+After **every** code change (StrReplace, Write, etc.), immediately run `ReadLints` on the edited file **before** telling the user to build or test.
+
+- If there are errors, fix them in the same turn.
+- Never say "build and check" until lints pass.
+- If the user reports "nothing updated" or "it didn't change", the first thing to check is linter/build errors — not logic.

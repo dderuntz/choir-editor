@@ -96,7 +96,27 @@ enum Theme {
     
     static let divider = dark.opacity(0.15)
     /// Alias used by explorer grid borders
-    static let explorerGridBorder = divider
+    static let explorerGridBorder = fieldLight
+}
+
+// MARK: - Hover Pill Button Style
+
+struct HoverPillStyle: ButtonStyle {
+    var colorScheme: ColorScheme
+    var textColor: Color = Theme.field
+    @State private var isHovered = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundColor(isHovered ? Theme.dark : textColor)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isHovered ? Theme.fieldColor(colorScheme) : Color.clear)
+            )
+            .onHover { isHovered = $0 }
+    }
 }
 
 // MARK: - Ivory Switch Toggle Style

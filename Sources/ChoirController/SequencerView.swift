@@ -13,6 +13,7 @@ struct SequencerView: View {
     // Playback timer
     @State private var playbackTimer: Timer? = nil
     @State private var lastTickTime: Date? = nil
+    @State private var pendingClearAll = false
     
     // Scroll sync between scrub zone and piano roll grid
     @StateObject private var scrollSync = ScrollSyncManager()
@@ -86,6 +87,10 @@ struct SequencerView: View {
             Button("Delete", role: .destructive) { model.confirmDeleteSelected() }
             Button("Cancel", role: .cancel) {}
         }
+        .alert("Clear all notes?", isPresented: $pendingClearAll) {
+            Button("Clear All", role: .destructive) { clearAll() }
+            Button("Cancel", role: .cancel) {}
+        }
         .onDisappear {
             stopPlayback()
         }
@@ -97,83 +102,92 @@ struct SequencerView: View {
     // MARK: - Toolbar
     
     private var sequencerToolbar: some View {
-        HStack(spacing: 12) {
-            // Scale guide — key picker doubles as on/off
-            HStack(spacing: 4) {
-                Image(systemName: "music.note.list")
-                    .foregroundColor(Theme.text(colorScheme).opacity(model.showScaleHelper ? 1 : 0.5))
+        ZStack {
+            // Left: Key/Scale
+            HStack(spacing: 12) {
+                HStack(spacing: 12) {
+                    Image(systemName: "music.note.list")
+                        .foregroundColor(Theme.dark.opacity(model.showScaleHelper ? 1 : 0.5))
 
-                Picker("", selection: Binding(
-                get: { model.showScaleHelper ? model.musicalKey.rawValue : -1 },
-                set: { newValue in
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        if newValue == -1 {
-                            model.showScaleHelper = false
-                        } else {
-                            model.musicalKey = MusicalKey(rawValue: newValue) ?? .C
-                            model.showScaleHelper = true
+                    Picker("", selection: Binding(
+                    get: { model.showScaleHelper ? model.musicalKey.rawValue : -1 },
+                    set: { newValue in
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            if newValue == -1 {
+                                model.showScaleHelper = false
+                            } else {
+                                model.musicalKey = MusicalKey(rawValue: newValue) ?? .C
+                                model.showScaleHelper = true
+                            }
                         }
                     }
-                }
-            )) {
-                Text("No Scale").tag(-1)
-                ForEach(MusicalKey.allCases) { key in
-                    Text(key.name).tag(key.rawValue)
-                }
-            }
-            .labelsHidden()
-            .frame(width: model.showScaleHelper ? 50 : 90)
-            .controlSize(.regular)
-
-                if model.showScaleHelper {
-                    Picker("", selection: $model.scaleType) {
-                        ForEach(ScaleType.allCases) { scale in
-                            Text(scale.rawValue).tag(scale)
-                        }
+                )) {
+                    Text("No Scale").tag(-1)
+                    ForEach(MusicalKey.allCases) { key in
+                        Text("Key of \(key.name)").tag(key.rawValue)
                     }
-                    .labelsHidden()
-                    .controlSize(.regular)
                 }
-            }
-            
-            // Bar navigation
-            Stepper("\(model.totalBeats / 4) Bars", value: Binding(
-                get: { model.totalBeats / 4 },
-                set: { model.totalBeats = $0 * 4 }
-            ), in: 1...16)
-            .monospacedDigit()
-            .controlSize(.small)
-            .tint(Theme.fieldLight)
-            
-            // Loop toggle
-            Toggle(isOn: $model.isLooping) {
-                Text("Loop")
-                    .opacity(model.isLooping ? 1 : 0.4)
-            }
-            .toggleStyle(IvorySwitchStyle())
-            .help(model.isLooping ? "Looping" : "Loop")
-            
-            Spacer()
-            
-            // Clear button (right-aligned)
-            Button(action: {
-                if model.selectedNoteIds.isEmpty {
-                    clearAll()
-                } else {
-                    model.deleteSelectedNote()
+                .labelsHidden()
+                .buttonStyle(.borderless)
+                .fixedSize()
+                .tint(Theme.dark)
+                .foregroundStyle(Theme.dark)
+
+                    if model.showScaleHelper {
+                        Picker("", selection: $model.scaleType) {
+                            ForEach(ScaleType.allCases) { scale in
+                                Text("\(scale.rawValue) Scale").tag(scale)
+                            }
+                        }
+                        .labelsHidden()
+                        .buttonStyle(.borderless)
+                        .fixedSize()
+                        .tint(Theme.dark)
+                        .foregroundStyle(Theme.dark)
+                    }
                 }
-            }) {
-                Text(model.selectedNoteIds.isEmpty
-                    ? "Clear All"
-                    : "Clear Selection (\(model.selectedNoteIds.count))")
-                .foregroundColor(Theme.dark)
+                
+                Spacer()
             }
-            .buttonStyle(.borderless)
-            .controlSize(.regular)
-            .tint(nil)
-            .disabled(model.notes.isEmpty && model.selectedNoteIds.isEmpty)
+            
+            // Right: Clear + Loop + Bar stepper
+            HStack(spacing: 12) {
+                Spacer()
+                
+                Button(action: {
+                    if model.selectedNoteIds.isEmpty {
+                        pendingClearAll = true
+                    } else {
+                        model.deleteSelectedNote()
+                    }
+                }) {
+                    Label(model.selectedNoteIds.isEmpty
+                        ? "Clear All"
+                        : "Clear Selection (\(model.selectedNoteIds.count))",
+                          systemImage: "eraser.line.dashed")
+                }
+                .buttonStyle(HoverPillStyle(colorScheme: colorScheme, textColor: Theme.dark))
+                .disabled(model.notes.isEmpty && model.selectedNoteIds.isEmpty)
+                
+                
+                Button(action: { model.isLooping.toggle() }) {
+                    Label("Loop", systemImage: "repeat.circle.fill")
+                        .foregroundColor(model.isLooping ? Theme.dark : Theme.dark.opacity(0.25))
+                }
+                .buttonStyle(.borderless)
+                .help(model.isLooping ? "Looping" : "Loop")
+                
+                Stepper("\(model.totalBeats / 4) Bars", value: Binding(
+                    get: { model.totalBeats / 4 },
+                    set: { model.totalBeats = $0 * 4 }
+                ), in: 1...16)
+                .monospacedDigit()
+                .controlSize(.small)
+                .tint(Theme.fieldLight)
+                .fixedSize()
+                .padding(.leading, 6)
+            }
         }
-        .font(Theme.toolbarFont)
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(Theme.bg(colorScheme))
