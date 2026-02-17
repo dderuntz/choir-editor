@@ -19,14 +19,14 @@ struct BluetoothSetupPanel: View {
             // Header
             HStack {
                 Image(systemName: "antenna.radiowaves.left.and.right")
-                    .foregroundColor(Theme.accent)
+                    .foregroundColor(txt)
                 Text("Connect Your Choir")
                     .font(.headline)
                     .foregroundColor(txt)
                 Spacer()
                 Button(action: dismiss) {
                     Image(systemName: "xmark")
-                        .foregroundColor(txt.opacity(0.5))
+                        .foregroundColor(txt)
                 }
                 .buttonStyle(.plain)
             }
@@ -46,8 +46,7 @@ struct BluetoothSetupPanel: View {
             statusFooter
         }
         .background(Theme.bg(colorScheme))
-        .shadow(color: Color.black.opacity(0.4), radius: 16, x: 0, y: 0)
-        .onChange(of: midiService.isConnected) { connected in
+        .onChange(of: midiService.isConnected) { _, connected in
             if connected {
                 withAnimation(.easeInOut(duration: 0.3)) {
                     showSuccess = true
@@ -69,7 +68,7 @@ struct BluetoothSetupPanel: View {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Follow these steps to pair your Choir doll via Bluetooth.")
                     .font(.subheadline)
-                    .foregroundColor(txt.opacity(0.7))
+                    .foregroundColor(txt)
                     .padding(.bottom, 4)
                 
                 stepRow(number: 1, icon: "hand.tap", text: "**Wake your dolls** — give each one a tap")
@@ -86,16 +85,12 @@ struct BluetoothSetupPanel: View {
                     Text("000000")
                         .font(.system(.title, design: .monospaced))
                         .fontWeight(.bold)
-                        .foregroundColor(Theme.accent)
+                        .foregroundColor(.white)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 8)
                         .background(
                             RoundedRectangle(cornerRadius: 8)
                                 .fill(Theme.dark)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(Theme.accent.opacity(0.15))
-                                )
                         )
                     Spacer()
                 }
@@ -112,9 +107,10 @@ struct BluetoothSetupPanel: View {
                     .fontWeight(.semibold)
                     .foregroundColor(Theme.bg(colorScheme))
                     .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(
-                        RoundedRectangle(cornerRadius: Theme.buttonRadius)
+                        RoundedRectangle(cornerRadius: 12)
                             .fill(txt)
                     )
                 }
@@ -142,7 +138,7 @@ struct BluetoothSetupPanel: View {
             if let device = midiService.selectedInput {
                 Text(device.displayName)
                     .font(.subheadline)
-                    .foregroundColor(txt.opacity(0.7))
+                    .foregroundColor(txt)
             }
             
             Spacer()
@@ -162,11 +158,11 @@ struct BluetoothSetupPanel: View {
             if midiService.isConnected, let device = midiService.selectedInput {
                 Text(device.displayName)
                     .font(.caption)
-                    .foregroundColor(txt.opacity(0.7))
+                    .foregroundColor(txt)
             } else {
                 Text("Waiting for connection...")
                     .font(.caption)
-                    .foregroundColor(txt.opacity(0.7))
+                    .foregroundColor(txt)
             }
             
             Spacer()

@@ -200,20 +200,22 @@ struct ComposerView: View {
                         Spacer()
                     }
 
-                    // Right: Update Phonemes, Clear, Copy to Grid
-                    HStack(spacing: 12) {
-                        Spacer()
-
-                        let revealDisabled = !hasText || composerModel.isProcessing
+                    // Center: Sync Phonemes (when needsSync)
+                    if composerModel.needsSync {
                         Button(action: {
                             Task { await composerModel.extractPhonemes() }
                         }) {
                             Label(composerModel.isProcessing ? "Thinking…" : "Sync Phonemes",
                                   systemImage: composerModel.isProcessing ? "ellipsis" : "arrow.trianglehead.2.clockwise.rotate.90")
                         }
-                        .buttonStyle(HoverPillStyle(colorScheme: colorScheme))
-                        .disabled(revealDisabled)
-                        .opacity(revealDisabled ? 0.4 : 1)
+                        .buttonStyle(HoverPillStyle(colorScheme: colorScheme, textColor: Theme.accent))
+                        .disabled(composerModel.isProcessing)
+                        .opacity(composerModel.isProcessing ? 0.4 : 1)
+                    }
+
+                    // Right: Clear, Copy to Grid
+                    HStack(spacing: 12) {
+                        Spacer()
 
                         Button(action: {
                             composerModel.stop()
@@ -231,10 +233,8 @@ struct ComposerView: View {
                             }
                         }) {
                             Label("Copy to Grid", systemImage: "document.on.document")
-                                .foregroundColor(Theme.dark)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(Theme.fieldColor(colorScheme))
+                        .buttonStyle(HoverPillStyle(colorScheme: colorScheme))
                     }
                 }
                 .padding(.horizontal)

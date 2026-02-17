@@ -118,7 +118,7 @@ struct ContentView: View {
                             .foregroundColor(showSettings ? Theme.text(colorScheme) : Theme.text(colorScheme).opacity(0.4))
                     }
                     .buttonStyle(.plain)
-                    .help("Intake")
+                    .help("Prefer")
                     
                     // Composer toggle
                     Button(action: {
@@ -139,14 +139,14 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                     .help("Compose")
                     
-                    // Listen
+                    // Test
                     Button(action: { showSoundPad = true }) {
                         Image(systemName: "ear")
                             .font(.title2)
                             .foregroundColor(showSoundPad ? Theme.text(colorScheme) : Theme.text(colorScheme).opacity(0.4))
                     }
                     .buttonStyle(.plain)
-                    .help("Listen")
+                    .help("Test")
                     
                     // Keyboard toggle
                     Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showKeyboard.toggle(); showKeyboardStorage = showKeyboard } }) {
@@ -155,7 +155,7 @@ struct ContentView: View {
                             .foregroundColor(showKeyboard ? Theme.text(colorScheme).opacity(0.85) : Theme.text(colorScheme).opacity(0.4))
                     }
                     .buttonStyle(.plain)
-                    .help("Express")
+                    .help("Touch")
                     
                     // Connection status indicator
                     Button(action: { startBluetoothSetup() }) {
@@ -212,7 +212,7 @@ struct ContentView: View {
             // Collapsible Settings Panel (slides in from left)
             if showSettings {
                 HStack(spacing: 0) {
-                    SettingsPanelView(midiService: midiService, showSettings: $showSettings)
+                    SettingsPanelView(midiService: midiService, audioMonitor: audioMonitor, showSettings: $showSettings)
                         .frame(width: 280)
                         .background(Theme.bg(colorScheme))
                         .transition(.move(edge: .leading))

@@ -50,7 +50,7 @@ struct SoundPadView: View {
         VStack(spacing: 0) {
             // MARK: Header bar
             HStack {
-                Text("Listen")
+                Text("Test")
                     .font(.system(size: 56, weight: .ultraLight))
                     .kerning(-1.4)
                     .foregroundColor(txt)
@@ -81,7 +81,13 @@ struct SoundPadView: View {
             
             // MARK: Field area (green-gray)
             VStack(spacing: 0) {
-                // Two-column grid: Consonants | Vowels
+                Text("Pick a consonant and vowel combo to test a phoneme")
+                    .font(.system(size: 12))
+                    .foregroundColor(txtDim)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 16)
+                
+                // Two-column grid: Consonants | Vowels + sliders
                 HStack(alignment: .top, spacing: 16) {
                     // Consonants
                     VStack(alignment: .leading, spacing: 0) {
@@ -93,7 +99,8 @@ struct SoundPadView: View {
                         
                         phonemeGrid(items: Consonant.all.map { PhonemeItem(id: $0.id, label: $0.name, subtitle: "\($0.ccValue)", ccValue: $0.ccValue) },
                                     selected: selectedConsonant,
-                                    columns: 5) { value in
+                                    columns: 5,
+                                    fillPartialRows: false) { value in
                             selectedConsonant = value
                             startSound()
                         } onRelease: {
@@ -101,7 +108,7 @@ struct SoundPadView: View {
                         }
                     }
                     
-                    // Vowels
+                    // Vowels + sliders stacked under second column
                     VStack(alignment: .leading, spacing: 0) {
                         Text("Vowels")
                             .font(.caption)
@@ -111,44 +118,40 @@ struct SoundPadView: View {
                         
                         phonemeGrid(items: Vowel.all.map { PhonemeItem(id: $0.id, label: $0.symbol, subtitle: String($0.example.prefix(4)), ccValue: $0.ccValue) },
                                     selected: selectedVowel,
-                                    columns: 5) { value in
+                                    columns: 5,
+                                    fillPartialRows: false) { value in
                             selectedVowel = value
                             startSound()
                         } onRelease: {
                             stopSound()
                         }
+                        
+                        // Sliders: label+value left, slider right (same as Value row below)
+                        VStack(alignment: .leading, spacing: 16) {
+                            explorerSliderRow(label: "Note", display: noteName(testNote), value: Binding(
+                                get: { Double(testNote) },
+                                set: { testNote = UInt8($0) }
+                            ), range: 40...81)
+                            explorerSliderRow(label: "Hold", display: String(format: "%.1fs", discoveryDuration), value: $discoveryDuration, range: 1.0...10.0)
+                            explorerSliderRow(label: "Velocity", display: "\(testVelocity)", value: Binding(
+                                get: { Double(testVelocity) },
+                                set: { testVelocity = UInt8($0) }
+                            ), range: 1...127)
+                            explorerSliderRow(label: "Pitch Bend", display: "\(Int(pitchBendValue))", value: $pitchBendValue, range: -100...100)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 24)
                     }
                 }
                 .padding(.top, 20)
-                
-                // Note + Hold row
-                HStack(spacing: 16) {
-                    explorerSliderRow(label: "Note", display: noteName(testNote), value: Binding(
-                        get: { Double(testNote) },
-                        set: { testNote = UInt8($0) }
-                    ), range: 40...81)
-                    
-                    explorerSliderRow(label: "Hold", display: String(format: "%.1fs", discoveryDuration), value: $discoveryDuration, range: 1.0...10.0)
-                }
-                .padding(.vertical, 20)
-                
-                // Velocity + Pitch Bend row
-                HStack(spacing: 16) {
-                    explorerSliderRow(label: "Velocity", display: "\(testVelocity)", value: Binding(
-                        get: { Double(testVelocity) },
-                        set: { testVelocity = UInt8($0) }
-                    ), range: 1...127)
-                    
-                    explorerSliderRow(label: "Pitch Bend", display: "\(Int(pitchBendValue))", value: $pitchBendValue, range: -100...100)
-                }
-                .padding(.bottom, 20)
 
-                Divider().background(Theme.explorerGridBorder)
-                
-                // CC# + Value row
+                Divider()
+                    .background(Theme.explorerGridBorder)
+                    .padding(.top, 16)
+
+                // CC discovery row (full width, outside vowel column)
                 HStack(spacing: 16) {
                     explorerPickerRow(label: "CC#", selection: $discoveryCC)
-                    
                     explorerSliderRow(label: "Value", display: "\(Int(discoveryCCValue))", value: $discoveryCCValue, range: 0...127)
                 }
                 .padding(.vertical, 16)
@@ -234,7 +237,7 @@ struct SoundPadView: View {
         return edges
     }
     
-    private func phonemeGrid(items: [PhonemeItem], selected: UInt8, columns: Int, onSelect: @escaping (UInt8) -> Void, onRelease: @escaping () -> Void) -> some View {
+    private func phonemeGrid(items: [PhonemeItem], selected: UInt8, columns: Int, fillPartialRows: Bool = true, onSelect: @escaping (UInt8) -> Void, onRelease: @escaping () -> Void) -> some View {
         let rows = stride(from: 0, to: items.count, by: columns).map { start in
             Array(items[start..<min(start + columns, items.count)])
         }
@@ -242,6 +245,7 @@ struct SoundPadView: View {
         
         return VStack(spacing: 0) {
             ForEach(Array(rows.enumerated()), id: \.offset) { rowIndex, row in
+                let effectiveCols = fillPartialRows ? columns : row.count
                 HStack(spacing: 0) {
                     ForEach(Array(row.enumerated()), id: \.element.id) { colIndex, item in
                         phonemeCell(
@@ -249,10 +253,10 @@ struct SoundPadView: View {
                             isSelected: selected == item.ccValue,
                             onSelect: onSelect,
                             onRelease: onRelease,
-                            borderEdges: borderEdges(col: colIndex, row: rowIndex, totalCols: columns, totalRows: rowCount)
+                            borderEdges: borderEdges(col: colIndex, row: rowIndex, totalCols: effectiveCols, totalRows: rowCount)
                         )
                     }
-                    if row.count < columns {
+                    if fillPartialRows, row.count < columns {
                         ForEach(0..<(columns - row.count), id: \.self) { i in
                             Color.clear
                                 .frame(maxWidth: .infinity)
