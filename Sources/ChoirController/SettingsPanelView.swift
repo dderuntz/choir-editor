@@ -11,7 +11,7 @@ struct SettingsPanelView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Header — lines up with doc title (same horizontal padding)
             HStack {
-                Text("Inhale")
+                Text("Intake")
                     .font(.system(size: 56, weight: .ultraLight))
                     .kerning(-1.4)
                 Spacer()

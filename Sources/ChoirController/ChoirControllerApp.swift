@@ -84,7 +84,7 @@ struct ChoirControllerApp: App {
                 .environmentObject(composerModel)
                 .preferredColorScheme(appearanceMode.colorScheme)
                 .tint(Theme.accent)
-                .frame(minHeight: 758)
+                .frame(minWidth: 758, minHeight: 758)
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)

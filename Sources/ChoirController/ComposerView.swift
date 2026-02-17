@@ -69,7 +69,7 @@ struct ComposerView: View {
                         .multilineTextAlignment(.center)
                 }
                 .frame(height: CGFloat(editorLineCount) * lineHeight)
-                .onChange(of: composerModel.inputText) { newValue in
+                .onChange(of: composerModel.inputText) { _, newValue in
                     var capped = newValue
                     let lines = capped.components(separatedBy: "\n")
                     if lines.count > 3 {
@@ -245,13 +245,13 @@ struct ComposerView: View {
 
                 phonemeStrip(leadingPad: 0)
                     .onPreferenceChange(ChipCenterKey.self) { chipCenters = $0 }
-                    .onChange(of: composerModel.isPlaying) { playing in
+                    .onChange(of: composerModel.isPlaying) { _, playing in
                         if playing, let cx = chipCenters[0] {
                             ballX = cx
                             ballY = 0
                         }
                     }
-                    .onChange(of: composerModel.currentPlayIndex) { newIndex in
+                    .onChange(of: composerModel.currentPlayIndex) { _, newIndex in
                         guard let idx = newIndex, let cx = chipCenters[idx] else { return }
 
                         let nextCx = chipCenters[idx + 1] ?? cx
@@ -349,8 +349,8 @@ struct ComposerView: View {
             composerModel.musicalKey = sequencerModel.musicalKey
             composerModel.scaleType = sequencerModel.scaleType
         }
-        .onChange(of: sequencerModel.musicalKey) { composerModel.musicalKey = $0 }
-        .onChange(of: sequencerModel.scaleType) { composerModel.scaleType = $0 }
+        .onChange(of: sequencerModel.musicalKey) { composerModel.musicalKey = sequencerModel.musicalKey }
+        .onChange(of: sequencerModel.scaleType) { composerModel.scaleType = sequencerModel.scaleType }
     }
 
     // MARK: - Phoneme Strip
@@ -451,7 +451,7 @@ struct ComposerView: View {
             }
             .background(ScrollViewFinder { self.nsScrollView = $0 })
         }
-        .onChange(of: composerModel.currentPlayIndex) { idx in
+        .onChange(of: composerModel.currentPlayIndex) { _, idx in
             guard let idx = idx, let chipX = chipCenters[idx] else { return }
             let viewWidth = nsScrollView?.frame.width ?? 800
             let ballInViewport = chipX - pageLeadingX
@@ -461,7 +461,7 @@ struct ComposerView: View {
                 animateScroll(to: pageLeadingX, duration: 1.5)
             }
         }
-        .onChange(of: composerModel.isPlaying) { playing in
+        .onChange(of: composerModel.isPlaying) { _, playing in
             if !playing {
                 pageLeadingX = 0
                 animateScroll(to: 0, duration: 1.5)
@@ -595,7 +595,7 @@ struct PhonemeChip: View {
             }
         }
         .offset(y: bump)
-        .onChange(of: isActive) { active in
+        .onChange(of: isActive) { _, active in
             if active {
                 bump = 3
                 flashGreen = true
@@ -650,7 +650,7 @@ struct PhonemeInspector: View {
                 .labelsHidden()
                 .frame(minWidth: 80, maxWidth: .infinity)
                 .controlSize(.small)
-                .onChange(of: consonant) { val in onUpdate(val, nil) }
+                .onChange(of: consonant) { _, val in onUpdate(val, nil) }
             }
 
             HStack {
@@ -666,7 +666,7 @@ struct PhonemeInspector: View {
                 .labelsHidden()
                 .frame(minWidth: 80, maxWidth: .infinity)
                 .controlSize(.small)
-                .onChange(of: vowel) { val in onUpdate(nil, val) }
+                .onChange(of: vowel) { _, val in onUpdate(nil, val) }
             }
 
             HStack {

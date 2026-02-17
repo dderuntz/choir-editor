@@ -13,7 +13,7 @@ struct ConnectionStatusView: View {
                 .frame(height: 16)
         } else {
             Label("Connect", systemImage: "antenna.radiowaves.left.and.right")
-                .foregroundColor(Theme.dark)
+                .foregroundColor(Theme.ivory)
                 .frame(height: 16)
         }
     }
