@@ -98,10 +98,10 @@ struct ScrollSyncHelper: NSViewRepresentable {
 // MARK: - Layout Constants
 
 enum PianoRollLayout {
-    static let rowHeight: CGFloat = 20
+    static let rowHeight: CGFloat = 24
     static let beatWidth: CGFloat = 80        // pixels per beat
     static let sixteenthWidth: CGFloat = 20   // beatWidth / 4
-    static let pianoKeyWidth: CGFloat = 54
+    static let pianoKeyWidth: CGFloat = 56
     static let resizeHandleWidth: CGFloat = 8
     
     static var totalRows: Int { PitchConstants.pitchCount }
@@ -144,27 +144,38 @@ struct PianoRollView: View {
         // Vertical scroll wraps both piano keys and grid together
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
-                HStack(alignment: .top, spacing: 0) {
-                    // Piano key labels (scrolls vertically with grid)
-                    pianoKeys
-                        .frame(width: PianoRollLayout.pianoKeyWidth)
-                    
-                    Theme.structuralDivider.frame(width: 1)
-                    
-                    // Grid area: horizontal scroll only
-                    ScrollView(.horizontal) {
-                        gridContent
-                            .frame(
-                                width: PianoRollLayout.gridWidth(beats: model.totalBeats),
-                                height: PianoRollLayout.gridHeight()
-                            )
-                            .background {
-                                if let sync = scrollSync {
-                                    ScrollSyncHelper(id: "grid", manager: sync)
+                VStack(spacing: 0) {
+                    HStack(alignment: .top, spacing: 0) {
+                        // Piano key labels (scrolls vertically with grid)
+                        pianoKeys
+                            .frame(width: PianoRollLayout.pianoKeyWidth)
+                        
+                        Theme.structuralDivider.opacity(0.4).frame(width: 1)
+                        
+                        // Grid area: horizontal scroll only
+                        ScrollView(.horizontal) {
+                            gridContent
+                                .frame(
+                                    width: PianoRollLayout.gridWidth(beats: model.totalBeats),
+                                    height: PianoRollLayout.gridHeight()
+                                )
+                                .background {
+                                    if let sync = scrollSync {
+                                        ScrollSyncHelper(id: "grid", manager: sync)
+                                    }
                                 }
-                            }
+                        }
+                        .background(Theme.fieldColor(colorScheme))
                     }
-                    .background(Theme.fieldColor(colorScheme))
+                    // Bottom padding row (background-filled so divider + key column extend)
+                    HStack(spacing: 0) {
+                        Theme.fieldColor(colorScheme)
+                            .frame(width: PianoRollLayout.pianoKeyWidth, height: PianoRollLayout.rowHeight)
+                        Theme.structuralDivider.opacity(0.4).frame(width: 1, height: PianoRollLayout.rowHeight)
+                        Theme.fieldColor(colorScheme)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: PianoRollLayout.rowHeight)
+                    }
                 }
             }
             .background(Theme.fieldColor(colorScheme))
@@ -207,6 +218,8 @@ struct PianoRollView: View {
             
             // 4. Notes on top
             notesLayer
+                .compositingGroup()
+                .shadow(color: Theme.dark.opacity(0.15), radius: 10, x: 0, y: 1)
             
             // 5. Scale hatch overlay (sits above notes, passes through clicks)
             if model.showScaleHelper {
@@ -623,14 +636,14 @@ struct NoteRectView: View, @preconcurrency Equatable {
     private var noteWidth: CGFloat { CGFloat(note.duration) * PianoRollLayout.beatWidth }
     private var noteHeight: CGFloat { PianoRollLayout.rowHeight }
     
-    // Visual width includes resize offset
-    private var visualWidth: CGFloat { max(noteWidth + resizeOffset, 6) }
+    // Visual width includes resize offset, inset 0.5px each side
+    private var visualWidth: CGFloat { max(noteWidth + resizeOffset - 1, 6) }
     
     var body: some View {
         noteBody
             .frame(width: visualWidth, height: noteHeight - 2)
             .offset(
-                x: x + effectiveOffset.width,
+                x: x + 0.5 + effectiveOffset.width,
                 y: y + 1 + effectiveOffset.height
             )
             .zIndex(isSelected ? 10 : (isDragging ? 5 : 1))
@@ -646,7 +659,7 @@ struct NoteRectView: View, @preconcurrency Equatable {
                         .stroke(
                             (isSelected || isInMultiSelect)
                                 ? Theme.accent
-                                : (PitchConstants.isBlackKey(note.pitch) ? noteColor.opacity(0.5) : Theme.dark.opacity(0.5)),
+                                : (PitchConstants.isBlackKey(note.pitch) ? noteColor.opacity(0.5) : Theme.dark.opacity(0.15)),
                             lineWidth: (isSelected || isInMultiSelect) ? 2 : 0.5
                         )
                 )

@@ -84,6 +84,10 @@ struct SequencerView: View {
                 onPlay: { note in
                     playNoteForDuration(note)
                 },
+                noteDurationSeconds: {
+                    let n = model.selectedNote ?? SequencerNote.placeholder
+                    return n.duration / (model.tempo / 60.0)
+                }(),
                 onDelete: {
                     model.deleteSelectedNote()
                 }
@@ -217,7 +221,8 @@ struct SequencerView: View {
                 Image(systemName: model.isPlaying ? "stop.fill" : "play.fill")
                     .font(.system(size: 16))
                     .foregroundColor(Theme.dark)
-                    .frame(width: PianoRollLayout.pianoKeyWidth, height: 54)
+                    .frame(width: PianoRollLayout.pianoKeyWidth)
+                    .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -232,7 +237,7 @@ struct SequencerView: View {
                     scrubBackground
                     
                     // Minimap: notes compressed into transport
-                    let minimapHeight: CGFloat = 38 // 54 - 8px top - 8px bottom
+                    let minimapHeight: CGFloat = 40 // 56 - 8px top - 8px bottom
                     let sourceHeight: CGFloat = CGFloat(PitchConstants.pitchCount) // 42
                     let scaleY = minimapHeight / sourceHeight
                     Canvas { context, size in
@@ -256,15 +261,13 @@ struct SequencerView: View {
                     // Playhead line (dark on gold transport)
                     Rectangle()
                         .fill(Theme.dark)
-                        .frame(width: 2, height: 54)
+                        .frame(width: 2).frame(maxHeight: .infinity)
                         .offset(x: PianoRollLayout.xForBeat(model.playheadBeat))
                         .allowsHitTesting(false)
                         .animation(nil, value: model.playheadBeat)
                 }
-                .frame(
-                    width: PianoRollLayout.gridWidth(beats: model.totalBeats),
-                    height: 54
-                )
+                .frame(width: PianoRollLayout.gridWidth(beats: model.totalBeats))
+                .frame(maxHeight: .infinity)
                 .contentShape(Rectangle())
                 .onHover { hovering in
                     if hovering {
@@ -290,7 +293,7 @@ struct SequencerView: View {
                 }
             }
         }
-        .frame(height: 54)
+        .frame(height: 56)
         .background(model.isPlaying ? Theme.green : Theme.accent)
     }
     
@@ -320,10 +323,8 @@ struct SequencerView: View {
                 }
             }
         }
-        .frame(
-            width: PianoRollLayout.gridWidth(beats: model.totalBeats),
-            height: 54
-        )
+        .frame(width: PianoRollLayout.gridWidth(beats: model.totalBeats))
+        .frame(maxHeight: .infinity)
     }
     
     // MARK: - Playback Engine
@@ -778,6 +779,7 @@ struct NoteInspectorView: View {
     var groupCount: Int = 1  // number of selected notes (1 = single)
     var onUpdate: (SequencerNote) -> Void
     var onPlay: (SequencerNote) -> Void
+    var noteDurationSeconds: Double = 1.0
     var onDelete: () -> Void
     
     // Local editing state synced from the note (view is recreated via .id() on selection change)
@@ -787,12 +789,30 @@ struct NoteInspectorView: View {
     @State private var vibrato: Double = 64
     @State private var reverb: Double = 32
     @State private var isSyncing = true  // suppress pushUpdate during initial sync
+    @State private var isTesting = false
     
     private var isBlackKey: Bool { PitchConstants.isBlackKey(note.pitch) }
     private var bg: Color { isBlackKey ? Theme.dark : Theme.ivory }
     private var fg: Color { isBlackKey ? Theme.ivory : Theme.dark }
     private var fgDim: Color { fg.opacity(0.5) }
     private var dividerColor: Color { fg.opacity(0.15) }
+    
+    private var phonemeLabel: String {
+        let c = Consonant.all.first { $0.ccValue == consonant }
+        let v = Vowel.all.first { $0.ccValue == vowel }
+        let isRandomCons = (c?.name == "Random")
+        let isNoneCons = (c?.name == "None")
+        let isRandomVowel = (v?.ccValue == 0)
+        
+        if isRandomCons && isRandomVowel { return "Random" }
+        
+        var parts = ""
+        if !isRandomCons && !isNoneCons { parts += c?.name ?? "" }
+        if isRandomCons { parts += "?" }
+        if !isRandomVowel { parts += v?.symbol ?? "" }
+        else if !isRandomCons { parts += "?" }
+        return parts.isEmpty ? "—" : parts
+    }
     
     var body: some View {
         HStack(spacing: 16) {
@@ -804,17 +824,17 @@ struct NoteInspectorView: View {
                         .fontWeight(.semibold)
                         .foregroundColor(Theme.accent)
                 } else {
-                    Text(PitchConstants.noteName(for: note.pitch))
+                    Text(phonemeLabel)
                         .font(.title3)
                         .fontWeight(.semibold)
                         .foregroundColor(fg)
-                    Text("Beat \(Int(note.startBeat + 1))")
+                    Text("\(PitchConstants.noteName(for: note.pitch)) · \(beatLabel(note.startBeat))")
                         .font(.caption2)
                         .foregroundColor(fgDim)
                         .monospacedDigit()
                 }
             }
-            .frame(width: 55, alignment: .leading)
+            .frame(minWidth: 55, alignment: .leading)
             
             dividerColor.frame(width: 1, height: 40)
             
@@ -866,7 +886,13 @@ struct NoteInspectorView: View {
             Spacer()
             
             // Test button
-            Button(action: { onPlay(currentNote()) }) {
+            Button(action: {
+                onPlay(currentNote())
+                isTesting = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + noteDurationSeconds) {
+                    isTesting = false
+                }
+            }) {
                 HStack(spacing: 5) {
                     Image(systemName: "ear")
                     Text("Test")
@@ -877,8 +903,9 @@ struct NoteInspectorView: View {
                 .padding(.vertical, Theme.buttonPaddingV)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.buttonRadius)
-                        .fill(Theme.accent)
+                        .fill(isTesting ? Theme.green : Theme.accent)
                 )
+                .animation(.easeInOut(duration: 0.15), value: isTesting)
             }
             .buttonStyle(.plain)
             
@@ -923,6 +950,13 @@ struct NoteInspectorView: View {
     private func pushUpdate() {
         guard !isSyncing else { return }
         onUpdate(currentNote())
+    }
+    
+    /// Format beat as "Beat bar.sixteenth" (1-indexed, e.g. "Beat 2.3")
+    private func beatLabel(_ beat: Double) -> String {
+        let wholeBeat = Int(beat)
+        let sixteenth = Int(round((beat - Double(wholeBeat)) * 4)) + 1
+        return "Beat \(wholeBeat + 1).\(sixteenth)"
     }
     
     private func inspectorSlider(label: String, value: Binding<Double>, range: ClosedRange<Double>, onChange: @escaping () -> Void) -> some View {
