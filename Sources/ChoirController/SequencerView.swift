@@ -20,7 +20,7 @@ struct SequencerView: View {
     
     /// X position of the callout arrow (note center, accounting for scroll offset)
     private var noteArrowX: CGFloat {
-        guard let note = model.selectedNote else { return -20 }
+        guard let note = model.selectedNote else { return -100 }
         let pianoOffset = PianoRollLayout.pianoKeyWidth + 1 // piano keys + divider
         let noteCenterX = PianoRollLayout.xForBeat(note.startBeat)
             + CGFloat(note.duration) * PianoRollLayout.beatWidth / 2
@@ -41,10 +41,25 @@ struct SequencerView: View {
                 onNotePreview: { note in
                     playNoteForDuration(note)
                 },
+                onNoteUpdate: { updatedNote in
+                    let ids = model.selectedNoteIds.isEmpty ? [updatedNote.id] : model.selectedNoteIds
+                    for id in ids {
+                        model.updateNote(id: id) { note in
+                            note.consonant = updatedNote.consonant
+                            note.vowel = updatedNote.vowel
+                            note.velocity = updatedNote.velocity
+                            note.vibrato = updatedNote.vibrato
+                            note.reverb = updatedNote.reverb
+                        }
+                    }
+                },
+                onNoteDelete: {
+                    model.deleteSelectedNote()
+                },
                 scrollSync: scrollSync
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.bottom, model.selectedNote != nil ? 70 : 0)
+            .padding(.bottom, model.selectedNote != nil ? 80 : 0)
             .animation(.easeInOut(duration: 0.15), value: model.selectedNote != nil)
         }
         .overlay(alignment: .bottom) {
@@ -76,7 +91,7 @@ struct SequencerView: View {
             .id(model.selectedNoteId ?? SequencerView.noSelectionId)
             .compositingGroup()
             .shadow(color: Color.black.opacity(0.15), radius: 20, x: 0, y: -4)
-            .offset(y: model.selectedNote != nil ? 0 : 70)
+            .offset(y: model.selectedNote != nil ? 0 : 100)
             .allowsHitTesting(model.selectedNote != nil)
             .animation(.easeInOut(duration: 0.15), value: model.selectedNote != nil)
         }
@@ -94,7 +109,7 @@ struct SequencerView: View {
         .onDisappear {
             stopPlayback()
         }
-        .onChange(of: model.togglePlaybackTrigger) { _ in
+        .onChange(of: model.togglePlaybackTrigger) {
             togglePlayback()
         }
     }
@@ -197,12 +212,12 @@ struct SequencerView: View {
     
     private var transportBar: some View {
         HStack(spacing: 0) {
-            // Play/Stop + Loop buttons (aligned with piano key column)
+            // Play/Stop button (aligned with piano key column)
             Button(action: { togglePlayback() }) {
                 Image(systemName: model.isPlaying ? "stop.fill" : "play.fill")
-                    .font(.system(size: 14))
+                    .font(.system(size: 16))
                     .foregroundColor(Theme.dark)
-                    .frame(width: PianoRollLayout.pianoKeyWidth, height: 32)
+                    .frame(width: PianoRollLayout.pianoKeyWidth, height: 54)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -216,19 +231,48 @@ struct SequencerView: View {
                     // Beat markers
                     scrubBackground
                     
+                    // Minimap: notes compressed into transport
+                    let minimapHeight: CGFloat = 38 // 54 - 8px top - 8px bottom
+                    let sourceHeight: CGFloat = CGFloat(PitchConstants.pitchCount) // 42
+                    let scaleY = minimapHeight / sourceHeight
+                    Canvas { context, size in
+                        let bw = PianoRollLayout.beatWidth
+                        for note in model.notes {
+                            let x = CGFloat(note.startBeat) * bw
+                            let w = CGFloat(note.duration) * bw
+                            let row = CGFloat(Int(PitchConstants.maxPitch) - Int(note.pitch))
+                            let rect = CGRect(x: x, y: row - 0.5, width: max(w, 2), height: 2)
+                            context.fill(Path(rect), with: .color(Theme.dark.opacity(0.1)))
+                        }
+                    }
+                    .frame(
+                        width: PianoRollLayout.gridWidth(beats: model.totalBeats),
+                        height: sourceHeight
+                    )
+                    .scaleEffect(x: 1, y: scaleY, anchor: .top)
+                    .offset(y: 8)
+                    .allowsHitTesting(false)
+                    
                     // Playhead line (dark on gold transport)
                     Rectangle()
                         .fill(Theme.dark)
-                        .frame(width: 2, height: 32)
+                        .frame(width: 2, height: 54)
                         .offset(x: PianoRollLayout.xForBeat(model.playheadBeat))
                         .allowsHitTesting(false)
                         .animation(nil, value: model.playheadBeat)
                 }
                 .frame(
                     width: PianoRollLayout.gridWidth(beats: model.totalBeats),
-                    height: 32
+                    height: 54
                 )
                 .contentShape(Rectangle())
+                .onHover { hovering in
+                    if hovering {
+                        NSCursor.iBeam.push()
+                    } else {
+                        NSCursor.pop()
+                    }
+                }
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { value in
@@ -246,7 +290,7 @@ struct SequencerView: View {
                 }
             }
         }
-        .frame(height: 32)
+        .frame(height: 54)
         .background(model.isPlaying ? Theme.green : Theme.accent)
     }
     
@@ -278,7 +322,7 @@ struct SequencerView: View {
         }
         .frame(
             width: PianoRollLayout.gridWidth(beats: model.totalBeats),
-            height: 32
+            height: 54
         )
     }
     
@@ -483,16 +527,250 @@ struct SequencerView: View {
 
 // MARK: - Callout Arrow Shape
 
-struct CalloutArrow: Shape {
+/// Inspector background shape: rectangle with a cartouche arrow bump on the top edge
+struct InspectorBubbleShape: Shape {
+    var arrowX: CGFloat
+    var arrowWidth: CGFloat = 44
+    var arrowHeight: CGFloat = 10
+    
+    var animatableData: CGFloat {
+        get { arrowX }
+        set { arrowX = newValue }
+    }
+    
     func path(in rect: CGRect) -> Path {
         var path = Path()
-        path.move(to: CGPoint(x: rect.midX, y: rect.minY))     // tip
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))  // bottom-right
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))  // bottom-left
+        // Rectangle body (top edge at arrowHeight offset, so arrow lives above)
+        let bodyTop = rect.minY + arrowHeight
+        
+        // Start at top-left of body
+        path.move(to: CGPoint(x: rect.minX, y: bodyTop))
+        
+        // Walk along top edge to the arrow
+        let aLeft = arrowX - arrowWidth / 2
+        let aRight = arrowX + arrowWidth / 2
+        let clampedLeft = max(rect.minX, aLeft)
+        let clampedRight = min(rect.maxX, aRight)
+        
+        path.addLine(to: CGPoint(x: clampedLeft, y: bodyTop))
+        
+        // Draw the cartouche arrow bump (SVG viewBox 46x11, flipped Y)
+        if clampedRight > clampedLeft {
+            let sx = (clampedRight - clampedLeft) / 46
+            let sy = arrowHeight / 11
+            func p(_ x: Double, _ y: Double) -> CGPoint {
+                CGPoint(x: clampedLeft + x * sx, y: bodyTop - y * sy)
+            }
+            path.addLine(to: p(5.28, 0))
+            path.addCurve(to: p(10.03, 0.5), control1: p(7.78, 0), control2: p(8.9, 0.06))
+            path.addCurve(to: p(13.11, 2.85), control1: p(11.16, 0.94), control2: p(12.17, 1.92))
+            path.addLine(to: p(15.76, 5.5))
+            path.addLine(to: p(19.07, 8.81))
+            path.addCurve(to: p(23, 10.5), control1: p(20.4, 10.19), control2: p(21.65, 10.5))
+            path.addCurve(to: p(26.93, 8.81), control1: p(24.35, 10.5), control2: p(25.6, 10.2))
+            path.addLine(to: p(30.24, 5.5))
+            path.addLine(to: p(32.89, 2.85))
+            path.addCurve(to: p(35.97, 0.5), control1: p(33.83, 1.92), control2: p(34.85, 0.94))
+            path.addCurve(to: p(40.72, 0), control1: p(37.1, 0.06), control2: p(38.22, 0))
+        }
+        
+        path.addLine(to: CGPoint(x: clampedRight, y: bodyTop))
+        
+        // Continue along top edge to top-right
+        path.addLine(to: CGPoint(x: rect.maxX, y: bodyTop))
+        // Down right side
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        // Along bottom
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        // Close back to top-left
+        path.closeSubpath()
+        
+        return path
+    }
+}
+
+/// Apple cartouche arrow shape (from system popover SVG, flipped to point up)
+struct CalloutArrow: Shape {
+    func path(in rect: CGRect) -> Path {
+        // Original SVG viewBox: 46 x 11, tip pointing down.
+        // We flip Y so the tip points up.
+        let sx = rect.width / 46
+        let sy = rect.height / 11
+        func p(_ x: Double, _ y: Double) -> CGPoint {
+            CGPoint(x: rect.minX + x * sx, y: rect.minY + (11 - y) * sy)
+        }
+        var path = Path()
+        path.move(to: p(26.93, 8.81))
+        path.addLine(to: p(30.24, 5.5))
+        path.addLine(to: p(32.89, 2.85))
+        path.addCurve(to: p(35.97, 0.5), control1: p(33.83, 1.92), control2: p(34.85, 0.94))
+        path.addCurve(to: p(40.72, 0), control1: p(37.1, 0.06), control2: p(38.22, 0))
+        path.addLine(to: p(46, 0))
+        path.addLine(to: p(0, 0))
+        path.addLine(to: p(5.28, 0))
+        path.addCurve(to: p(10.03, 0.5), control1: p(7.78, 0), control2: p(8.9, 0.06))
+        path.addCurve(to: p(13.11, 2.85), control1: p(11.16, 0.94), control2: p(12.17, 1.92))
+        path.addLine(to: p(15.76, 5.5))
+        path.addLine(to: p(19.07, 8.81))
+        path.addCurve(to: p(23, 10.5), control1: p(20.4, 10.19), control2: p(21.65, 10.5))
+        path.addCurve(to: p(26.93, 8.81), control1: p(24.35, 10.5), control2: p(25.6, 10.2))
         path.closeSubpath()
         return path
     }
 }
+
+// MARK: - Note Popover Inspector (attached to selected note, like PhonemeInspector)
+
+struct NotePopoverInspector: View {
+    let note: SequencerNote
+    let groupCount: Int
+    var onUpdate: (SequencerNote) -> Void
+    var onPlay: (SequencerNote) -> Void
+    var onDelete: () -> Void
+    
+    @State private var consonant: UInt8
+    @State private var vowel: UInt8
+    @State private var velocity: Double
+    @State private var vibrato: Double
+    @State private var reverb: Double
+    @State private var isSyncing = true
+    
+    init(note: SequencerNote, groupCount: Int = 1, onUpdate: @escaping (SequencerNote) -> Void, onPlay: @escaping (SequencerNote) -> Void, onDelete: @escaping () -> Void) {
+        self.note = note
+        self.groupCount = groupCount
+        self.onUpdate = onUpdate
+        self.onPlay = onPlay
+        self.onDelete = onDelete
+        _consonant = State(initialValue: note.consonant)
+        _vowel = State(initialValue: note.vowel)
+        _velocity = State(initialValue: Double(note.velocity))
+        _vibrato = State(initialValue: Double(note.vibrato))
+        _reverb = State(initialValue: Double(note.reverb))
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Header
+            if groupCount > 1 {
+                Text("\(groupCount) notes")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Theme.accent)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            } else {
+                VStack(spacing: 2) {
+                    Text(PitchConstants.noteName(for: note.pitch))
+                        .font(.system(size: 13, weight: .medium))
+                    Text("Beat \(Int(note.startBeat + 1))")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+            }
+            
+            // Consonant
+            HStack {
+                Text("Cons")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .frame(width: 36, alignment: .leading)
+                Picker("", selection: $consonant) {
+                    ForEach(Consonant.all) { c in
+                        Text(c.name).tag(c.ccValue)
+                    }
+                }
+                .labelsHidden()
+                .frame(minWidth: 80, maxWidth: .infinity)
+                .controlSize(.small)
+                .onChange(of: consonant) { pushUpdate() }
+            }
+            
+            // Vowel
+            HStack {
+                Text("Vowel")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .frame(width: 36, alignment: .leading)
+                Picker("", selection: $vowel) {
+                    ForEach(Vowel.all) { v in
+                        Text(v.ccValue == 0 ? "Random" : "\(v.symbol) \(v.example)").tag(v.ccValue)
+                    }
+                }
+                .labelsHidden()
+                .frame(minWidth: 80, maxWidth: .infinity)
+                .controlSize(.small)
+                .onChange(of: vowel) { pushUpdate() }
+            }
+            
+            // Velocity
+            compactSlider(label: "Vel", value: $velocity, range: 1...127)
+            
+            // Vibrato
+            compactSlider(label: "Vib", value: $vibrato, range: 0...127)
+            
+            // Reverb
+            compactSlider(label: "Rev", value: $reverb, range: 0...127)
+            
+            Divider()
+            
+            // Actions
+            HStack {
+                Button(action: { onPlay(currentNote()) }) {
+                    Label("Test", systemImage: "ear")
+                        .font(.caption)
+                }
+                .buttonStyle(.borderless)
+                
+                Spacer()
+                
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
+                        .font(.caption)
+                        .foregroundColor(.red)
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+        .frame(width: 170)
+        .padding(12)
+        .onAppear {
+            DispatchQueue.main.async { isSyncing = false }
+        }
+    }
+    
+    private func compactSlider(label: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .frame(width: 28, alignment: .leading)
+            Text("\(Int(value.wrappedValue))")
+                .font(.caption)
+                .fontWeight(.medium)
+                .monospacedDigit()
+                .frame(width: 24, alignment: .trailing)
+            Slider(value: value, in: range)
+                .controlSize(.small)
+                .onChange(of: value.wrappedValue) { pushUpdate() }
+        }
+    }
+    
+    private func currentNote() -> SequencerNote {
+        var n = note
+        n.consonant = consonant
+        n.vowel = vowel
+        n.velocity = UInt8(velocity)
+        n.vibrato = UInt8(vibrato)
+        n.reverb = UInt8(reverb)
+        return n
+    }
+    
+    private func pushUpdate() {
+        guard !isSyncing else { return }
+        onUpdate(currentNote())
+    }
+}
+
+// MARK: - Note Inspector (bottom bar — legacy, kept for now)
 
 struct NoteInspectorView: View {
     let note: SequencerNote
@@ -555,7 +833,7 @@ struct NoteInspectorView: View {
                 .controlSize(.small)
                 .tint(fg)
                 .accentColor(fg)
-                .onChange(of: consonant) { _ in pushUpdate() }
+                .onChange(of: consonant) { pushUpdate() }
             }
             
             // Vowel picker
@@ -573,7 +851,7 @@ struct NoteInspectorView: View {
                 .controlSize(.small)
                 .tint(fg)
                 .accentColor(fg)
-                .onChange(of: vowel) { _ in pushUpdate() }
+                .onChange(of: vowel) { pushUpdate() }
             }
             
             // Velocity
@@ -613,19 +891,10 @@ struct NoteInspectorView: View {
             .buttonStyle(.plain)
         }
         .padding(.horizontal)
-        .frame(height: 70)
-        .background(bg)
-        .overlay(alignment: .bottom) {
-            Theme.structuralDivider.opacity(0.25).frame(height: 1)
-        }
-        .overlay(alignment: .topLeading) {
-            // Callout arrow pointing up toward the note
-            CalloutArrow()
-                .fill(bg)
-                .frame(width: 14, height: 8)
-                .offset(x: arrowX - 7, y: -8)
-                .allowsHitTesting(false)
-        }
+        .frame(height: 80) // 70 body + 10 arrow
+        .padding(.top, 10) // reserve space for arrow above body
+        .background(.ultraThinMaterial, in: InspectorBubbleShape(arrowX: arrowX))
+        .glassEffect(in: InspectorBubbleShape(arrowX: arrowX))
         .environment(\.colorScheme, isBlackKey ? .dark : .light)
         .onAppear { syncFromNote() }
     }
@@ -673,7 +942,7 @@ struct NoteInspectorView: View {
             Slider(value: value, in: range)
                 .tint(fg)
                 .accentColor(fg)
-                .onChange(of: value.wrappedValue) { _ in onChange() }
+                .onChange(of: value.wrappedValue) { onChange() }
         }
     }
 }

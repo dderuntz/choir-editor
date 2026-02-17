@@ -68,7 +68,7 @@ struct ContentView: View {
                             Image(systemName: "chevron.down")
                                 .font(.system(size: 8, weight: .bold))
                         }
-                        .foregroundColor(isSaving ? Theme.accent : Theme.text(colorScheme).opacity(0.85))
+                        .foregroundColor(Theme.text(colorScheme).opacity(isSaving ? 0.35 : 1))
                     }
                     .buttonStyle(.plain)
                     .help("File")
@@ -87,8 +87,8 @@ struct ContentView: View {
                                 isTitleFocused = false
                             }
                         }
-                        .onChange(of: model.currentFileURL) { _ in syncTitleFromModel() }
-                        .onChange(of: isTitleFocused) { focused in
+                        .onChange(of: model.currentFileURL) { syncTitleFromModel() }
+                        .onChange(of: isTitleFocused) { _, focused in
                             if !focused { commitTitleEdit() }
                         }
                     
@@ -118,7 +118,7 @@ struct ContentView: View {
                             .foregroundColor(showSettings ? Theme.text(colorScheme) : Theme.text(colorScheme).opacity(0.4))
                     }
                     .buttonStyle(.plain)
-                    .help("Inhale")
+                    .help("Intake")
                     
                     // Composer toggle
                     Button(action: {
@@ -168,7 +168,7 @@ struct ContentView: View {
                         RoundedRectangle(cornerRadius: 12)
                             .fill(midiService.isConnected
                                   ? Color(red: 0xD8/255, green: 0xD6/255, blue: 0xD3/255).opacity(0.6)
-                                  : Theme.accent)
+                                  : Theme.dark)
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .help(midiService.isConnected ? "MIDI Connected" : "Tap to connect Bluetooth MIDI")
@@ -252,41 +252,41 @@ struct ContentView: View {
             model.loadLastFileIfAvailable()
             applyLocalAudioMode()
         }
-        .onChange(of: showKeyboardStorage) { newValue in
+        .onChange(of: showKeyboardStorage) { _, newValue in
             withAnimation(.easeInOut(duration: 0.2)) { showKeyboard = newValue }
         }
-        .onChange(of: showKeyboard) { newValue in
+        .onChange(of: showKeyboard) { _, newValue in
             showKeyboardStorage = newValue
         }
-        .onChange(of: showComposerStorage) { newValue in
+        .onChange(of: showComposerStorage) { _, newValue in
             withAnimation(.easeInOut(duration: 0.25)) { showComposer = newValue }
         }
-        .onChange(of: showComposer) { newValue in
+        .onChange(of: showComposer) { _, newValue in
             showComposerStorage = newValue
         }
-        .onChange(of: localAudioEnabled) { enabled in
+        .onChange(of: localAudioEnabled) { _, enabled in
             if enabled {
                 audioMonitor.ensureStarted()
             } else {
                 audioMonitor.tearDown()
             }
         }
-        .onChange(of: localAudioMode) { _ in applyLocalAudioMode() }
-        .onChange(of: midiService.isConnected) { _ in applyLocalAudioMode() }
+        .onChange(of: localAudioMode) { applyLocalAudioMode() }
+        .onChange(of: midiService.isConnected) { applyLocalAudioMode() }
         .onAppear { showSettings = showSettingsStorage }
-        .onChange(of: showSettingsStorage) { newValue in
+        .onChange(of: showSettingsStorage) { _, newValue in
             withAnimation(.easeInOut(duration: 0.2)) { showSettings = newValue }
         }
-        .onChange(of: showSettings) { newValue in
+        .onChange(of: showSettings) { _, newValue in
             showSettingsStorage = newValue
         }
-        .onChange(of: showBluetoothSetup) { showing in
+        .onChange(of: showBluetoothSetup) { _, showing in
             // Close settings panel if Bluetooth setup opens (avoid both panels at once)
             if showing && showSettings {
                 withAnimation(.easeInOut(duration: 0.2)) { showSettings = false }
             }
         }
-        .onChange(of: midiService.isConnected) { connected in
+        .onChange(of: midiService.isConnected) { _, connected in
             // Close Apple Bluetooth window when doll connects
             if connected {
                 bluetoothManager.closeBluetoothMIDIWindow()

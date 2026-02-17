@@ -263,7 +263,7 @@ struct SoundPadView: View {
                 }
             }
         }
-        .background(Color(red: 1, green: 1, blue: 0.94).opacity(0.25))
+        .background(Color(red: 0xBC/255.0, green: 0xBD/255.0, blue: 0xB4/255.0))
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
     

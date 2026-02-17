@@ -101,7 +101,7 @@ enum PianoRollLayout {
     static let rowHeight: CGFloat = 20
     static let beatWidth: CGFloat = 80        // pixels per beat
     static let sixteenthWidth: CGFloat = 20   // beatWidth / 4
-    static let pianoKeyWidth: CGFloat = 48
+    static let pianoKeyWidth: CGFloat = 54
     static let resizeHandleWidth: CGFloat = 8
     
     static var totalRows: Int { PitchConstants.pitchCount }
@@ -128,6 +128,8 @@ enum PianoRollLayout {
 struct PianoRollView: View {
     @ObservedObject var model: SequencerModel
     var onNotePreview: ((SequencerNote) -> Void)?
+    var onNoteUpdate: ((SequencerNote) -> Void)?
+    var onNoteDelete: (() -> Void)?
     var scrollSync: ScrollSyncManager? = nil
     @Environment(\.colorScheme) private var colorScheme
     
@@ -166,7 +168,7 @@ struct PianoRollView: View {
                 }
             }
             .background(Theme.fieldColor(colorScheme))
-            .onChange(of: model.highlightedPitch) { pitch in
+            .onChange(of: model.highlightedPitch) { _, pitch in
                 if let pitch = pitch {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         proxy.scrollTo(Int(pitch), anchor: .center)
@@ -389,14 +391,19 @@ struct PianoRollView: View {
                             marqueeRect = nil
                             marqueeOrigin = nil
                         } else {
-                            // Regular click to add a note
+                            // Regular click: deselect first if anything is selected
                             let dist = abs(value.translation.width) + abs(value.translation.height)
                             guard dist < 4 else { return }
-                            let beat = PianoRollLayout.beatForX(value.location.x)
-                            let pitch = PianoRollLayout.pitchForY(value.location.y)
-                            if model.noteAt(beat: beat, pitch: pitch) == nil {
-                                let note = model.addNote(atBeat: beat, pitch: pitch, duration: 1.0)
-                                onNotePreview?(note)
+                            if !model.selectedNoteIds.isEmpty {
+                                model.clearSelection()
+                            } else {
+                                // Add a note only when nothing was selected
+                                let beat = PianoRollLayout.beatForX(value.location.x)
+                                let pitch = PianoRollLayout.pitchForY(value.location.y)
+                                if model.noteAt(beat: beat, pitch: pitch) == nil {
+                                    let note = model.addNote(atBeat: beat, pitch: pitch, duration: 1.0)
+                                    onNotePreview?(note)
+                                }
                             }
                         }
                     }
@@ -633,7 +640,7 @@ struct NoteRectView: View, @preconcurrency Equatable {
         ZStack(alignment: .trailing) {
             // Main note rectangle
             RoundedRectangle(cornerRadius: 3)
-                .fill(noteColor.opacity(isDragging ? 0.6 : 0.8))
+                .fill(noteColor.opacity(isDragging ? 0.6 : 1))
                 .overlay(
                     RoundedRectangle(cornerRadius: 3)
                         .stroke(
@@ -656,6 +663,13 @@ struct NoteRectView: View, @preconcurrency Equatable {
                 .highPriorityGesture(resizeGesture)
         }
         .contentShape(Rectangle())
+        .onHover { hovering in
+            if hovering {
+                NSCursor.openHand.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
         .gesture(moveGesture)
     }
     
@@ -714,6 +728,8 @@ struct NoteRectView: View, @preconcurrency Equatable {
                 let dist = sqrt(value.translation.width * value.translation.width + value.translation.height * value.translation.height)
                 guard dist > 4 else { return }
                 
+                if !isDragging { NSCursor.closedHand.push() }
+                
                 // Alt-drag: duplicate note on first real drag movement
                 if !didDuplicate && NSEvent.modifierFlags.contains(.option) {
                     didDuplicate = true
@@ -728,6 +744,7 @@ struct NoteRectView: View, @preconcurrency Equatable {
                 }
             }
             .onEnded { value in
+                NSCursor.pop()
                 let dist = sqrt(value.translation.width * value.translation.width + value.translation.height * value.translation.height)
                 
                 let beatDelta = PianoRollLayout.beatForX(value.translation.width)
