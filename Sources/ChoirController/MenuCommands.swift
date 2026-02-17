@@ -259,6 +259,7 @@ struct AboutCommands: Commands {
 // MARK: - Help Menu Commands
 
 struct HelpCommands: Commands {
+    @ObservedObject var onboardingManager: OnboardingManager
     private let repoURL = "https://github.com/dderuntz/choir-editor"
 
     var body: some Commands {
@@ -278,8 +279,7 @@ struct HelpCommands: Commands {
             Divider()
 
             Button("Reset Tutorial") {
-                UserDefaults.standard.removeObject(forKey: "hasSeenChipsExplanation")
-                UserDefaults.standard.removeObject(forKey: "hasSeenFirstPlayGuide")
+                onboardingManager.reset()
             }
 
             Divider()

@@ -251,7 +251,9 @@ class ComposerModel: ObservableObject {
     @Published var isPlaying: Bool = false
     var minNoteDuration: Int = 280 // ms, from Setup
     @Published var currentPlayIndex: Int? = nil
-    @Published var currentArcDuration: Int = 330  // ms, note + gap — full time between bounces
+    @Published var currentBounceIndex: Int = 0     // which bounce we're on (0-based)
+    @Published var currentBounceCount: Int = 1     // total bounces for current chip
+    @Published var currentArcDuration: Int = 330   // ms per bounce — consistent rhythm
     private var playbackTask: Task<Void, Never>? = nil
     private var activeMidiPitches: Set<UInt8> = []
 
@@ -686,14 +688,12 @@ class ComposerModel: ObservableObject {
     }
 
     /// Duration in ms based on weight, ensemble, and speed
-    /// - weight 3 (primary stress): longest base
-    /// - weight 2 (secondary): medium
-    /// - weight 1 (unstressed): brief
+    /// - weight 3 (primary stress): longest base (750ms)
+    /// - weight 2 (secondary): medium (450ms)
+    /// - weight 1 (unstressed): brief (280ms)
     /// - isEnsemble: 2x multiplier for choral notes
     /// - Logarithmic speed scaling so longer notes stretch proportionally more
-    private func durationForPhoneme(_ phoneme: ChoirPhoneme) -> Int {
-        let weight = phoneme.weight
-
+    private func durationFor(weight: Int, isEnsemble: Bool = false) -> Int {
         // Base duration with more dramatic scaling for emphasis
         let base: Double
         switch weight {
@@ -702,24 +702,17 @@ class ComposerModel: ObservableObject {
         default: base = 280   // unstressed - brief
         }
 
-        // Ensemble (chorus) notes hold 2x as long
-        let ensembleMultiplier: Double = phoneme.isEnsemble ? 2.0 : 1.0
+        // Ensemble (chorus) notes hold 2x as long (dolls need more time)
+        let ensembleMultiplier: Double = isEnsemble ? 2.0 : 1.0
 
         // Logarithmic speed scaling: longer notes stretch more at slower speeds
         let scaled = base * ensembleMultiplier * pow(speedMultiplier, base / 280.0)
         return max(minNoteDuration, Int(scaled))
     }
 
-    /// Legacy wrapper for copyToGrid which doesn't have phoneme context
-    private func durationForWeight(_ weight: Int) -> Int {
-        let base: Double
-        switch weight {
-        case 3: base = 750
-        case 2: base = 450
-        default: base = 280
-        }
-        let scaled = base * pow(speedMultiplier, base / 280.0)
-        return max(minNoteDuration, Int(scaled))
+    /// Convenience wrapper for phoneme objects
+    private func durationForPhoneme(_ phoneme: ChoirPhoneme) -> Int {
+        durationFor(weight: phoneme.weight, isEnsemble: phoneme.isEnsemble)
     }
 
     /// Velocity based on weight
@@ -745,17 +738,27 @@ class ComposerModel: ObservableObject {
             for (index, phoneme) in phonemesToPlay.enumerated() {
                 guard !Task.isCancelled else { break }
 
-                let duration = durationForPhoneme(phoneme)
+                // Bounce count: emphasized ensemble (w3) = 2 bounces, everything else = 1
+                let isEmphasizedEnsemble = phoneme.isEnsemble && phoneme.weight >= 3
+                let bounceCount = isEmphasizedEnsemble ? 2 : 1
+                self.currentBounceCount = bounceCount
+
+                // Duration per bounce:
+                // - Emphasized ensemble: normal duration, double bounce handles the extra time
+                // - Non-emphasized ensemble: 1.5x duration, single bounce
+                // - Non-ensemble: normal duration, single bounce
+                let useEnsembleMultiplier = phoneme.isEnsemble && !isEmphasizedEnsemble
+                let baseDuration = durationFor(weight: phoneme.weight, isEnsemble: useEnsembleMultiplier)
                 let gap = Int(Double(phoneme.weight >= 3 ? 80 : 50) * speedMultiplier)
-                self.currentArcDuration = duration + gap
-                self.currentPlayIndex = index
+                self.currentArcDuration = baseDuration + gap
 
                 let pitch = pitchForPhoneme(index: index, weight: phoneme.weight, total: total)
                 let velocity = velocityForWeight(phoneme.weight)
 
                 let ensemble = phoneme.isEnsemble
-                print("[Composer] ▶ [\(index)] \(phoneme.text): \(phoneme.consonantName)·\(phoneme.vowelSymbol) w\(phoneme.weight) → note \(pitch) vel \(velocity) \(duration)ms\(ensemble ? " 🎵ensemble" : "")")
+                print("[Composer] ▶ [\(index)] \(phoneme.text): \(phoneme.consonantName)·\(phoneme.vowelSymbol) w\(phoneme.weight) → note \(pitch) vel \(velocity) \(bounceCount) bounce(s)\(ensemble ? " 🎵ensemble" : "")")
 
+                // Start the note
                 var activePitches: [UInt8]
                 if ensemble {
                     activePitches = playEnsemble(pitch: pitch, velocity: velocity, phoneme: phoneme, audioMonitor: audioMonitor, midiService: midiService)
@@ -775,14 +778,30 @@ class ComposerModel: ObservableObject {
                     activePitches = [pitch]
                 }
 
-                try? await Task.sleep(for: .milliseconds(duration))
-                stopAll(pitches: activePitches, audioMonitor: audioMonitor, midiService: midiService)
+                // Multiple bounces on same chip
+                for bounceIdx in 0..<bounceCount {
+                    guard !Task.isCancelled else { break }
+                    self.currentBounceIndex = bounceIdx
+                    if bounceIdx == 0 {
+                        self.currentPlayIndex = index  // trigger first bounce via playIndex
+                    }
+                    // Subsequent bounces triggered via bounceIndex onChange
 
-                // Gap between syllables (already computed above for arc)
-                try? await Task.sleep(for: .milliseconds(gap))
+                    try? await Task.sleep(for: .milliseconds(baseDuration + gap))
+                }
+
+                // Small buffer to let final bounce animation complete
+                if bounceCount > 1 {
+                    try? await Task.sleep(for: .milliseconds(50))
+                }
+
+                // Stop the note after all bounces
+                stopAll(pitches: activePitches, audioMonitor: audioMonitor, midiService: midiService)
             }
             self.isPlaying = false
             self.currentPlayIndex = nil
+            self.currentBounceIndex = 0
+            self.currentBounceCount = 1
         }
     }
 
@@ -980,7 +999,7 @@ class ComposerModel: ObservableObject {
 
         for (index, phoneme) in phonemes.enumerated() {
             let pitch = pitchForPhoneme(index: index, weight: phoneme.weight, total: total)
-            let durationMs = Double(durationForWeight(phoneme.weight))
+            let durationMs = Double(durationFor(weight: phoneme.weight, isEnsemble: phoneme.isEnsemble))
             let durationBeats = max(0.25, (durationMs / msPerBeat / 0.25).rounded() * 0.25)
             let velocity = velocityForWeight(phoneme.weight)
 

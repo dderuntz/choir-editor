@@ -57,11 +57,8 @@ struct ContentView: View {
     @State private var hasCompletedInitialLoad = false
     @FocusState private var isTitleFocused: Bool
 
-    // Onboarding state
-    @AppStorage("hasSeenChipsExplanation") private var hasSeenChipsExplanation = false
-    @AppStorage("hasSeenFirstPlayGuide") private var hasSeenFirstPlayGuide = false
-    @State private var showChipsModal = false
-    @State private var showFirstPlayModal = false
+    // Onboarding
+    @EnvironmentObject var onboarding: OnboardingManager
     
     private var isEmptyState: Bool {
         showComposer ? !composerModel.hasContent : model.notes.isEmpty
@@ -84,20 +81,17 @@ struct ContentView: View {
                 showSettings: $showSettings,
                 showBluetoothSetup: $showBluetoothSetup,
                 showSoundPad: $showSoundPad,
-                showChipsModal: $showChipsModal,
                 emptyHelperDismissed: $emptyHelperDismissed,
-                hasSeenChipsExplanation: hasSeenChipsExplanation,
-                hasSeenFirstPlayGuide: hasSeenFirstPlayGuide,
                 isEmptyState: isEmptyState,
                 midiService: midiService,
                 audioMonitor: audioMonitor,
                 model: model,
                 composerModel: composerModel,
                 bluetoothManager: bluetoothManager,
+                onboarding: onboarding,
                 localAudioEnabled: $localAudioEnabled,
                 localAudioMode: localAudioMode,
-                applyLocalAudioMode: applyLocalAudioMode,
-                checkFirstPlayGuide: checkFirstPlayGuide
+                applyLocalAudioMode: applyLocalAudioMode
             ))
     }
 
@@ -170,28 +164,6 @@ struct ContentView: View {
 
     // MARK: - Onboarding
 
-    private func dismissChipsModal() {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            showChipsModal = false
-        }
-        hasSeenChipsExplanation = true
-    }
-
-    private func dismissFirstPlayModal() {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            showFirstPlayModal = false
-        }
-        hasSeenFirstPlayGuide = true
-    }
-
-    private func checkFirstPlayGuide() {
-        // Show first-play modal if: playing started, no dolls connected, and haven't seen the guide
-        if !hasSeenFirstPlayGuide && !midiService.isConnected {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                showFirstPlayModal = true
-            }
-        }
-    }
 
     // MARK: - File Menu
     
@@ -251,9 +223,31 @@ struct ContentView: View {
             mainContentArea
             if showSettings { settingsPanel }
             if showBluetoothSetup { bluetoothPanel }
-            if showEmptyHelper { emptyHelperModal }
-            if showChipsModal { chipsModal }
-            if showFirstPlayModal { firstPlayModal }
+            if showEmptyHelper {
+                EmptyStateHelperModal(
+                    onStartWithMelody: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            emptyHelperDismissed = true
+                            if showComposer { showComposer = false }
+                        }
+                    },
+                    onStartWithIdeas: {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            emptyHelperDismissed = true
+                            if !showComposer { showComposer = true }
+                        }
+                    },
+                    onDismiss: {
+                        withAnimation(.easeInOut(duration: 0.2)) { emptyHelperDismissed = true }
+                    }
+                )
+            }
+            if onboarding.showChipsModal {
+                ChipsExplanationModal()
+            }
+            if onboarding.showFirstPlayModal {
+                FirstPlayGuideModal(onConnectDolls: startBluetoothSetup)
+            }
         }
     }
 
@@ -502,171 +496,6 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Modals
-
-    private var emptyHelperModal: some View {
-        ZStack {
-            Theme.overlay(colorScheme)
-                .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { emptyHelperDismissed = true } }
-            VStack(spacing: 0) {
-                VStack(spacing: 12) {
-                    Text("Where to start?")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(Theme.text(colorScheme))
-                        .frame(maxWidth: .infinity)
-                    Text("Open the composer to craft a lyric for the choir and quickly test it out.")
-                        .font(.system(size: 13))
-                        .foregroundColor(Theme.text(colorScheme).opacity(0.9))
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
-                    Text("Challenge — Start manually arranging phonemes and notes on a piano roll and hit play!")
-                        .font(.system(size: 13))
-                        .foregroundColor(Theme.text(colorScheme).opacity(0.9))
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
-                }
-                .padding(24)
-                HStack(spacing: 12) {
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            emptyHelperDismissed = true
-                            if showComposer { showComposer = false }
-                        }
-                    } label: {
-                        Label {
-                            Text("Start with melody")
-                        } icon: {
-                            Image("GridIcon")
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(width: 14, height: 14)
-                                .foregroundStyle(Theme.text(colorScheme))
-                        }
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(Theme.text(colorScheme))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                    }
-                    .buttonStyle(.plain)
-                    .background(Theme.fieldColor(colorScheme), in: RoundedRectangle(cornerRadius: 8))
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            emptyHelperDismissed = true
-                            if !showComposer { showComposer = true }
-                        }
-                    } label: {
-                        Label("Start with ideas", systemImage: "eyebrow")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(Theme.dark)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                    }
-                    .buttonStyle(.plain)
-                    .background(Theme.accent, in: RoundedRectangle(cornerRadius: 8))
-                }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 24)
-            }
-            .frame(width: 380)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
-            .glassEffect(in: RoundedRectangle(cornerRadius: 20))
-        }
-        .transition(.opacity.combined(with: .scale(scale: 0.98)))
-    }
-
-    private var chipsModal: some View {
-        ZStack {
-            Theme.overlay(colorScheme)
-                .onTapGesture { dismissChipsModal() }
-            VStack(spacing: 0) {
-                VStack(spacing: 12) {
-                    Text("About Chips")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(Theme.text(colorScheme))
-                    Text("The choir sings using phonemes — we call them chips. Each chip pairs a consonant with a vowel to make a sound.")
-                        .font(.system(size: 13))
-                        .foregroundColor(Theme.text(colorScheme).opacity(0.9))
-                        .multilineTextAlignment(.center)
-                    Text("Click any chip to hear it and tweak its sound.")
-                        .font(.system(size: 13))
-                        .foregroundColor(Theme.text(colorScheme).opacity(0.7))
-                        .multilineTextAlignment(.center)
-                }
-                .padding(24)
-                Button {
-                    dismissChipsModal()
-                } label: {
-                    Text("Got it")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(Theme.dark)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                }
-                .buttonStyle(.plain)
-                .background(Theme.accent, in: RoundedRectangle(cornerRadius: 8))
-                .padding(.horizontal, 24)
-                .padding(.bottom, 24)
-            }
-            .frame(width: 320)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
-            .glassEffect(in: RoundedRectangle(cornerRadius: 20))
-        }
-        .transition(.opacity.combined(with: .scale(scale: 0.98)))
-    }
-
-    private var firstPlayModal: some View {
-        ZStack {
-            Theme.overlay(colorScheme)
-                .onTapGesture { dismissFirstPlayModal() }
-            VStack(spacing: 0) {
-                VStack(spacing: 12) {
-                    Text("You're hearing the local synth")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(Theme.text(colorScheme))
-                    Text("Connect your Choir dolls via Bluetooth to play on hardware.")
-                        .font(.system(size: 13))
-                        .foregroundColor(Theme.text(colorScheme).opacity(0.9))
-                        .multilineTextAlignment(.center)
-                    Text("Local sound turns off automatically when dolls connect. Change this in Preferences → Audio.")
-                        .font(.system(size: 12))
-                        .foregroundColor(Theme.text(colorScheme).opacity(0.6))
-                        .multilineTextAlignment(.center)
-                }
-                .padding(24)
-                HStack(spacing: 12) {
-                    Button {
-                        dismissFirstPlayModal()
-                    } label: {
-                        Text("Keep playing")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(Theme.text(colorScheme))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                    }
-                    .buttonStyle(.plain)
-                    .background(Theme.fieldColor(colorScheme), in: RoundedRectangle(cornerRadius: 8))
-                    Button {
-                        dismissFirstPlayModal()
-                        startBluetoothSetup()
-                    } label: {
-                        Text("Connect dolls")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(Theme.dark)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                    }
-                    .buttonStyle(.plain)
-                    .background(Theme.accent, in: RoundedRectangle(cornerRadius: 8))
-                }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 24)
-            }
-            .frame(width: 340)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
-            .glassEffect(in: RoundedRectangle(cornerRadius: 20))
-        }
-        .transition(.opacity.combined(with: .scale(scale: 0.98)))
-    }
 }
 
 // MARK: - Event Handlers Modifier
@@ -680,27 +509,24 @@ private struct ContentViewEventHandlers: ViewModifier {
     @Binding var showSettings: Bool
     @Binding var showBluetoothSetup: Bool
     @Binding var showSoundPad: Bool
-    @Binding var showChipsModal: Bool
     @Binding var emptyHelperDismissed: Bool
-    var hasSeenChipsExplanation: Bool
-    var hasSeenFirstPlayGuide: Bool
     var isEmptyState: Bool
     var midiService: MidiService
     @ObservedObject var audioMonitor: AudioMonitorService
     @ObservedObject var model: SequencerModel
     @ObservedObject var composerModel: ComposerModel
     @ObservedObject var bluetoothManager: BluetoothMidiManager
+    @ObservedObject var onboarding: OnboardingManager
     @Binding var localAudioEnabled: Bool
     var localAudioMode: String
     var applyLocalAudioMode: () -> Void
-    var checkFirstPlayGuide: () -> Void
 
     func body(content: Content) -> some View {
         content
             .modifier(KeyboardHandlers(showKeyboardStorage: $showKeyboardStorage, showKeyboard: $showKeyboard))
-            .modifier(ComposerHandlers(showComposerStorage: $showComposerStorage, showComposer: $showComposer, showChipsModal: $showChipsModal, hasSeenChipsExplanation: hasSeenChipsExplanation))
+            .modifier(ComposerHandlers(showComposerStorage: $showComposerStorage, showComposer: $showComposer, onboarding: onboarding))
             .modifier(SettingsHandlers(showSettingsStorage: $showSettingsStorage, showSettings: $showSettings, showBluetoothSetup: $showBluetoothSetup))
-            .modifier(PlaybackHandlers(model: model, composerModel: composerModel, checkFirstPlayGuide: checkFirstPlayGuide))
+            .modifier(PlaybackHandlers(model: model, composerModel: composerModel, onboarding: onboarding, midiService: midiService))
             .modifier(AudioHandlers(localAudioEnabled: $localAudioEnabled, localAudioMode: localAudioMode, audioMonitor: audioMonitor, midiService: midiService, applyLocalAudioMode: applyLocalAudioMode))
             .modifier(MiscHandlers(isEmptyState: isEmptyState, emptyHelperDismissed: $emptyHelperDismissed, showSoundPad: $showSoundPad, showComposer: $showComposer, midiService: midiService, bluetoothManager: bluetoothManager, audioMonitor: audioMonitor))
     }
@@ -719,18 +545,13 @@ private struct KeyboardHandlers: ViewModifier {
 private struct ComposerHandlers: ViewModifier {
     @Binding var showComposerStorage: Bool
     @Binding var showComposer: Bool
-    @Binding var showChipsModal: Bool
-    var hasSeenChipsExplanation: Bool
+    @ObservedObject var onboarding: OnboardingManager
     func body(content: Content) -> some View {
         content
             .onChange(of: showComposerStorage) { _, v in withAnimation(.easeInOut(duration: 0.25)) { showComposer = v } }
             .onChange(of: showComposer) { _, v in
                 showComposerStorage = v
-                if v && !hasSeenChipsExplanation {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        withAnimation(.easeInOut(duration: 0.2)) { showChipsModal = true }
-                    }
-                }
+                if v { onboarding.showChipsExplanationIfNeeded() }
             }
     }
 }
@@ -752,11 +573,16 @@ private struct SettingsHandlers: ViewModifier {
 private struct PlaybackHandlers: ViewModifier {
     @ObservedObject var model: SequencerModel
     @ObservedObject var composerModel: ComposerModel
-    var checkFirstPlayGuide: () -> Void
+    @ObservedObject var onboarding: OnboardingManager
+    var midiService: MidiService
     func body(content: Content) -> some View {
         content
-            .onChange(of: model.isPlaying) { _, playing in if playing { checkFirstPlayGuide() } }
-            .onChange(of: composerModel.isPlaying) { _, playing in if playing { checkFirstPlayGuide() } }
+            .onChange(of: model.isPlaying) { _, playing in
+                if playing { onboarding.showFirstPlayGuideIfNeeded(isDollsConnected: midiService.isConnected) }
+            }
+            .onChange(of: composerModel.isPlaying) { _, playing in
+                if playing { onboarding.showFirstPlayGuideIfNeeded(isDollsConnected: midiService.isConnected) }
+            }
     }
 }
 

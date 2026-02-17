@@ -1,37 +1,5 @@
 import SwiftUI
-import SwiftUIIntrospect
 import AppKit
-import ObjectiveC
-// MARK: - Placeholder Cursor (notification observer — SwiftUI owns NSTextView's delegate)
-
-private enum PlaceholderObserverKeys { static nonisolated(unsafe) var observer: UInt8 = 0 }
-
-private final class PlaceholderCursorObserver {
-    let placeholder: String
-    weak var textView: NSTextView?
-    private var token: NSObjectProtocol?
-
-    init(placeholder: String, textView: NSTextView) {
-        self.placeholder = placeholder
-        self.textView = textView
-    }
-
-    func start() {
-        let ph = placeholder
-        token = NotificationCenter.default.addObserver(forName: NSTextView.didChangeSelectionNotification, object: textView, queue: .main) { note in
-            guard let textView = note.object as? NSTextView else { return }
-            Task { @MainActor in
-                guard textView.string == ph,
-                      textView.selectedRange().location != 0 else { return }
-                textView.selectedRange = NSRange(location: 0, length: 0)
-            }
-        }
-    }
-
-    deinit {
-        if let t = token { NotificationCenter.default.removeObserver(t) }
-    }
-}
 
 // MARK: - Chip Position Tracking
 
@@ -82,26 +50,12 @@ struct ComposerView: View {
 
     private static let placeholderText = "prompt or lyric"
 
-    /// When user edits the placeholder (typing front/middle/end), extract only what they typed
-    private static func extractTypedFromPlaceholder(_ newValue: String) -> String {
-        let p = placeholderText
-        // If it's exactly the placeholder, return empty
-        if newValue == p { return "" }
-        // If the placeholder is contained in the new value, remove it
-        if newValue.contains(p) {
-            return newValue.replacingOccurrences(of: p, with: "")
-        }
-        // Otherwise, the user replaced the placeholder entirely - use their input as-is
-        return newValue
-    }
-
-    var body: some View {
-        let isPlaceholder = composerModel.inputText.isEmpty
-        let hasText = !isPlaceholder && !composerModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let displayText = Binding(
-            get: { composerModel.inputText.isEmpty ? Self.placeholderText : composerModel.inputText },
+    /// Binding that enforces max 3 lines and 120 characters
+    private var limitedInputText: Binding<String> {
+        Binding(
+            get: { composerModel.inputText },
             set: { newValue in
-                var resolved = Self.extractTypedFromPlaceholder(newValue)
+                var resolved = newValue
                 let lines = resolved.components(separatedBy: "\n")
                 if lines.count > 3 {
                     resolved = lines.prefix(3).joined(separator: "\n")
@@ -112,6 +66,53 @@ struct ComposerView: View {
                 composerModel.inputText = resolved
             }
         )
+    }
+
+    /// Animate the bouncing ball - either in place or to next chip
+    private func animateBounce(chipIndex: Int, chipX: CGFloat) {
+        let isLastBounce = composerModel.currentBounceIndex >= composerModel.currentBounceCount - 1
+        let nextCx = isLastBounce ? (chipCenters[chipIndex + 1] ?? chipX) : chipX
+        let distance = abs(nextCx - chipX)
+
+        // Arc height: higher for in-place bounces, distance-based for advancing
+        let arcHeight: CGFloat
+        if isLastBounce {
+            arcHeight = -min(100, max(32, max(distance, 30) * 0.7))
+        } else {
+            arcHeight = -60  // consistent height for in-place bounces
+        }
+
+        let fullArc = Double(composerModel.currentArcDuration) / 1000.0
+        let halfArc = fullArc * 0.5
+
+        let steepOut = Animation.timingCurve(0, 0, 0.05, 1, duration: halfArc)
+        let steepIn = Animation.timingCurve(0.95, 0, 1, 1, duration: halfArc)
+
+        // First half: go up (and maybe start moving toward next)
+        withAnimation(steepOut) {
+            ballY = arcHeight
+        }
+        if isLastBounce {
+            withAnimation(.linear(duration: halfArc)) {
+                ballX = (chipX + nextCx) / 2
+            }
+        }
+
+        // Second half: come down (and land on target)
+        DispatchQueue.main.asyncAfter(deadline: .now() + halfArc) {
+            withAnimation(steepIn) {
+                ballY = 0
+            }
+            if isLastBounce {
+                withAnimation(.linear(duration: halfArc)) {
+                    ballX = nextCx
+                }
+            }
+        }
+    }
+
+    var body: some View {
+        let hasText = !composerModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
         GeometryReader { geo in
         VStack(spacing: 0) {
@@ -124,25 +125,26 @@ struct ComposerView: View {
                     .foregroundColor(hasText ? Theme.field : Theme.dark)
                     .padding(.bottom, 8)
 
-                TextEditor(text: displayText)
-                    .font(.system(size: 48, weight: .light))
-                    .kerning(-1.0)
-                    .foregroundColor(isPlaceholder ? Theme.fieldLight : Theme.text(colorScheme))
-                    .tint(Theme.accent)
-                    .scrollContentBackground(.hidden)
-                    .focused($isTextFocused)
-                    .multilineTextAlignment(.center)
-                    .frame(height: CGFloat(editorLineCount) * lineHeight)
-                    .introspect(.textEditor, on: .macOS(.v11, .v12, .v13, .v14, .v15, .v26)) { textView in
-                        if objc_getAssociatedObject(textView, &PlaceholderObserverKeys.observer) == nil {
-                            let obs = PlaceholderCursorObserver(placeholder: Self.placeholderText, textView: textView)
-                            objc_setAssociatedObject(textView, &PlaceholderObserverKeys.observer, obs, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-                            obs.start()
-                        }
-                        if textView.string == Self.placeholderText, textView.selectedRange().location != 0 {
-                            textView.selectedRange = NSRange(location: 0, length: 0)
-                        }
+                ZStack {
+                    // Placeholder overlay
+                    if composerModel.inputText.isEmpty {
+                        Text(Self.placeholderText)
+                            .font(.system(size: 48, weight: .light))
+                            .kerning(-1.0)
+                            .foregroundColor(Theme.fieldLight)
+                            .allowsHitTesting(false)
                     }
+
+                    TextEditor(text: limitedInputText)
+                        .font(.system(size: 48, weight: .light))
+                        .kerning(-1.0)
+                        .foregroundColor(Theme.text(colorScheme))
+                        .tint(Theme.accent)
+                        .scrollContentBackground(.hidden)
+                        .focused($isTextFocused)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(height: CGFloat(editorLineCount) * lineHeight)
 
                 HStack(spacing: 8) {
                     let btnHeight: CGFloat = 16
@@ -314,31 +316,14 @@ struct ComposerView: View {
                     }
                     .onChange(of: composerModel.currentPlayIndex) { _, newIndex in
                         guard let idx = newIndex, let cx = chipCenters[idx] else { return }
-
-                        let nextCx = chipCenters[idx + 1] ?? cx
-                        let distance = abs(nextCx - cx)
-                        let arcHeight = -min(100, max(32, max(distance, 30) * 0.7))
-                        let fullArc = Double(composerModel.currentArcDuration) / 1000.0
-                        let halfArc = fullArc * 0.5
-
-                        let steepOut = Animation.timingCurve(0, 0, 0.05, 1, duration: halfArc)
-                        let steepIn = Animation.timingCurve(0.95, 0, 1, 1, duration: halfArc)
-
-                        withAnimation(steepOut) {
-                            ballY = arcHeight
-                        }
-                        withAnimation(.linear(duration: halfArc)) {
-                            ballX = (cx + nextCx) / 2
-                        }
-
-                        DispatchQueue.main.asyncAfter(deadline: .now() + halfArc) {
-                            withAnimation(steepIn) {
-                                ballY = 0
-                            }
-                            withAnimation(.linear(duration: halfArc)) {
-                                ballX = nextCx
-                            }
-                        }
+                        animateBounce(chipIndex: idx, chipX: cx)
+                    }
+                    .onChange(of: composerModel.currentBounceIndex) { oldBounce, newBounce in
+                        // Re-trigger animation when bounce index changes (for multi-bounce)
+                        guard newBounce > oldBounce,
+                              let idx = composerModel.currentPlayIndex,
+                              let cx = chipCenters[idx] else { return }
+                        animateBounce(chipIndex: idx, chipX: cx)
                     }
                     .padding(.horizontal)
 
