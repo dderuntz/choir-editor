@@ -78,7 +78,7 @@ struct KeyboardView: View {
                     localAudioEnabled: localAudioEnabled,
                     outOfScale: scaleActive && !noteInScale(UInt8(note)),
                     onComposerPress: isComposerActive && !composerModel.phonemes.isEmpty
-                        ? { composerModel.playNextChip(note: UInt8(note), audioMonitor: audioMonitor) }
+                        ? { composerModel.playNextChip(note: UInt8(note), audioMonitor: audioMonitor, midiService: midiService) }
                         : nil
                 )
                 .frame(
