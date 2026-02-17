@@ -9,16 +9,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Set by ChoirControllerApp so we can clean up on quit.
     weak var midiService: MidiService?
     weak var audioMonitor: AudioMonitorService?
-    
+    weak var onboardingManager: OnboardingManager?
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return true
     }
-    
+
     func applicationWillTerminate(_ notification: Notification) {
         midiService?.panicAllNotesOff()
         audioMonitor?.tearDown()
     }
-    
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
         DispatchQueue.main.async {
@@ -27,32 +28,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.set("WhenScrolling", forKey: "AppleShowScrollBars")
 
         // Copy demo file to Documents on first launch
-        copyDemoFileIfNeeded()
-    }
-
-    private func copyDemoFileIfNeeded() {
-        let defaults = UserDefaults.standard
-        guard !defaults.bool(forKey: "hasCopiedDemoFile") else { return }
-
-        guard let bundleURL = Bundle.main.url(forResource: "Robots", withExtension: "choir") else {
-            return
-        }
-
-        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-        guard let destURL = documentsURL?.appendingPathComponent("Robots.choir") else { return }
-
-        // Don't overwrite if user already has a Robots.choir
-        guard !FileManager.default.fileExists(atPath: destURL.path) else {
-            defaults.set(true, forKey: "hasCopiedDemoFile")
-            return
-        }
-
-        do {
-            try FileManager.default.copyItem(at: bundleURL, to: destURL)
-            defaults.set(true, forKey: "hasCopiedDemoFile")
-        } catch {
-            // Silent fail — not critical
-        }
+        onboardingManager?.copyDemoFileIfNeeded()
     }
 
     @MainActor static func showAboutPanel() {
@@ -88,7 +64,8 @@ struct ChoirControllerApp: App {
     @StateObject private var sequencerModel = SequencerModel()
     @StateObject private var audioMonitor = AudioMonitorService()
     @StateObject private var composerModel = ComposerModel()
-    
+    @StateObject private var onboardingManager = OnboardingManager()
+
     init() {
         // Ensure the app activates properly when run from command line
         DispatchQueue.main.async {
@@ -99,6 +76,7 @@ struct ChoirControllerApp: App {
         // Give the delegate references for cleanup on quit
         appDelegate.midiService = midiService
         appDelegate.audioMonitor = audioMonitor
+        appDelegate.onboardingManager = onboardingManager
     }
     
     @AppStorage("appearanceMode") private var appearanceMode: AppearanceMode = .system
@@ -111,6 +89,7 @@ struct ChoirControllerApp: App {
                 .environmentObject(sequencerModel)
                 .environmentObject(audioMonitor)
                 .environmentObject(composerModel)
+                .environmentObject(onboardingManager)
                 .preferredColorScheme(appearanceMode.colorScheme)
                 .tint(Theme.accent)
                 .frame(minWidth: 758, minHeight: 758)
@@ -124,7 +103,7 @@ struct ChoirControllerApp: App {
             ViewCommands()
             MidiCommands(midiService: midiService, bluetoothManager: bluetoothManager, audioMonitor: audioMonitor)
             ComposerCommands()
-            HelpCommands()
+            HelpCommands(onboardingManager: onboardingManager)
         }
     }
 }
