@@ -97,7 +97,7 @@ struct ComposerView: View {
                     .disabled(summonDisabled)
                     .opacity(summonDisabled ? 0.3 : 1)
                 }
-                .padding(.top, -4)
+                .padding(.top, -2)
 
                 // Error / status
                 if let error = composerModel.errorMessage {
@@ -487,22 +487,6 @@ struct ComposerView: View {
 
 // MARK: - ScrollView Finder
 
-private struct HoverPillStyle: ButtonStyle {
-    var colorScheme: ColorScheme
-    @State private var isHovered = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundColor(isHovered ? Theme.dark : Theme.field)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isHovered ? Theme.fieldColor(colorScheme) : Color.clear)
-            )
-            .onHover { isHovered = $0 }
-    }
-}
 
 private struct ScrollViewFinder: NSViewRepresentable {
     var onFind: (NSScrollView) -> Void
