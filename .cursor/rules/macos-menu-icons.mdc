@@ -1,0 +1,30 @@
+---
+description: macOS 26 menu bar items support SF Symbol icons via Label
+globs: "**/MenuCommands.swift"
+alwaysApply: false
+---
+
+# Menu Bar Icons (macOS 26+)
+
+SwiftUI `Commands` menu items on macOS 26 **do** render SF Symbol icons. Use `Label` instead of plain strings:
+
+```swift
+// ✅ Icon renders in macOS 26 menu bar
+Button {
+    doSomething()
+} label: {
+    Label("My Action", systemImage: "star")
+}
+
+Toggle(isOn: $flag) {
+    Label("My Toggle", systemImage: "gearshape")
+}
+
+Picker(selection: $value) {
+    // ...
+} label: {
+    Label("My Picker", systemImage: "circle.lefthalf.filled")
+}
+```
+
+This works for `Button`, `Toggle`, and `Picker` inside `CommandGroup`.

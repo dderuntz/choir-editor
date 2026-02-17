@@ -188,6 +188,15 @@ class ComposerModel: ObservableObject {
     @Published var phonemes: [ChoirPhoneme] = [] {
         didSet { ComposerPersistence.savePhonemes(phonemes) }
     }
+    /// Text that was used to generate current phonemes; nil = never extracted or cleared.
+    @Published var lastExtractedText: String? = nil
+
+    /// True when phonemes exist but text has changed since last extraction — show Sync button.
+    var needsSync: Bool {
+        let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !phonemes.isEmpty else { return false }
+        return lastExtractedText != trimmed
+    }
     @Published var isProcessing: Bool = false
     @Published var errorMessage: String? = nil
     @Published var llmStatusMessage: String? = nil
@@ -225,6 +234,10 @@ class ComposerModel: ObservableObject {
     init() {
         inputText = ComposerPersistence.loadText()
         phonemes = ComposerPersistence.loadPhonemes()
+        let t = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !t.isEmpty, !phonemes.isEmpty {
+            lastExtractedText = t
+        }
     }
 
     // Scale — synced from SequencerModel by ComposerView
@@ -304,6 +317,7 @@ class ComposerModel: ObservableObject {
 
         if firstTry.missing.isEmpty {
             phonemes = firstTry.found
+            lastExtractedText = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
             print("[Composer] Dict (direct): \(phonemes.count) phonemes from: \(text)")
             logPhonemes(phonemes)
             isProcessing = false
@@ -324,6 +338,7 @@ class ComposerModel: ObservableObject {
 
                 if retry.missing.isEmpty {
                     phonemes = retry.found
+                    lastExtractedText = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
                     print("[Composer] Dict (after LLM normalize): \(phonemes.count) phonemes")
                     logPhonemes(phonemes)
                     isProcessing = false
@@ -339,12 +354,14 @@ class ComposerModel: ObservableObject {
                 for i in llmResult.indices { llmResult[i].wordIndex = nextWordIdx + i }
                 combined.append(contentsOf: llmResult)
                 phonemes = combined
+                lastExtractedText = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
                 print("[Composer] Combined: \(retry.found.count) dict + \(llmResult.count) LLM = \(phonemes.count) total")
                 logPhonemes(phonemes)
             } else {
                 // Normalize failed — full LLM fallback on original text
                 print("[Composer] Normalize failed, full LLM fallback")
                 phonemes = await extractWithLLM(text: text)
+                lastExtractedText = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
                 logPhonemes(phonemes)
             }
         } else {
@@ -819,6 +836,7 @@ class ComposerModel: ObservableObject {
         saveUndo()
         inputText = ""
         phonemes = []
+        lastExtractedText = nil
         isApproved = false
         errorMessage = nil
     }
@@ -827,6 +845,7 @@ class ComposerModel: ObservableObject {
     func clearPhonemes() {
         saveUndo()
         phonemes = []
+        lastExtractedText = nil
         isApproved = false
         errorMessage = nil
     }

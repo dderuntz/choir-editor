@@ -47,7 +47,7 @@ struct FileCommands: Commands {
                 .keyboardShortcut("o", modifiers: .command)
             
             // Open Recent submenu
-            Menu("Open Recent") {
+            Menu {
                 let recents = SequencerModel.recentFileURLs()
                 if recents.isEmpty {
                     Text("No Recent Files")
@@ -69,6 +69,8 @@ struct FileCommands: Commands {
                         SequencerModel.clearRecentFiles()
                     }
                 }
+            } label: {
+                Text("Open Recent")
             }
             
             Divider()
@@ -111,8 +113,10 @@ struct EditCommands: Commands {
         }
         
         CommandGroup(after: .pasteboard) {
-            Button(model.isPlaying ? "Stop" : "Play") {
+            Button {
                 model.togglePlaybackTrigger += 1
+            } label: {
+                Label(model.isPlaying ? "Stop" : "Play", systemImage: model.isPlaying ? "stop.fill" : "play.fill")
             }
             .keyboardShortcut(.space, modifiers: [])
             
@@ -132,30 +136,40 @@ struct ViewCommands: Commands {
     
     var body: some Commands {
         CommandGroup(after: .toolbar) {
-            Toggle("Intake (Settings)", isOn: $showSettings)
-                .keyboardShortcut(",", modifiers: .command)
+            Toggle(isOn: $showSettings) {
+                Label("Preferences", systemImage: "nose")
+            }
+            .keyboardShortcut(",", modifiers: .command)
 
-            Button("Compose") {
+            Button {
                 NotificationCenter.default.post(name: .showComposer, object: nil)
+            } label: {
+                Label("Compose", systemImage: "eyebrow")
             }
             .keyboardShortcut("e", modifiers: [.command, .shift])
 
-            Button("Listen (MIDI Tests)") {
+            Button {
                 NotificationCenter.default.post(name: .showSoundPad, object: nil)
+            } label: {
+                Label("Test (Dolls + MIDI)", systemImage: "ear")
             }
             .keyboardShortcut("p", modifiers: [.command, .shift])
 
             Divider()
 
-            Toggle("Show Keyboard", isOn: $showKeyboard)
-                .keyboardShortcut("k", modifiers: [.command, .shift])
+            Toggle(isOn: $showKeyboard) {
+                Label("Show Keyboard", systemImage: "pianokeys")
+            }
+            .keyboardShortcut("k", modifiers: [.command, .shift])
             
             Divider()
             
-            Picker("Appearance", selection: $appearanceMode) {
+            Picker(selection: $appearanceMode) {
                 ForEach(AppearanceMode.allCases, id: \.self) { mode in
                     Text(mode.label).tag(mode)
                 }
+            } label: {
+                Label("Appearance", systemImage: "circle.lefthalf.filled")
             }
         }
     }
@@ -174,11 +188,21 @@ enum LyricStyle: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .senryu: return "Senryū (Wry Robot)"
-        case .bellman: return "Bellman (Warm Scenes)"
-        case .kulning: return "Kulning (Mountain Signals)"
-        case .dada: return "Dada (Absurdist)"
-        case .nursery: return "Nursery (Dark Rhymes)"
+        case .senryu: return "Senryū"
+        case .bellman: return "Bellman"
+        case .kulning: return "Kulning"
+        case .dada: return "Dada"
+        case .nursery: return "Nursery"
+        }
+    }
+
+    var blurb: String {
+        switch self {
+        case .senryu: return "A weary robot observes life with dry wit and quiet humor using the Japanese form called Senryū. It's like haiku but about human, err robot, nature."
+        case .bellman: return "Warm, vivid scenes painted in simple words meant to be sung aloud. Inspired by the bellman — a town crier who sang the news. Golden light, painted windows, that sort of thing."
+        case .kulning: return "A robot calls lost machines home across mountain valleys using kulning — a Scandinavian herding call meant to carry for miles. Sparse, haunting, nature and wire entwined."
+        case .dada: return "A choir of robots embraces the surreal in the spirit of the Dada art movement. The fork left. The calendar sneezed. You get the idea."
+        case .nursery: return "Nursery rhymes for robots. Timeless and simple in rhyme, fun to say aloud. Cute on the surface, and unsettling in your motherboard."
         }
     }
 
@@ -200,17 +224,21 @@ struct ComposerCommands: Commands {
 
     var body: some Commands {
         CommandMenu("Composer") {
-            Button("Open Composer") {
+            Button {
                 NotificationCenter.default.post(name: .showComposer, object: nil)
+            } label: {
+                Label("Open Composer", systemImage: "eyebrow")
             }
             .keyboardShortcut("e", modifiers: [.command, .shift])
 
             Divider()
 
-            Picker("Lyric Style", selection: $lyricStyle) {
+            Picker(selection: $lyricStyle) {
                 ForEach(LyricStyle.allCases) { style in
                     Text(style.label).tag(style)
                 }
+            } label: {
+                Label("Lyric Style", systemImage: "pencil.and.scribble")
             }
         }
     }
@@ -268,36 +296,43 @@ struct MidiCommands: Commands {
     
     var body: some Commands {
         CommandMenu("MIDI") {
-            Button("Connect Bluetooth MIDI...") {
+            Button {
                 bluetoothManager.showBluetoothMIDIWindow()
+            } label: {
+                Label("Connect Bluetooth MIDI...", systemImage: "antenna.radiowaves.left.and.right")
             }
             .keyboardShortcut("b", modifiers: [.command, .shift])
             
             Divider()
             
-            Picker("Local Synth Monitor", selection: $localAudioMode) {
+            Picker(selection: $localAudioMode) {
                 ForEach(LocalAudioMode.allCases) { mode in
                     Text(mode.rawValue).tag(mode.rawValue)
                 }
+            } label: {
+                Label("Local Playback", systemImage: "speaker.wave.3")
             }
             
-            Picker("Local Synth Engine", selection: Binding(
+            Picker(selection: Binding(
                 get: { audioMonitor.engineType },
                 set: { audioMonitor.setEngine($0) }
             )) {
                 ForEach(SynthEngineType.allCases) { type in
                     Text(type.label).tag(type)
                 }
+            } label: {
+                Label("Local Playback Engine", systemImage: "waveform")
             }
             
             Divider()
             
-            Button("All Notes Off") { midiService.panicAllNotesOff() }
-                .keyboardShortcut(".", modifiers: [.command, .shift])
+            Button {
+                midiService.panicAllNotesOff()
+            } label: {
+                Label("All Notes Off", systemImage: "music.note.slash")
+            }
+            .keyboardShortcut(".", modifiers: [.command, .shift])
             
-            Divider()
-            
-            Button("Reconnect") { midiService.reconnect() }
         }
     }
 }

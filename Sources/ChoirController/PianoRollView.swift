@@ -105,7 +105,7 @@ enum PianoRollLayout {
     static let resizeHandleWidth: CGFloat = 8
     
     static var totalRows: Int { PitchConstants.pitchCount }
-    static func gridHeight() -> CGFloat { CGFloat(totalRows) * rowHeight }
+    static func gridHeight() -> CGFloat { CGFloat(totalRows + 1) * rowHeight }
     static func gridWidth(beats: Int) -> CGFloat { CGFloat(beats) * beatWidth }
     
     // Convert between model and view coordinates
@@ -141,41 +141,31 @@ struct PianoRollView: View {
     @State private var marqueeRect: CGRect? = nil
     
     var body: some View {
+        // TODO: Replace nested ScrollViews with a single NSScrollView wrapper for proper 2D scrolling with both scrollbars visible
         // Vertical scroll wraps both piano keys and grid together
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
-                VStack(spacing: 0) {
-                    HStack(alignment: .top, spacing: 0) {
-                        // Piano key labels (scrolls vertically with grid)
-                        pianoKeys
-                            .frame(width: PianoRollLayout.pianoKeyWidth)
-                        
-                        Theme.structuralDivider.opacity(0.4).frame(width: 1)
-                        
-                        // Grid area: horizontal scroll only
-                        ScrollView(.horizontal) {
-                            gridContent
-                                .frame(
-                                    width: PianoRollLayout.gridWidth(beats: model.totalBeats),
-                                    height: PianoRollLayout.gridHeight()
-                                )
-                                .background {
-                                    if let sync = scrollSync {
-                                        ScrollSyncHelper(id: "grid", manager: sync)
-                                    }
+                HStack(alignment: .top, spacing: 0) {
+                    // Piano key labels (scrolls vertically with grid)
+                    pianoKeys
+                        .frame(width: PianoRollLayout.pianoKeyWidth)
+                    
+                    Theme.structuralDivider.opacity(0.4).frame(width: 1)
+                    
+                    // Grid area: horizontal scroll only
+                    ScrollView(.horizontal) {
+                        gridContent
+                            .frame(
+                                width: PianoRollLayout.gridWidth(beats: model.totalBeats),
+                                height: PianoRollLayout.gridHeight()
+                            )
+                            .background {
+                                if let sync = scrollSync {
+                                    ScrollSyncHelper(id: "grid", manager: sync)
                                 }
-                        }
-                        .background(Theme.fieldColor(colorScheme))
+                            }
                     }
-                    // Bottom padding row (background-filled so divider + key column extend)
-                    HStack(spacing: 0) {
-                        Theme.fieldColor(colorScheme)
-                            .frame(width: PianoRollLayout.pianoKeyWidth, height: PianoRollLayout.rowHeight)
-                        Theme.structuralDivider.opacity(0.4).frame(width: 1, height: PianoRollLayout.rowHeight)
-                        Theme.fieldColor(colorScheme)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: PianoRollLayout.rowHeight)
-                    }
+                    .background(Theme.fieldColor(colorScheme))
                 }
             }
             .background(Theme.fieldColor(colorScheme))
@@ -183,6 +173,15 @@ struct PianoRollView: View {
                 if let pitch = pitch {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         proxy.scrollTo(Int(pitch), anchor: .center)
+                    }
+                }
+            }
+            .onChange(of: model.selectedNoteId) { _, _ in
+                if let note = model.selectedNote {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            proxy.scrollTo(Int(note.pitch), anchor: .bottom)
+                        }
                     }
                 }
             }
@@ -265,6 +264,7 @@ struct PianoRollView: View {
                             }
                         }
             }
+            Color.clear.frame(height: PianoRollLayout.rowHeight)
         }
     }
     
@@ -308,6 +308,7 @@ struct PianoRollView: View {
                 )
                 .id(pitch)
             }
+            Color.clear.frame(height: PianoRollLayout.rowHeight)
         }
         .background(Theme.fieldColor(colorScheme))
     }
@@ -478,6 +479,7 @@ struct PianoRollGridBackground: View {
                             }
                         }
                 }
+                Color.clear.frame(height: PianoRollLayout.rowHeight)
             }
             
             // 16th note subdivision lines (light)

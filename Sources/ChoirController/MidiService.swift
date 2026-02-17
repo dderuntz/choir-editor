@@ -167,20 +167,6 @@ class MidiService: ObservableObject {
         log.info("MIDI Panic: CC reset to defaults (cons=\(ChoirDefaults.consonant) vow=\(ChoirDefaults.vowel) vib=\(ChoirDefaults.vibrato) rev=\(ChoirDefaults.reverb))")
     }
     
-    /// Disconnect and reconnect MIDI
-    func reconnect() {
-        log.info("MIDI Reconnect: dropping connection")
-        midiManager.remove(.outputConnection, .withTag("ChoirOutput"))
-        isConnected = false
-        selectedInput = nil
-        
-        // Re-scan and reconnect after a short delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
-            log.info("MIDI Reconnect: re-scanning endpoints")
-            updateEndpoints()
-        }
-    }
-    
     func sendCC(controller: UInt8, value: UInt8, channel: UInt4 = 0) {
         guard let connection = midiManager.managedOutputConnections["ChoirOutput"] else {
             log.error("CC: No output connection")
