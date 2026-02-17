@@ -66,8 +66,18 @@ struct ComposerView: View {
     private var lineHeight: CGFloat { 62 }
 
     private var editorLineCount: Int {
-        let newlines = composerModel.inputText.components(separatedBy: "\n").count
-        return max(1, min(3, newlines))
+        let text = composerModel.inputText.isEmpty ? " " : composerModel.inputText
+        let font = NSFont.systemFont(ofSize: 48, weight: .light)
+        let maxWidth: CGFloat = 600 // slightly less than container's 640 for padding
+
+        let attrString = NSAttributedString(string: text, attributes: [.font: font])
+        let boundingRect = attrString.boundingRect(
+            with: CGSize(width: maxWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        )
+
+        let visualLines = Int(ceil(boundingRect.height / lineHeight))
+        return max(1, min(3, visualLines))
     }
 
     private static let placeholderText = "prompt or lyric"
@@ -75,19 +85,14 @@ struct ComposerView: View {
     /// When user edits the placeholder (typing front/middle/end), extract only what they typed
     private static func extractTypedFromPlaceholder(_ newValue: String) -> String {
         let p = placeholderText
+        // If it's exactly the placeholder, return empty
         if newValue == p { return "" }
-        let fromReplace = newValue.replacingOccurrences(of: p, with: "")
-        if fromReplace != newValue { return fromReplace }
-        var inserted = ""
-        var pi = p.startIndex
-        for c in newValue {
-            if pi < p.endIndex && p[pi] == c {
-                pi = p.index(after: pi)
-            } else {
-                inserted.append(c)
-            }
+        // If the placeholder is contained in the new value, remove it
+        if newValue.contains(p) {
+            return newValue.replacingOccurrences(of: p, with: "")
         }
-        return inserted
+        // Otherwise, the user replaced the placeholder entirely - use their input as-is
+        return newValue
     }
 
     var body: some View {
@@ -211,6 +216,7 @@ struct ComposerView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(revealDisabled)
+                    .help("Turn words into sounds")
                     Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: (geo.size.height - 52) * 0.33)

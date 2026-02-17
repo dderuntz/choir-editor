@@ -25,6 +25,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.windows.forEach { $0.isMovableByWindowBackground = true }
         }
         UserDefaults.standard.set("WhenScrolling", forKey: "AppleShowScrollBars")
+
+        // Copy demo file to Documents on first launch
+        copyDemoFileIfNeeded()
+    }
+
+    private func copyDemoFileIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: "hasCopiedDemoFile") else { return }
+
+        guard let bundleURL = Bundle.main.url(forResource: "Robots", withExtension: "choir") else {
+            return
+        }
+
+        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+        guard let destURL = documentsURL?.appendingPathComponent("Robots.choir") else { return }
+
+        // Don't overwrite if user already has a Robots.choir
+        guard !FileManager.default.fileExists(atPath: destURL.path) else {
+            defaults.set(true, forKey: "hasCopiedDemoFile")
+            return
+        }
+
+        do {
+            try FileManager.default.copyItem(at: bundleURL, to: destURL)
+            defaults.set(true, forKey: "hasCopiedDemoFile")
+        } catch {
+            // Silent fail — not critical
+        }
     }
 
     @MainActor static func showAboutPanel() {

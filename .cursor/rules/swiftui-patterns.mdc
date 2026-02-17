@@ -27,3 +27,26 @@ alwaysApply: false
 - **Bordered Picker sizing**: Omitting both `.frame(width:)` and `.fixedSize()` lets the bordered macOS Picker auto-size to its widest option — same as `.fixedSize()` but cleaner. No need to specify either.
 - **Button border radius on macOS**: `.buttonBorderShape(.roundedRectangle(radius:))` is ignored by macOS system button chrome. To get custom corner radius, use `.buttonStyle(.plain)` and manually draw the background with `RoundedRectangle(cornerRadius:)` + `.clipShape()`.
 - **Custom Toggle switch**: The system `.toggleStyle(.switch)` doesn't allow customizing the knob color. Use `IvorySwitchStyle` (in Theme.swift) for a custom switch with a glass knob and themed track colors.
+
+## TextEditor Patterns
+
+### Placeholder Text
+Don't try to detect typed chars by diffing against placeholder - breaks when user types a char that's in the placeholder. Simple approach:
+```swift
+// If placeholder is still contained, remove it
+if newValue.contains(placeholder) {
+    return newValue.replacingOccurrences(of: placeholder, with: "")
+}
+// Otherwise user replaced it entirely
+return newValue
+```
+
+### Dynamic Height
+Count visual lines, not just `\n` characters:
+```swift
+let attrString = NSAttributedString(string: text, attributes: [.font: font])
+let boundingRect = attrString.boundingRect(
+    with: CGSize(width: maxWidth, height: .greatestFiniteMagnitude),
+    options: [.usesLineFragmentOrigin, .usesFontLeading]
+)
+let visualLines = Int(ceil(boundingRect.height / lineHeight))

@@ -65,7 +65,7 @@ enum PhonemeDictionary {
 
     // MARK: - Dictionary Storage
 
-    private static var dictionary: [String: [String]]? = nil
+    private nonisolated(unsafe) static var dictionary: [String: [String]]? = nil
 
     /// Load the CMU dictionary from bundle
     static func loadIfNeeded() {
