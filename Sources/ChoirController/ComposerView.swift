@@ -2,21 +2,34 @@ import SwiftUI
 import SwiftUIIntrospect
 import AppKit
 import ObjectiveC
+// MARK: - Placeholder Cursor (notification observer — SwiftUI owns NSTextView's delegate)
 
-// MARK: - Placeholder Cursor Delegate
+private enum PlaceholderObserverKeys { static nonisolated(unsafe) var observer: UInt8 = 0 }
 
-private final class PlaceholderCursorDelegate: NSObject, NSTextViewDelegate {
+private final class PlaceholderCursorObserver {
     let placeholder: String
-    init(placeholder: String) { self.placeholder = placeholder }
-    func textViewDidChangeSelection(_ notification: Notification) {
-        guard let textView = notification.object as? NSTextView,
-              textView.string == placeholder,
-              textView.selectedRange().location != 0 else { return }
-        textView.selectedRange = NSRange(location: 0, length: 0)
+    weak var textView: NSTextView?
+    private var token: NSObjectProtocol?
+
+    init(placeholder: String, textView: NSTextView) {
+        self.placeholder = placeholder
+        self.textView = textView
+    }
+
+    func start() {
+        let ph = placeholder
+        token = NotificationCenter.default.addObserver(forName: NSTextView.didChangeSelectionNotification, object: textView, queue: .main) { note in
+            guard let textView = note.object as? NSTextView,
+                  textView.string == ph,
+                  textView.selectedRange().location != 0 else { return }
+            textView.selectedRange = NSRange(location: 0, length: 0)
+        }
+    }
+
+    deinit {
+        if let t = token { NotificationCenter.default.removeObserver(t) }
     }
 }
-
-private enum PlaceholderDelegateKeys { static nonisolated(unsafe) var key: UInt8 = 0 }
 
 // MARK: - Chip Position Tracking
 
@@ -113,10 +126,13 @@ struct ComposerView: View {
                     .multilineTextAlignment(.center)
                     .frame(height: CGFloat(editorLineCount) * lineHeight)
                     .introspect(.textEditor, on: .macOS(.v11, .v12, .v13, .v14, .v15, .v26)) { textView in
-                        if textView.delegate == nil {
-                            let delegate = PlaceholderCursorDelegate(placeholder: Self.placeholderText)
-                            objc_setAssociatedObject(textView, &PlaceholderDelegateKeys.key, delegate, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-                            textView.delegate = delegate
+                        if objc_getAssociatedObject(textView, &PlaceholderObserverKeys.observer) == nil {
+                            let obs = PlaceholderCursorObserver(placeholder: Self.placeholderText, textView: textView)
+                            objc_setAssociatedObject(textView, &PlaceholderObserverKeys.observer, obs, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+                            obs.start()
+                        }
+                        if textView.string == Self.placeholderText, textView.selectedRange().location != 0 {
+                            textView.selectedRange = NSRange(location: 0, length: 0)
                         }
                     }
 
@@ -356,9 +372,9 @@ struct ComposerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.bg(colorScheme))
         .onAppear {
-            isTextFocused = true
             composerModel.musicalKey = sequencerModel.musicalKey
             composerModel.scaleType = sequencerModel.scaleType
+            DispatchQueue.main.async { isTextFocused = true }
         }
         .onChange(of: sequencerModel.musicalKey) { composerModel.musicalKey = sequencerModel.musicalKey }
         .onChange(of: sequencerModel.scaleType) { composerModel.scaleType = sequencerModel.scaleType }
