@@ -52,6 +52,7 @@ struct ContentView: View {
     @State private var showKeyboard = true
     @State private var editingTitle: String = ""
     @State private var isSaving = false
+    @State private var showComposerHelp = false
     @FocusState private var isTitleFocused: Bool
     
     var body: some View {
@@ -59,62 +60,107 @@ struct ContentView: View {
             // Main Content Area
             VStack(spacing: 0) {
                 // Top bar with title and connection status
-                HStack {
-                    // App icon with file menu
-                    Button(action: { showFileMenu() }) {
-                        HStack(spacing: 2) {
-                            Image(systemName: "apple.classical.pages.fill")
-                                .font(.title2)
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 8, weight: .bold))
-                        }
-                        .foregroundColor(Theme.text(colorScheme).opacity(isSaving ? 0.35 : 1))
-                    }
-                    .buttonStyle(.plain)
-                    .help("File")
-                    
-                    TextField("Untitled", text: $editingTitle, onCommit: { commitTitleEdit(); isTitleFocused = false })
-                        .font(.system(size: showComposer ? 24 : 56, weight: showComposer ? .light : .ultraLight))
-                        .kerning(showComposer ? -0.5 : -1.4)
-                        .textFieldStyle(.plain)
-                        .focused($isTitleFocused)
-                        .tint(Theme.accent)
-                        .fixedSize()
-                        .onAppear {
-                            syncTitleFromModel()
-                            // Ensure not focused on launch
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                isTitleFocused = false
+                HStack(spacing: 10) {
+                    // Left: File menu + title (hidden when composer) OR Back to Grid (when composer)
+                    ZStack(alignment: .leading) {
+                        HStack(spacing: 4) {
+                            Button(action: { showFileMenu() }) {
+                                HStack(spacing: 2) {
+                                    Image(systemName: "apple.classical.pages.fill")
+                                        .font(.system(size: Theme.toolbarIconSize, weight: .light))
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 8, weight: .bold))
+                                }
+                                .foregroundColor(Theme.text(colorScheme).opacity(isSaving ? 0.35 : 1))
+                            }
+                            .buttonStyle(.plain)
+                            .help("File")
+
+                            TextField("Untitled", text: $editingTitle, onCommit: { commitTitleEdit(); isTitleFocused = false })
+                                .font(.system(size: showComposer ? 24 : 56, weight: showComposer ? .light : .ultraLight))
+                                .kerning(showComposer ? -0.5 : -1.4)
+                                .textFieldStyle(.plain)
+                                .focused($isTitleFocused)
+                                .tint(Theme.accent)
+                                .fixedSize()
+                                .onAppear {
+                                    syncTitleFromModel()
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                        isTitleFocused = false
+                                    }
+                                }
+                                .onChange(of: model.currentFileURL) { syncTitleFromModel() }
+                                .onChange(of: isTitleFocused) { _, focused in
+                                    if !focused { commitTitleEdit() }
+                                }
+
+                            if isTitleFocused {
+                                Button(action: { commitTitleEdit(); isTitleFocused = false }) {
+                                    Text("Done")
+                                        .font(Theme.buttonFont)
+                                        .fontWeight(Theme.buttonWeight)
+                                        .foregroundColor(Theme.text(colorScheme).opacity(0.85))
+                                        .padding(.horizontal, Theme.buttonPaddingH)
+                                        .padding(.vertical, Theme.buttonPaddingV)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: Theme.buttonRadius)
+                                                .stroke(Theme.text(colorScheme).opacity(0.85), lineWidth: Theme.buttonStroke)
+                                        )
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
-                        .onChange(of: model.currentFileURL) { syncTitleFromModel() }
-                        .onChange(of: isTitleFocused) { _, focused in
-                            if !focused { commitTitleEdit() }
+                        .opacity(showComposer ? 0 : 1)
+                        .allowsHitTesting(!showComposer)
+
+                        if showComposer {
+                            HStack(spacing: 8) {
+                                Image("GridIcon")
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(height: 12)
+                                    .foregroundColor(Theme.dark)
+                                Button(action: {
+                                    withAnimation(.easeInOut(duration: 0.25)) { showComposer = false }
+                                }) {
+                                    Text("Piano Roll")
+                                }
+                                .buttonStyle(HoverPillStyle(colorScheme: colorScheme, textColor: Theme.dark))
+                                .help("Return to Piano Roll")
+                                
+
+                                Button(action: { showComposerHelp.toggle() }) {
+                                    Label("Composer Help", systemImage: "questionmark.circle")
+                                }
+                                .buttonStyle(HoverPillStyle(colorScheme: colorScheme))
+                                .popover(isPresented: $showComposerHelp) {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("Composer Tips")
+                                            .font(.system(size: 13, weight: .semibold))
+                                        Text("This is the composer. It turns ideas into lyrics if you want. And it turns lyrics into phonemes for your choir to sing. Edit chips to edit consonants and vowels and refine the phoneme (the sounds your choir makes), then copy to the piano roll to arrange.")
+                                        Text("• Click a chip to hear it and inspect")
+                                        Text("• Click a chip to hear it and inspect")
+                                        Text("• Shift-click a chip to add choir")
+                                        Text("• Long-press a chip to toggle ensemble")
+                                        Text("• Right-click a chip to insert or delete")
+                                        Text("• Use Copy to Piano Roll when ready to arrange")
+                                    }
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Theme.dark)
+                                    .padding()
+                                    .frame(width: 260)
+                                }
+                                .help("Composer tips")
+                            }
                         }
-                    
-                    // Done button — only visible while editing title, right next to title
-                    if isTitleFocused {
-                        Button(action: { commitTitleEdit(); isTitleFocused = false }) {
-                            Text("Done")
-                                .font(Theme.buttonFont)
-                                .fontWeight(Theme.buttonWeight)
-                                .foregroundColor(Theme.text(colorScheme).opacity(0.85))
-                                .padding(.horizontal, Theme.buttonPaddingH)
-                                .padding(.vertical, Theme.buttonPaddingV)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: Theme.buttonRadius)
-                                        .stroke(Theme.text(colorScheme).opacity(0.85), lineWidth: Theme.buttonStroke)
-                                )
-                        }
-                        .buttonStyle(.plain)
                     }
-                    
+
                     Spacer()
                     
                     // Settings toggle
                     Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showSettings.toggle() } }) {
                         Image(systemName: "nose")
-                            .font(.title2)
+                            .font(.system(size: Theme.toolbarIconSize, weight: .light))
                             .foregroundColor(showSettings ? Theme.text(colorScheme) : Theme.text(colorScheme).opacity(0.4))
                     }
                     .buttonStyle(.plain)
@@ -125,7 +171,7 @@ struct ContentView: View {
                         withAnimation(.easeInOut(duration: 0.25)) { showComposer.toggle() }
                     }) {
                         Image(systemName: "eyebrow")
-                            .font(.title2)
+                            .font(.system(size: Theme.toolbarIconSize, weight: .light))
                             .foregroundColor(showComposer ? Theme.text(colorScheme) : Theme.text(colorScheme).opacity(0.4))
                             .overlay(alignment: .topTrailing) {
                                 if composerModel.hasContent && !showComposer {
@@ -142,7 +188,7 @@ struct ContentView: View {
                     // Test
                     Button(action: { showSoundPad = true }) {
                         Image(systemName: "ear")
-                            .font(.title2)
+                            .font(.system(size: Theme.toolbarIconSize, weight: .light))
                             .foregroundColor(showSoundPad ? Theme.text(colorScheme) : Theme.text(colorScheme).opacity(0.4))
                     }
                     .buttonStyle(.plain)
@@ -151,12 +197,12 @@ struct ContentView: View {
                     // Keyboard toggle
                     Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showKeyboard.toggle(); showKeyboardStorage = showKeyboard } }) {
                         Image(systemName: "pianokeys")
-                            .font(.title2)
+                            .font(.system(size: Theme.toolbarIconSize, weight: .light))
                             .foregroundColor(showKeyboard ? Theme.text(colorScheme).opacity(0.85) : Theme.text(colorScheme).opacity(0.4))
                     }
                     .buttonStyle(.plain)
                     .help("Touch")
-                    
+
                     // Connection status indicator
                     Button(action: { startBluetoothSetup() }) {
                         ConnectionStatusView(midiService: midiService)
@@ -171,6 +217,7 @@ struct ContentView: View {
                                   : Theme.dark)
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .padding(.leading, 2)
                     .help(midiService.isConnected ? "MIDI Connected" : "Tap to connect Bluetooth MIDI")
                 }
                 .padding(.horizontal)

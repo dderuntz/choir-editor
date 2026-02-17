@@ -81,7 +81,7 @@ struct SoundPadView: View {
             
             // MARK: Field area (green-gray)
             VStack(spacing: 0) {
-                Text("Pick a consonant and vowel combo to test a phoneme")
+                Text("Pick a consonant and vowel combo to test phonemes. Your choir uses these phonemes to sing lovely songs.")
                     .font(.system(size: 12))
                     .foregroundColor(txtDim)
                     .frame(maxWidth: .infinity, alignment: .leading)

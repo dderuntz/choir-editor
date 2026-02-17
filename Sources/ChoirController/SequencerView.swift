@@ -14,6 +14,7 @@ struct SequencerView: View {
     @State private var playbackTimer: Timer? = nil
     @State private var lastTickTime: Date? = nil
     @State private var pendingClearAll = false
+    @State private var showSequencerTips = false
     
     // Scroll sync between scrub zone and piano roll grid
     @StateObject private var scrollSync = ScrollSyncManager()
@@ -165,6 +166,30 @@ struct SequencerView: View {
                         .foregroundStyle(Theme.dark)
                     }
                 }
+
+                Button(action: { showSequencerTips.toggle() }) {
+                    Label("Help", systemImage: "questionmark.circle")
+                }
+                .buttonStyle(HoverPillStyle(colorScheme: colorScheme, textColor: Theme.dark))
+                .popover(isPresented: $showSequencerTips) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Piano Roll Tips")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("This is the piano roll. It's where you can arrange your choir's sounds. Use the scale guide to help you place notes in the correct key.")
+                        Text("• Tap the grid to add a note")
+                        Text("• Drag notes to rearrange")
+                        Text("• Option-drag to duplicate a note")
+                        Text("• Tap a notes to select and edit the phoneme in the inspector")
+                        Text("• Shift-click to select multiple notes")
+                        Text("• Shift-click and drag to select multiple")
+                        Text("• Use Delete key to remove selected notes")
+                    }
+                    .font(.system(size: 12))
+                    .foregroundColor(Theme.dark)
+                    .padding()
+                    .frame(width: 260)
+                }
+                .help("Tips")
                 
                 Spacer()
             }

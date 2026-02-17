@@ -33,7 +33,7 @@ class MidiService: ObservableObject {
     
     func start() {
         midiManager.notificationHandler = { [weak self] notification in
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 self?.updateEndpoints()
             }
         }

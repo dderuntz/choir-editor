@@ -599,7 +599,7 @@ struct NoteActions {
 
 // MARK: - Note Rectangle View
 
-struct NoteRectView: View, @preconcurrency Equatable {
+struct NoteRectView: View, Equatable {
     let note: SequencerNote
     let isSelected: Bool
     let isInMultiSelect: Bool

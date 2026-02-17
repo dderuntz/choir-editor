@@ -82,6 +82,7 @@ enum Theme {
     
     static let labelSmall: Font = .caption2
     static let toolbarFont: Font = .system(size: 12)
+    static let toolbarIconSize: CGFloat = 20
     
     // MARK: Pill Button Tokens
     

@@ -1,4 +1,22 @@
 import SwiftUI
+import SwiftUIIntrospect
+import AppKit
+import ObjectiveC
+
+// MARK: - Placeholder Cursor Delegate
+
+private final class PlaceholderCursorDelegate: NSObject, NSTextViewDelegate {
+    let placeholder: String
+    init(placeholder: String) { self.placeholder = placeholder }
+    func textViewDidChangeSelection(_ notification: Notification) {
+        guard let textView = notification.object as? NSTextView,
+              textView.string == placeholder,
+              textView.selectedRange().location != 0 else { return }
+        textView.selectedRange = NSRange(location: 0, length: 0)
+    }
+}
+
+private enum PlaceholderDelegateKeys { static nonisolated(unsafe) var key: UInt8 = 0 }
 
 // MARK: - Chip Position Tracking
 
@@ -28,7 +46,6 @@ struct ComposerView: View {
 
     // Chip inspector
     @State private var inspectedPhonemeId: UUID? = nil
-    @State private var showEditingTips = false
 
     private var lineHeight: CGFloat { 62 }
 
@@ -37,8 +54,43 @@ struct ComposerView: View {
         return max(1, min(3, newlines))
     }
 
+    private static let placeholderText = "prompt or lyric"
+
+    /// When user edits the placeholder (typing front/middle/end), extract only what they typed
+    private static func extractTypedFromPlaceholder(_ newValue: String) -> String {
+        let p = placeholderText
+        if newValue == p { return "" }
+        let fromReplace = newValue.replacingOccurrences(of: p, with: "")
+        if fromReplace != newValue { return fromReplace }
+        var inserted = ""
+        var pi = p.startIndex
+        for c in newValue {
+            if pi < p.endIndex && p[pi] == c {
+                pi = p.index(after: pi)
+            } else {
+                inserted.append(c)
+            }
+        }
+        return inserted
+    }
+
     var body: some View {
-        let hasText = !composerModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let isPlaceholder = composerModel.inputText.isEmpty
+        let hasText = !isPlaceholder && !composerModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let displayText = Binding(
+            get: { composerModel.inputText.isEmpty ? Self.placeholderText : composerModel.inputText },
+            set: { newValue in
+                var resolved = Self.extractTypedFromPlaceholder(newValue)
+                let lines = resolved.components(separatedBy: "\n")
+                if lines.count > 3 {
+                    resolved = lines.prefix(3).joined(separator: "\n")
+                }
+                if resolved.count > 120 {
+                    resolved = String(resolved.prefix(120))
+                }
+                composerModel.inputText = resolved
+            }
+        )
 
         GeometryReader { geo in
         VStack(spacing: 0) {
@@ -51,37 +103,22 @@ struct ComposerView: View {
                     .foregroundColor(hasText ? Theme.field : Theme.dark)
                     .padding(.bottom, 8)
 
-                ZStack(alignment: .topLeading) {
-                    if composerModel.inputText.isEmpty {
-                        Text("prompt or lyric")
-                            .font(.system(size: 48, weight: .light))
-                            .kerning(-1.0)
-                            .foregroundColor(Theme.text(colorScheme).opacity(0.15))
-                            .padding(.top, 0)
-                            .padding(.leading, 5)
-                            .allowsHitTesting(false)
+                TextEditor(text: displayText)
+                    .font(.system(size: 48, weight: .light))
+                    .kerning(-1.0)
+                    .foregroundColor(isPlaceholder ? Theme.field : Theme.text(colorScheme))
+                    .tint(Theme.accent)
+                    .scrollContentBackground(.hidden)
+                    .focused($isTextFocused)
+                    .multilineTextAlignment(.center)
+                    .frame(height: CGFloat(editorLineCount) * lineHeight)
+                    .introspect(.textEditor, on: .macOS(.v11, .v12, .v13, .v14, .v15, .v26)) { textView in
+                        if textView.delegate == nil {
+                            let delegate = PlaceholderCursorDelegate(placeholder: Self.placeholderText)
+                            objc_setAssociatedObject(textView, &PlaceholderDelegateKeys.key, delegate, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+                            textView.delegate = delegate
+                        }
                     }
-                    TextEditor(text: $composerModel.inputText)
-                        .font(.system(size: 48, weight: .light))
-                        .kerning(-1.0)
-                        .scrollContentBackground(.hidden)
-                        .focused($isTextFocused)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(height: CGFloat(editorLineCount) * lineHeight)
-                .onChange(of: composerModel.inputText) { _, newValue in
-                    var capped = newValue
-                    let lines = capped.components(separatedBy: "\n")
-                    if lines.count > 3 {
-                        capped = lines.prefix(3).joined(separator: "\n")
-                    }
-                    if capped.count > 120 {
-                        capped = String(capped.prefix(120))
-                    }
-                    if capped != newValue {
-                        composerModel.inputText = capped
-                    }
-                }
 
                 HStack(spacing: 8) {
                     let btnHeight: CGFloat = 16
@@ -213,7 +250,7 @@ struct ComposerView: View {
                         .opacity(composerModel.isProcessing ? 0.4 : 1)
                     }
 
-                    // Right: Clear, Copy to Grid
+                    // Right: Clear, Copy to Piano Roll
                     HStack(spacing: 12) {
                         Spacer()
 
@@ -232,7 +269,7 @@ struct ComposerView: View {
                                 onDismiss?()
                             }
                         }) {
-                            Label("Copy to Grid", systemImage: "document.on.document")
+                            Label("Copy to Piano Roll", systemImage: "document.on.document")
                         }
                         .buttonStyle(HoverPillStyle(colorScheme: colorScheme))
                     }
@@ -317,32 +354,6 @@ struct ComposerView: View {
         }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(alignment: .bottomLeading) {
-            if !composerModel.phonemes.isEmpty {
-                Button(action: { showEditingTips.toggle() }) {
-                    Image(systemName: "questionmark.circle")
-                        .font(.system(size: 16))
-                        .foregroundColor(Theme.field)
-                }
-                .buttonStyle(.plain)
-                .popover(isPresented: $showEditingTips) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Editing Tips")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text("• Shift-click a chip to add choir")
-                        Text("• Long-press a chip to toggle ensemble")
-                        Text("• Right-click a chip to insert or delete")
-                        Text("• Click a chip to hear it and inspect")
-                    }
-                    .font(.system(size: 12))
-                    .foregroundColor(Theme.dark)
-                    .padding()
-                    .frame(width: 260)
-                }
-                .padding(.leading, 16)
-                .padding(.bottom, 16)
-            }
-        }
         .background(Theme.bg(colorScheme))
         .onAppear {
             isTextFocused = true
