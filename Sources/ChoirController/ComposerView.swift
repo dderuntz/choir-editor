@@ -45,6 +45,7 @@ struct ChipCenterKey: PreferenceKey {
 struct ComposerView: View {
     @EnvironmentObject var composerModel: ComposerModel
     @EnvironmentObject var sequencerModel: SequencerModel
+    var midiService: MidiService
     @ObservedObject var audioMonitor: AudioMonitorService
     var onDismiss: (() -> Void)? = nil
     @AppStorage("showKeyboard") private var showKeyboard = true
@@ -340,10 +341,10 @@ struct ComposerView: View {
                 // Play button (centered)
                 Button(action: {
                     if composerModel.isPlaying {
-                        composerModel.stop()
+                        composerModel.stop(midiService: midiService)
                         audioMonitor.stopNote(note: 60)
                     } else {
-                        composerModel.playPhonemes(audioMonitor: audioMonitor)
+                        composerModel.playPhonemes(audioMonitor: audioMonitor, midiService: midiService)
                     }
                 }) {
                     Label(composerModel.isPlaying ? "Stop" : "Play",
@@ -416,7 +417,7 @@ struct ComposerView: View {
                         if NSEvent.modifierFlags.contains(.shift) {
                             composerModel.toggleEnsemble(phoneme)
                         } else {
-                            composerModel.playSinglePhoneme(phoneme, audioMonitor: audioMonitor)
+                            composerModel.playSinglePhoneme(phoneme, audioMonitor: audioMonitor, midiService: midiService)
                             inspectedPhonemeId = (inspectedPhonemeId == phoneme.id) ? nil : phoneme.id
                         }
                     }

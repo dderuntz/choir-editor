@@ -253,6 +253,7 @@ class ComposerModel: ObservableObject {
     @Published var currentPlayIndex: Int? = nil
     @Published var currentArcDuration: Int = 330  // ms, note + gap — full time between bounces
     private var playbackTask: Task<Void, Never>? = nil
+    private var activeMidiPitches: Set<UInt8> = []
 
     /// Check on-device LLM availability (macOS 26+ only)
     var isLLMAvailable: Bool {
@@ -711,8 +712,8 @@ class ComposerModel: ObservableObject {
     // MARK: - Playback
 
     @MainActor
-    func playPhonemes(audioMonitor: AudioMonitorService) {
-        stop()
+    func playPhonemes(audioMonitor: AudioMonitorService, midiService: MidiService?) {
+        stop(midiService: midiService)
         guard !phonemes.isEmpty else { return }
 
         isPlaying = true
@@ -735,17 +736,25 @@ class ComposerModel: ObservableObject {
 
                 var activePitches: [UInt8]
                 if ensemble {
-                    activePitches = playEnsemble(pitch: pitch, velocity: velocity, phoneme: phoneme, audioMonitor: audioMonitor)
+                    activePitches = playEnsemble(pitch: pitch, velocity: velocity, phoneme: phoneme, audioMonitor: audioMonitor, midiService: midiService)
                 } else {
                     audioMonitor.playNote(
                         note: pitch, velocity: velocity, vibrato: 64, reverb: 32,
                         vowel: phoneme.vowelCC, consonant: phoneme.consonantCC
                     )
+                    if let ms = midiService, ms.isConnected {
+                        ms.consonant = phoneme.consonantCC
+                        ms.vowel = phoneme.vowelCC
+                        ms.vibrato = 64
+                        ms.reverb = 32
+                        ms.sendNoteOn(note: pitch, velocity: velocity)
+                        activeMidiPitches.insert(pitch)
+                    }
                     activePitches = [pitch]
                 }
 
                 try? await Task.sleep(for: .milliseconds(duration))
-                stopAll(pitches: activePitches, audioMonitor: audioMonitor)
+                stopAll(pitches: activePitches, audioMonitor: audioMonitor, midiService: midiService)
 
                 // Gap between syllables (already computed above for arc)
                 try? await Task.sleep(for: .milliseconds(gap))
@@ -769,13 +778,22 @@ class ComposerModel: ObservableObject {
 
     /// Barbershop quartet: lead + 3 harmony voices, all snapped to scale
     /// Tenor: ~3rd above lead, Baritone: ~3rd below, Bass: ~octave below
-    private func playEnsemble(pitch: UInt8, velocity: UInt8, phoneme: ChoirPhoneme, audioMonitor: AudioMonitorService) -> [UInt8] {
+    @MainActor
+    private func playEnsemble(pitch: UInt8, velocity: UInt8, phoneme: ChoirPhoneme, audioMonitor: AudioMonitorService, midiService: MidiService?) -> [UInt8] {
         let scale = scaleNotes(center: pitch, range: 18)
         var pitches: [UInt8] = [pitch]
 
         // Lead voice
         audioMonitor.playNote(note: pitch, velocity: velocity, vibrato: 64, reverb: 32,
                               vowel: phoneme.vowelCC, consonant: phoneme.consonantCC)
+        if let ms = midiService, ms.isConnected {
+            ms.consonant = phoneme.consonantCC
+            ms.vowel = phoneme.vowelCC
+            ms.vibrato = 64
+            ms.reverb = 32
+            ms.sendNoteOn(note: pitch, velocity: velocity)
+            activeMidiPitches.insert(pitch)
+        }
 
         // Quartet intervals — wider open voicing, all snapped to scale
         let targets: [(offset: Int, velDrop: UInt8, reverb: UInt8)] = [
@@ -791,6 +809,14 @@ class ComposerModel: ObservableObject {
             let hv = max(50, velocity - t.velDrop)
             audioMonitor.playNote(note: snapped, velocity: hv, vibrato: 64, reverb: t.reverb,
                                   vowel: phoneme.vowelCC, consonant: phoneme.consonantCC)
+            if let ms = midiService, ms.isConnected {
+                ms.consonant = phoneme.consonantCC
+                ms.vowel = phoneme.vowelCC
+                ms.vibrato = 64
+                ms.reverb = t.reverb
+                ms.sendNoteOn(note: snapped, velocity: hv)
+                activeMidiPitches.insert(snapped)
+            }
             pitches.append(snapped)
         }
 
@@ -798,8 +824,15 @@ class ComposerModel: ObservableObject {
         return pitches
     }
 
-    private func stopAll(pitches: [UInt8], audioMonitor: AudioMonitorService) {
-        for p in pitches { audioMonitor.stopNote(note: p) }
+    @MainActor
+    private func stopAll(pitches: [UInt8], audioMonitor: AudioMonitorService, midiService: MidiService?) {
+        for p in pitches {
+            audioMonitor.stopNote(note: p)
+            if let ms = midiService, ms.isConnected {
+                ms.sendNoteOff(note: p)
+                activeMidiPitches.remove(p)
+            }
+        }
     }
 
     @MainActor
@@ -854,16 +887,16 @@ class ComposerModel: ObservableObject {
     private var keyboardStepIndex: Int = 0
 
     @MainActor
-    func playNextChip(note: UInt8, audioMonitor: AudioMonitorService) {
+    func playNextChip(note: UInt8, audioMonitor: AudioMonitorService, midiService: MidiService?) {
         guard !phonemes.isEmpty else { return }
         let phoneme = phonemes[keyboardStepIndex % phonemes.count]
-        playSinglePhoneme(phoneme, audioMonitor: audioMonitor, pitchOverride: note)
+        playSinglePhoneme(phoneme, audioMonitor: audioMonitor, midiService: midiService, pitchOverride: note)
         keyboardStepIndex = (keyboardStepIndex + 1) % phonemes.count
     }
 
     @MainActor
-    func playSinglePhoneme(_ phoneme: ChoirPhoneme, audioMonitor: AudioMonitorService, pitchOverride: UInt8? = nil) {
-        stop()
+    func playSinglePhoneme(_ phoneme: ChoirPhoneme, audioMonitor: AudioMonitorService, midiService: MidiService? = nil, pitchOverride: UInt8? = nil) {
+        stop(midiService: midiService)
         let idx = phonemes.firstIndex(where: { $0.id == phoneme.id }) ?? 0
         currentPlayIndex = idx
         let pitch = pitchOverride ?? pitchForPhoneme(index: idx, weight: phoneme.weight, total: phonemes.count)
@@ -871,27 +904,39 @@ class ComposerModel: ObservableObject {
         print("[Composer] tap: \(phoneme.text) → \(phoneme.consonantName)·\(phoneme.vowelSymbol) w\(phoneme.weight) note \(pitch)\(phoneme.isEnsemble ? " 🎵ensemble" : "")")
         var activePitches: [UInt8]
         if phoneme.isEnsemble {
-            activePitches = playEnsemble(pitch: pitch, velocity: velocity, phoneme: phoneme, audioMonitor: audioMonitor)
+            activePitches = playEnsemble(pitch: pitch, velocity: velocity, phoneme: phoneme, audioMonitor: audioMonitor, midiService: midiService)
         } else {
             audioMonitor.playNote(
                 note: pitch, velocity: velocity, vibrato: 64, reverb: 32,
                 vowel: phoneme.vowelCC, consonant: phoneme.consonantCC
             )
+            if let ms = midiService, ms.isConnected {
+                ms.consonant = phoneme.consonantCC
+                ms.vowel = phoneme.vowelCC
+                ms.vibrato = 64
+                ms.reverb = 32
+                ms.sendNoteOn(note: pitch, velocity: velocity)
+                activeMidiPitches.insert(pitch)
+            }
             activePitches = [pitch]
         }
         playbackTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(500))
-            stopAll(pitches: activePitches, audioMonitor: audioMonitor)
+            stopAll(pitches: activePitches, audioMonitor: audioMonitor, midiService: midiService)
             self.currentPlayIndex = nil
         }
     }
 
     @MainActor
-    func stop() {
+    func stop(midiService: MidiService? = nil) {
         playbackTask?.cancel()
         playbackTask = nil
         isPlaying = false
         currentPlayIndex = nil
+        if let ms = midiService, ms.isConnected, !activeMidiPitches.isEmpty {
+            for p in activeMidiPitches { ms.sendNoteOff(note: p) }
+            activeMidiPitches.removeAll()
+        }
     }
 
     // MARK: - Copy to Grid

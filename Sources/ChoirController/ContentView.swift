@@ -53,7 +53,17 @@ struct ContentView: View {
     @State private var editingTitle: String = ""
     @State private var isSaving = false
     @State private var showComposerHelp = false
+    @State private var emptyHelperDismissed = false
+    @State private var hasCompletedInitialLoad = false
     @FocusState private var isTitleFocused: Bool
+    
+    private var isEmptyState: Bool {
+        showComposer ? !composerModel.hasContent : model.notes.isEmpty
+    }
+    
+    private var showEmptyHelper: Bool {
+        isEmptyState && !emptyHelperDismissed && hasCompletedInitialLoad
+    }
     
     var body: some View {
         ZStack(alignment: .leading) {
@@ -115,15 +125,18 @@ struct ContentView: View {
 
                         if showComposer {
                             HStack(spacing: 8) {
-                                Image("GridIcon")
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(height: 12)
-                                    .foregroundColor(Theme.dark)
                                 Button(action: {
                                     withAnimation(.easeInOut(duration: 0.25)) { showComposer = false }
                                 }) {
-                                    Text("Piano Roll")
+                                    Label {
+                                        Text("Piano Roll")
+                                    } icon: {
+                                        Image("GridIcon")
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fit)
+                                            .frame(width: 12, height: 12)
+                                            .foregroundColor(Theme.dark)
+                                    }
                                 }
                                 .buttonStyle(HoverPillStyle(colorScheme: colorScheme, textColor: Theme.dark))
                                 .help("Return to Piano Roll")
@@ -229,7 +242,7 @@ struct ContentView: View {
                 // Main content: Composer or Sequencer
                 ZStack(alignment: .bottom) {
                     if showComposer {
-                        ComposerView(audioMonitor: audioMonitor, onDismiss: { showComposer = false })
+                        ComposerView(midiService: midiService, audioMonitor: audioMonitor, onDismiss: { showComposer = false })
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .background(NonDraggableArea())
                             .padding(.bottom, showKeyboard ? 150 : 0)
@@ -290,6 +303,77 @@ struct ContentView: View {
                     .transition(.move(edge: .trailing))
                 }
             }
+            
+            // Empty-state helper (custom modal: center text, full-width buttons, icons)
+            if showEmptyHelper {
+                ZStack {
+                    Theme.overlay(colorScheme)
+                        .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { emptyHelperDismissed = true } }
+                    VStack(spacing: 0) {
+                        VStack(spacing: 12) {
+                            Text("Where to start?")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(Theme.text(colorScheme))
+                                .frame(maxWidth: .infinity)
+                            Text("Open the composer to craft a lyric for the choir and quickly test it out.")
+                                .font(.system(size: 13))
+                                .foregroundColor(Theme.text(colorScheme).opacity(0.9))
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: .infinity)
+                            Text("Challenge — Start manually arranging phonemes and notes on a piano roll and hit play!")
+                                .font(.system(size: 13))
+                                .foregroundColor(Theme.text(colorScheme).opacity(0.9))
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .padding(24)
+                        HStack(spacing: 12) {
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    emptyHelperDismissed = true
+                                    if showComposer { showComposer = false }
+                                }
+                            } label: {
+                                Label {
+                                    Text("Start with melody")
+                                } icon: {
+                                    Image("GridIcon")
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fit)
+                                        .frame(width: 14, height: 14)
+                                        .foregroundStyle(Theme.text(colorScheme))
+                                }
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(Theme.text(colorScheme))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                            }
+                            .buttonStyle(.plain)
+                            .background(Theme.fieldColor(colorScheme), in: RoundedRectangle(cornerRadius: 8))
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    emptyHelperDismissed = true
+                                    if !showComposer { showComposer = true }
+                                }
+                            } label: {
+                                Label("Start with ideas", systemImage: "eyebrow")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(Theme.dark)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                            }
+                            .buttonStyle(.plain)
+                            .background(Theme.accent, in: RoundedRectangle(cornerRadius: 8))
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 24)
+                    }
+                    .frame(width: 380)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
+                    .glassEffect(in: RoundedRectangle(cornerRadius: 20))
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            }
         }
         .frame(minWidth: 650, minHeight: 500)
         .onAppear {
@@ -297,6 +381,7 @@ struct ContentView: View {
             showComposer = showComposerStorage
             midiService.start()
             model.loadLastFileIfAvailable()
+            hasCompletedInitialLoad = true  // defer empty helper until after load
             applyLocalAudioMode()
         }
         .onChange(of: showKeyboardStorage) { _, newValue in
@@ -310,6 +395,9 @@ struct ContentView: View {
         }
         .onChange(of: showComposer) { _, newValue in
             showComposerStorage = newValue
+        }
+        .onChange(of: isEmptyState) { _, isEmpty in
+            if !isEmpty { emptyHelperDismissed = false }  // reset so helper shows again next time
         }
         .onChange(of: localAudioEnabled) { _, enabled in
             if enabled {

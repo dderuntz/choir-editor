@@ -29,14 +29,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor static func showAboutPanel() {
         let credits = """
-        A sequencer for composing phoneme-based choral \
-        arrangements for robotic singing dolls.
+        Compose phoneme-based choral arrangements for \
+        Teenage Engineering Choir dolls.
 
-        Type or summon lyrics, compose phonemes, tune each \
-        chip's consonant and vowel, then send the sequence \
-        over MIDI to a choir of dolls.
+        Open the composer and type or summon lyrics with your computer's built in AI (Apple's Foundation Model), extract phonemes, tune \
+        each chip's consonant and vowel, watch the bouncing \
+        ball, then send to the piano roll and \
+        over MIDI to your choir.
 
-        Intake → Compose → Listen → Express
+        Prefer → Compose → Test → Touch
         """
         let attrCredits = NSAttributedString(
             string: credits,
