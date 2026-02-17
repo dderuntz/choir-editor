@@ -19,10 +19,12 @@ private final class PlaceholderCursorObserver {
     func start() {
         let ph = placeholder
         token = NotificationCenter.default.addObserver(forName: NSTextView.didChangeSelectionNotification, object: textView, queue: .main) { note in
-            guard let textView = note.object as? NSTextView,
-                  textView.string == ph,
-                  textView.selectedRange().location != 0 else { return }
-            textView.selectedRange = NSRange(location: 0, length: 0)
+            guard let textView = note.object as? NSTextView else { return }
+            Task { @MainActor in
+                guard textView.string == ph,
+                      textView.selectedRange().location != 0 else { return }
+                textView.selectedRange = NSRange(location: 0, length: 0)
+            }
         }
     }
 
@@ -119,7 +121,7 @@ struct ComposerView: View {
                 TextEditor(text: displayText)
                     .font(.system(size: 48, weight: .light))
                     .kerning(-1.0)
-                    .foregroundColor(isPlaceholder ? Theme.field : Theme.text(colorScheme))
+                    .foregroundColor(isPlaceholder ? Theme.fieldLight : Theme.text(colorScheme))
                     .tint(Theme.accent)
                     .scrollContentBackground(.hidden)
                     .focused($isTextFocused)
@@ -197,18 +199,17 @@ struct ComposerView: View {
                         Label(composerModel.isProcessing ? "Thinking…" : "Reveal Phonemes",
                               systemImage: composerModel.isProcessing ? "ellipsis" : "eye")
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(Theme.dark)
+                            .foregroundColor(revealDisabled ? Theme.field : Theme.dark)
                             .padding(.horizontal, 28)
                             .padding(.vertical, 14)
                             .background(
                                 RoundedRectangle(cornerRadius: 14)
-                                    .fill(Theme.accent)
+                                    .fill(revealDisabled ? Theme.fieldColor(colorScheme) : Theme.accent)
                             )
                             .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
                     .buttonStyle(.plain)
                     .disabled(revealDisabled)
-                    .opacity(revealDisabled ? 0.4 : 1)
                     Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: (geo.size.height - 52) * 0.33)
