@@ -260,7 +260,7 @@ struct AboutCommands: Commands {
 
 struct HelpCommands: Commands {
     private let repoURL = "https://github.com/dderuntz/choir-editor"
-    
+
     var body: some Commands {
         CommandGroup(replacing: .help) {
             Button("How to Use Choir Arranger") {
@@ -268,15 +268,22 @@ struct HelpCommands: Commands {
                     NSWorkspace.shared.open(url)
                 }
             }
-            
+
             Button("About the Project") {
                 if let url = URL(string: repoURL) {
                     NSWorkspace.shared.open(url)
                 }
             }
-            
+
             Divider()
-            
+
+            Button("Reset Tutorial") {
+                UserDefaults.standard.removeObject(forKey: "hasSeenChipsExplanation")
+                UserDefaults.standard.removeObject(forKey: "hasSeenFirstPlayGuide")
+            }
+
+            Divider()
+
             Button("Report an Issue...") {
                 if let url = URL(string: "\(repoURL)/issues") {
                     NSWorkspace.shared.open(url)

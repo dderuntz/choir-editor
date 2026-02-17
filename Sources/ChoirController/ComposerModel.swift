@@ -685,17 +685,39 @@ class ComposerModel: ObservableObject {
         return notes[idx]
     }
 
-    /// Duration in ms based on weight + speed, logarithmic scaling
-    /// Longer base notes stretch proportionally more at slower speeds
+    /// Duration in ms based on weight, ensemble, and speed
+    /// - weight 3 (primary stress): longest base
+    /// - weight 2 (secondary): medium
+    /// - weight 1 (unstressed): brief
+    /// - isEnsemble: 2x multiplier for choral notes
+    /// - Logarithmic speed scaling so longer notes stretch proportionally more
+    private func durationForPhoneme(_ phoneme: ChoirPhoneme) -> Int {
+        let weight = phoneme.weight
+
+        // Base duration with more dramatic scaling for emphasis
+        let base: Double
+        switch weight {
+        case 3: base = 750    // primary stress - long hold
+        case 2: base = 450    // secondary stress - medium
+        default: base = 280   // unstressed - brief
+        }
+
+        // Ensemble (chorus) notes hold 2x as long
+        let ensembleMultiplier: Double = phoneme.isEnsemble ? 2.0 : 1.0
+
+        // Logarithmic speed scaling: longer notes stretch more at slower speeds
+        let scaled = base * ensembleMultiplier * pow(speedMultiplier, base / 280.0)
+        return max(minNoteDuration, Int(scaled))
+    }
+
+    /// Legacy wrapper for copyToGrid which doesn't have phoneme context
     private func durationForWeight(_ weight: Int) -> Int {
         let base: Double
         switch weight {
-        case 3: base = 500    // long hold
-        case 2: base = 380    // medium
-        default: base = 280   // brief
+        case 3: base = 750
+        case 2: base = 450
+        default: base = 280
         }
-        // Logarithmic: multiply = multiplier ^ (base/280)
-        // So 280ms note gets linear scaling, but 500ms note stretches more
         let scaled = base * pow(speedMultiplier, base / 280.0)
         return max(minNoteDuration, Int(scaled))
     }
@@ -723,7 +745,7 @@ class ComposerModel: ObservableObject {
             for (index, phoneme) in phonemesToPlay.enumerated() {
                 guard !Task.isCancelled else { break }
 
-                let duration = durationForWeight(phoneme.weight)
+                let duration = durationForPhoneme(phoneme)
                 let gap = Int(Double(phoneme.weight >= 3 ? 80 : 50) * speedMultiplier)
                 self.currentArcDuration = duration + gap
                 self.currentPlayIndex = index
