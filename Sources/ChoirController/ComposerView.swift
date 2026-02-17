@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - Chip Position Tracking
 
 struct ChipCenterKey: PreferenceKey {
-    static var defaultValue: [Int: CGFloat] = [:]
+    nonisolated(unsafe) static var defaultValue: [Int: CGFloat] = [:]
     static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
         value.merge(nextValue(), uniquingKeysWith: { $1 })
     }
@@ -15,6 +15,7 @@ struct ComposerView: View {
     @ObservedObject var audioMonitor: AudioMonitorService
     var onDismiss: (() -> Void)? = nil
     @AppStorage("showKeyboard") private var showKeyboard = true
+    @AppStorage("lyricStyle") private var lyricStyle: LyricStyle = .senryu
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var isTextFocused: Bool
 
@@ -22,9 +23,12 @@ struct ComposerView: View {
     @State private var chipCenters: [Int: CGFloat] = [:]
     @State private var ballX: CGFloat = 0
     @State private var ballY: CGFloat = 0  // 0 = chip level, negative = above
+    @State private var pageLeadingX: CGFloat = 0  // content-space X of viewport's left edge
+    @State private var nsScrollView: NSScrollView?
 
     // Chip inspector
     @State private var inspectedPhonemeId: UUID? = nil
+    @State private var showEditingTips = false
 
     private var lineHeight: CGFloat { 62 }
 
@@ -35,17 +39,16 @@ struct ComposerView: View {
 
     var body: some View {
         let hasText = !composerModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let buttonBg = Color(red: 0xD8/255, green: 0xD6/255, blue: 0xD3/255)
 
         GeometryReader { geo in
         VStack(spacing: 0) {
             // MARK: Text Entry Area (centered, max 640)
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .center, spacing: 4) {
                 Spacer()
 
                 Text("What shall we sing?")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(Theme.text(colorScheme).opacity(hasText ? 0.4 : 1.0))
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundColor(hasText ? Theme.field : Theme.dark)
                     .padding(.bottom, 8)
 
                 ZStack(alignment: .topLeading) {
@@ -63,6 +66,7 @@ struct ComposerView: View {
                         .kerning(-1.0)
                         .scrollContentBackground(.hidden)
                         .focused($isTextFocused)
+                        .multilineTextAlignment(.center)
                 }
                 .frame(height: CGFloat(editorLineCount) * lineHeight)
                 .onChange(of: composerModel.inputText) { newValue in
@@ -85,29 +89,15 @@ struct ComposerView: View {
                     Button(action: {
                         Task { await composerModel.summonSong() }
                     }) {
-                        Label(composerModel.isProcessing ? "Summoning…" : "Summon a Lyric",
+                        Label(composerModel.isProcessing ? "Composing…" : lyricStyle.buttonLabel,
                               systemImage: composerModel.isProcessing ? "ellipsis" : "eyebrow")
-                            .foregroundColor(Theme.dark.opacity(summonDisabled ? 0.3 : 1))
                             .frame(height: btnHeight)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(buttonBg.opacity(summonDisabled ? 0.4 : 1))
+                    .buttonStyle(HoverPillStyle(colorScheme: colorScheme))
                     .disabled(summonDisabled)
-
-                    let revealDisabled = !hasText || composerModel.isProcessing
-                    Button(action: {
-                        Task { await composerModel.extractPhonemes() }
-                    }) {
-                        Label(composerModel.isProcessing ? "Thinking…" : "Reveal Phonemes",
-                              systemImage: composerModel.isProcessing ? "ellipsis" : "eye")
-                            .foregroundColor(Theme.dark.opacity(revealDisabled ? 0.3 : 1))
-                            .frame(height: btnHeight)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(buttonBg.opacity(revealDisabled ? 0.4 : 1))
-                    .disabled(revealDisabled)
+                    .opacity(summonDisabled ? 0.3 : 1)
                 }
-                .padding(.top, 4)
+                .padding(.top, -4)
 
                 // Error / status
                 if let error = composerModel.errorMessage {
@@ -125,131 +115,114 @@ struct ComposerView: View {
                 Spacer()
             }
             .frame(maxWidth: 640)
-            .frame(maxWidth: .infinity, maxHeight: composerModel.phonemes.isEmpty ? .infinity : geo.size.height * 0.5)
+            .frame(maxWidth: .infinity, maxHeight: composerModel.phonemes.isEmpty ? (geo.size.height - 52) * 0.67 : (geo.size.height - 52) * 0.5)
             .padding(.horizontal)
-            .padding(.bottom, 28)
+            .padding(.bottom, 20)
+            .overlay(alignment: .topTrailing) {
+                if composerModel.canUndo {
+                    Button(action: {
+                        composerModel.undo()
+                    }) {
+                        Label("Undo", systemImage: "arrow.uturn.backward")
+                    }
+                    .buttonStyle(HoverPillStyle(colorScheme: colorScheme))
+                    .padding(.top, 8)
+                    .padding(.trailing, 16)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+            }
+            .animation(.easeInOut(duration: 0.2), value: composerModel.canUndo)
+
+            // MARK: Empty state — Reveal Phonemes
+            if composerModel.phonemes.isEmpty {
+                let revealDisabled = !hasText || composerModel.isProcessing
+                VStack {
+                    Spacer()
+                    Button(action: {
+                        Task { await composerModel.extractPhonemes() }
+                    }) {
+                        Label(composerModel.isProcessing ? "Thinking…" : "Reveal Phonemes",
+                              systemImage: composerModel.isProcessing ? "ellipsis" : "eye")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(Theme.dark)
+                            .padding(.horizontal, 28)
+                            .padding(.vertical, 14)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .fill(Theme.accent)
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(revealDisabled)
+                    .opacity(revealDisabled ? 0.4 : 1)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: (geo.size.height - 52) * 0.33)
+            }
 
             // MARK: Phoneme Area (full width)
             if !composerModel.phonemes.isEmpty {
                 // Hairline divider
                 Theme.fieldColor(colorScheme)
                     .frame(height: 1)
+                    .padding(.horizontal, 16)
 
-                Spacer()
-
-                ZStack(alignment: .topLeading) {
-                    phonemeStrip(leadingPad: 0)
-
-                    // Bouncing ball
-                    if composerModel.isPlaying {
-                        Circle()
-                            .fill(Theme.green)
-                            .frame(width: 10, height: 10)
-                            .offset(x: ballX - 5, y: ballY - 3)
-                    }
-                }
-                .onPreferenceChange(ChipCenterKey.self) { chipCenters = $0 }
-                .onChange(of: composerModel.isPlaying) { playing in
-                    if playing, let cx = chipCenters[0] {
-                        ballX = cx
-                        ballY = 0
-                    }
-                }
-                .onChange(of: composerModel.currentPlayIndex) { newIndex in
-                    guard let idx = newIndex, let cx = chipCenters[idx] else { return }
-
-                    let nextCx = chipCenters[idx + 1] ?? cx
-                    let distance = abs(nextCx - cx)
-                    let arcHeight = -min(50, max(16, max(distance, 30) * 0.35))
-                    let fullArc = Double(composerModel.currentArcDuration) / 1000.0
-                    let halfArc = fullArc * 0.5
-
-                    let steepOut = Animation.timingCurve(0, 0, 0.05, 1, duration: halfArc)
-                    let steepIn = Animation.timingCurve(0.95, 0, 1, 1, duration: halfArc)
-
-                    withAnimation(steepOut) {
-                        ballY = arcHeight
-                    }
-                    withAnimation(.linear(duration: halfArc)) {
-                        ballX = (cx + nextCx) / 2
-                    }
-
-                    DispatchQueue.main.asyncAfter(deadline: .now() + halfArc) {
-                        withAnimation(steepIn) {
-                            ballY = 0
-                        }
-                        withAnimation(.linear(duration: halfArc)) {
-                            ballX = nextCx
-                        }
-                    }
-                }
-                .padding(.top, 48)
-                .padding(.horizontal)
-
-                Spacer()
-
-                // Instruction caption
-                Text("Shift-click a chip to add choir")
-                    .font(.system(size: 11))
-                    .foregroundColor(Theme.text(colorScheme).opacity(0.35))
-                    .padding(.horizontal)
-                    .padding(.vertical, 4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                // Phoneme toolbar (ZStack for true center play button)
+                // Actions bar (near top divider)
                 ZStack {
-                    let btnHeight: CGFloat = 16
+                    // Left: Key/Scale
+                    HStack(spacing: 12) {
+                        Image(systemName: "music.note.list")
+                            .foregroundColor(Theme.field)
 
-                    // Key/Scale (left)
-                    HStack {
-                        HStack(spacing: 4) {
-                            Image(systemName: "music.note.list")
-                                .foregroundColor(Theme.text(colorScheme).opacity(0.5))
-
-                            Picker("", selection: $sequencerModel.musicalKey) {
-                                ForEach(MusicalKey.allCases) { key in
-                                    Text(key.name).tag(key)
-                                }
+                        Picker("", selection: $sequencerModel.musicalKey) {
+                            ForEach(MusicalKey.allCases) { key in
+                                Text("Key of \(key.name)").tag(key)
                             }
-                            .labelsHidden()
-                            .frame(width: 52)
-
-                            Picker("", selection: $sequencerModel.scaleType) {
-                                ForEach(ScaleType.allCases) { scale in
-                                    Text(scale.rawValue).tag(scale)
-                                }
-                            }
-                            .labelsHidden()
                         }
+                        .labelsHidden()
+                        .buttonStyle(.borderless)
+                        .fixedSize()
+                        .tint(Theme.field)
+                        .foregroundStyle(Theme.field)
+
+                        Picker("", selection: $sequencerModel.scaleType) {
+                            ForEach(ScaleType.allCases) { scale in
+                                Text("\(scale.rawValue) Scale").tag(scale)
+                            }
+                        }
+                        .labelsHidden()
+                        .buttonStyle(.borderless)
+                        .fixedSize()
+                        .tint(Theme.field)
+                        .foregroundStyle(Theme.field)
+
                         Spacer()
                     }
 
-                    // Play (true center)
-                    Button(action: {
-                        if composerModel.isPlaying {
+                    // Right: Update Phonemes, Clear, Copy to Grid
+                    HStack(spacing: 12) {
+                        Spacer()
+
+                        let revealDisabled = !hasText || composerModel.isProcessing
+                        Button(action: {
+                            Task { await composerModel.extractPhonemes() }
+                        }) {
+                            Label(composerModel.isProcessing ? "Thinking…" : "Sync Phonemes",
+                                  systemImage: composerModel.isProcessing ? "ellipsis" : "arrow.trianglehead.2.clockwise.rotate.90")
+                        }
+                        .buttonStyle(HoverPillStyle(colorScheme: colorScheme))
+                        .disabled(revealDisabled)
+                        .opacity(revealDisabled ? 0.4 : 1)
+
+                        Button(action: {
                             composerModel.stop()
-                            audioMonitor.stopNote(note: 60)
-                        } else {
-                            composerModel.playPhonemes(audioMonitor: audioMonitor)
+                            composerModel.clearPhonemes()
+                        }) {
+                            Label("Clear", systemImage: "trash")
                         }
-                    }) {
-                        Label(composerModel.isPlaying ? "Stop" : "Play",
-                              systemImage: composerModel.isPlaying ? "stop.fill" : "play.fill")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(Theme.dark)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 10)
-                    }
-                    .buttonStyle(.plain)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14)
-                            .fill(composerModel.isPlaying ? Theme.green : Theme.accent)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-
-                    // Actions (right)
-                    HStack(spacing: 8) {
-                        Spacer()
+                        .buttonStyle(HoverPillStyle(colorScheme: colorScheme))
+                        .help("Clear phonemes")
 
                         Button(action: {
                             composerModel.copyToGrid(sequencer: sequencerModel)
@@ -259,43 +232,81 @@ struct ComposerView: View {
                         }) {
                             Label("Copy to Grid", systemImage: "document.on.document")
                                 .foregroundColor(Theme.dark)
-                                .frame(height: btnHeight)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(buttonBg)
+                        .tint(Theme.fieldColor(colorScheme))
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
 
-                        Button(action: {
-                            composerModel.stop()
-                            composerModel.clearPhonemes()
-                        }) {
-                            Image(systemName: "trash")
-                                .foregroundColor(Theme.dark)
-                                .frame(height: btnHeight)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(buttonBg)
-                        .help("Clear phonemes")
+                Spacer()
 
-                        if composerModel.canUndo {
-                            Button(action: {
-                                composerModel.undo()
-                            }) {
-                                Image(systemName: "arrow.uturn.backward")
-                                    .foregroundColor(Theme.dark)
-                                    .frame(height: btnHeight)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(buttonBg)
-                            .help("Undo")
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                phonemeStrip(leadingPad: 0)
+                    .onPreferenceChange(ChipCenterKey.self) { chipCenters = $0 }
+                    .onChange(of: composerModel.isPlaying) { playing in
+                        if playing, let cx = chipCenters[0] {
+                            ballX = cx
+                            ballY = 0
                         }
                     }
-                    .animation(.easeInOut(duration: 0.2), value: composerModel.canUndo)
+                    .onChange(of: composerModel.currentPlayIndex) { newIndex in
+                        guard let idx = newIndex, let cx = chipCenters[idx] else { return }
+
+                        let nextCx = chipCenters[idx + 1] ?? cx
+                        let distance = abs(nextCx - cx)
+                        let arcHeight = -min(100, max(32, max(distance, 30) * 0.7))
+                        let fullArc = Double(composerModel.currentArcDuration) / 1000.0
+                        let halfArc = fullArc * 0.5
+
+                        let steepOut = Animation.timingCurve(0, 0, 0.05, 1, duration: halfArc)
+                        let steepIn = Animation.timingCurve(0.95, 0, 1, 1, duration: halfArc)
+
+                        withAnimation(steepOut) {
+                            ballY = arcHeight
+                        }
+                        withAnimation(.linear(duration: halfArc)) {
+                            ballX = (cx + nextCx) / 2
+                        }
+
+                        DispatchQueue.main.asyncAfter(deadline: .now() + halfArc) {
+                            withAnimation(steepIn) {
+                                ballY = 0
+                            }
+                            withAnimation(.linear(duration: halfArc)) {
+                                ballX = nextCx
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+
+                Spacer()
+
+                // Play button (centered)
+                Button(action: {
+                    if composerModel.isPlaying {
+                        composerModel.stop()
+                        audioMonitor.stopNote(note: 60)
+                    } else {
+                        composerModel.playPhonemes(audioMonitor: audioMonitor)
+                    }
+                }) {
+                    Label(composerModel.isPlaying ? "Stop" : "Play",
+                          systemImage: composerModel.isPlaying ? "stop.fill" : "play.fill")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(Theme.dark)
+                        .padding(.horizontal, 22)
+                        .padding(.vertical, 16)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14)
+                                .fill(composerModel.isPlaying ? Theme.green : Theme.accent)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
-                .controlSize(.regular)
-                .padding(.horizontal)
-                .padding(.top, 16)
-                .padding(.bottom, 10)
+                .buttonStyle(.plain)
+
+                Spacer()
             }
 
             // Bottom keyboard divider
@@ -306,6 +317,32 @@ struct ComposerView: View {
         }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .bottomLeading) {
+            if !composerModel.phonemes.isEmpty {
+                Button(action: { showEditingTips.toggle() }) {
+                    Image(systemName: "questionmark.circle")
+                        .font(.system(size: 16))
+                        .foregroundColor(Theme.field)
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $showEditingTips) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Editing Tips")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("• Shift-click a chip to add choir")
+                        Text("• Long-press a chip to toggle ensemble")
+                        Text("• Right-click a chip to insert or delete")
+                        Text("• Click a chip to hear it and inspect")
+                    }
+                    .font(.system(size: 12))
+                    .foregroundColor(Theme.dark)
+                    .padding()
+                    .frame(width: 260)
+                }
+                .padding(.leading, 16)
+                .padding(.bottom, 16)
+            }
+        }
         .background(Theme.bg(colorScheme))
         .onAppear {
             isTextFocused = true
@@ -319,8 +356,6 @@ struct ComposerView: View {
     // MARK: - Phoneme Strip
 
     private func phonemeStrip(leadingPad: CGFloat = 0) -> some View {
-        GeometryReader { containerGeo in
-        ScrollViewReader { scrollProxy in
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 0) {
                 ForEach(Array(composerModel.phonemes.enumerated()), id: \.element.id) { index, phoneme in
@@ -401,33 +436,88 @@ struct ComposerView: View {
                       : "Approve — save as training example")
             }
             .padding(.leading, leadingPad)
-            .padding(.vertical, 8)
-            .frame(minWidth: containerGeo.size.width, alignment: .center)
+            .padding(.top, 40)
+            .frame(minWidth: nsScrollView?.frame.width ?? 0, alignment: .center)
+            .coordinateSpace(name: "phonemeStrip")
+            .overlay(alignment: .topLeading) {
+                // Bouncing ball — lives inside scroll content so it scrolls with chips
+                if composerModel.isPlaying {
+                    Circle()
+                        .fill(Theme.green)
+                        .frame(width: 14, height: 14)
+                        .offset(x: ballX - 7, y: ballY + 26)
+                        .allowsHitTesting(false)
+                }
+            }
+            .background(ScrollViewFinder { self.nsScrollView = $0 })
         }
-        .coordinateSpace(name: "phonemeStrip")
         .onChange(of: composerModel.currentPlayIndex) { idx in
-            guard let idx = idx else { return }
-            let total = composerModel.phonemes.count
-            // Only scroll every 4 chips (or on the last one)
-            guard idx % 4 == 0 || idx >= total - 1 else { return }
-            // Look ahead ~6 chips so the ball has room
-            let target = min(idx + 6, total - 1)
-            withAnimation(.linear(duration: 2.0)) {
-                scrollProxy.scrollTo(target, anchor: UnitPoint(x: 0.33, y: 0.5))
+            guard let idx = idx, let chipX = chipCenters[idx] else { return }
+            let viewWidth = nsScrollView?.frame.width ?? 800
+            let ballInViewport = chipX - pageLeadingX
+
+            if ballInViewport > viewWidth * 0.75 {
+                pageLeadingX = chipX - viewWidth * 0.15
+                animateScroll(to: pageLeadingX, duration: 1.5)
             }
         }
         .onChange(of: composerModel.isPlaying) { playing in
             if !playing {
-                withAnimation(.easeInOut(duration: 1.2)) {
-                    scrollProxy.scrollTo(0, anchor: .leading)
-                }
+                pageLeadingX = 0
+                animateScroll(to: 0, duration: 1.5)
             }
         }
-        }
-        }
-        .fixedSize(horizontal: false, vertical: true)
         .modifier(ScrollClipDisabledModifier())
     }
+
+    private func animateScroll(to offsetX: CGFloat, duration: TimeInterval) {
+        guard let scrollView = nsScrollView else {
+            print("[animateScroll] nsScrollView is nil!")
+            return
+        }
+        print("[animateScroll] scrolling to \(offsetX) over \(duration)s")
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = duration
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            scrollView.contentView.animator().setBoundsOrigin(NSPoint(x: offsetX, y: 0))
+        }
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+}
+
+// MARK: - ScrollView Finder
+
+private struct HoverPillStyle: ButtonStyle {
+    var colorScheme: ColorScheme
+    @State private var isHovered = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundColor(isHovered ? Theme.dark : Theme.field)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isHovered ? Theme.fieldColor(colorScheme) : Color.clear)
+            )
+            .onHover { isHovered = $0 }
+    }
+}
+
+private struct ScrollViewFinder: NSViewRepresentable {
+    var onFind: (NSScrollView) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            if let scrollView = view.enclosingScrollView {
+                onFind(scrollView)
+            }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 // MARK: - Phoneme Chip
@@ -466,11 +556,11 @@ struct PhonemeChip: View {
             if isRandomCons && isRandomVowel {
                 Image(systemName: "shuffle")
                     .font(.system(size: 13))
-                    .foregroundColor(Theme.ivory)
+                    .foregroundColor(Theme.dark)
             } else {
                 Text(phoneme.text)
                     .font(.system(size: 13, weight: .regular))
-                    .foregroundColor(Theme.ivory)
+                    .foregroundColor(Theme.dark)
             }
 
             if !phonemeLabel.isEmpty || isRandomCons || isRandomVowel || phoneme.isEnsemble {
@@ -492,19 +582,19 @@ struct PhonemeChip: View {
                             .font(.system(size: 7))
                     }
                 }
-                .foregroundColor(Theme.ivory.opacity(0.4))
+                .foregroundColor(Theme.dark.opacity(0.4))
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 16)
         .background(
             UnevenRoundedRectangle(
-                topLeadingRadius: wordPosition == .middle || wordPosition == .last ? 4 : 10,
-                bottomLeadingRadius: wordPosition == .middle || wordPosition == .last ? 4 : 10,
-                bottomTrailingRadius: wordPosition == .middle || wordPosition == .first ? 4 : 10,
-                topTrailingRadius: wordPosition == .middle || wordPosition == .first ? 4 : 10
+                topLeadingRadius: wordPosition == .middle || wordPosition == .last ? 6 : 14,
+                bottomLeadingRadius: wordPosition == .middle || wordPosition == .last ? 6 : 14,
+                bottomTrailingRadius: wordPosition == .middle || wordPosition == .first ? 6 : 14,
+                topTrailingRadius: wordPosition == .middle || wordPosition == .first ? 6 : 14
             )
-            .fill(flashGreen ? Theme.green : Theme.dark)
+            .fill(flashGreen ? Theme.green : Theme.fieldColor(colorScheme))
             .animation(.easeOut(duration: 0.3), value: flashGreen)
         )
         .overlay(alignment: .topTrailing) {

@@ -27,12 +27,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.set("WhenScrolling", forKey: "AppleShowScrollBars")
     }
 
-    static func showAboutPanel() {
+    @MainActor static func showAboutPanel() {
         let credits = """
         A sequencer for composing phoneme-based choral \
         arrangements for robotic singing dolls.
 
-        Type or summon lyrics, reveal phonemes, tune each \
+        Type or summon lyrics, compose phonemes, tune each \
         chip's consonant and vowel, then send the sequence \
         over MIDI to a choir of dolls.
 
@@ -84,6 +84,7 @@ struct ChoirControllerApp: App {
                 .environmentObject(composerModel)
                 .preferredColorScheme(appearanceMode.colorScheme)
                 .tint(Theme.accent)
+                .frame(minHeight: 758)
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)

@@ -181,6 +181,16 @@ enum LyricStyle: String, CaseIterable, Identifiable {
         case .nursery: return "Nursery (Dark Rhymes)"
         }
     }
+
+    var buttonLabel: String {
+        switch self {
+        case .senryu: return "Recompose as Senryū"
+        case .bellman: return "Recompose as Bellman"
+        case .kulning: return "Recompose as Kulning"
+        case .dada: return "Recompose as Dada"
+        case .nursery: return "Recompose as Nursery Rhyme"
+        }
+    }
 }
 
 // MARK: - Composer Menu Commands
