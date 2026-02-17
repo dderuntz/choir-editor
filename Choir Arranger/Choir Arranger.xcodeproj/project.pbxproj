@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		9E705DA22F3FA97D006DA1D1 /* choir-arranger-ico.icon in Resources */ = {isa = PBXBuildFile; fileRef = 9E705DA12F3FA97D006DA1D1 /* choir-arranger-ico.icon */; };
 		9EF59E0E2F3F9C9700DF09C6 /* MIDIKit in Frameworks */ = {isa = PBXBuildFile; productRef = 9EF59E0D2F3F9C9700DF09C6 /* MIDIKit */; };
+		9EF59E102F3F9C9800DF09C6 /* SwiftUIIntrospect in Frameworks */ = {isa = PBXBuildFile; productRef = 9EF59E0F2F3F9C9800DF09C6 /* SwiftUIIntrospect */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -59,6 +60,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				9EF59E0E2F3F9C9700DF09C6 /* MIDIKit in Frameworks */,
+				9EF59E102F3F9C9800DF09C6 /* SwiftUIIntrospect in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -129,6 +131,7 @@
 			name = "Choir Arranger";
 			packageProductDependencies = (
 				9EF59E0D2F3F9C9700DF09C6 /* MIDIKit */,
+				9EF59E0F2F3F9C9800DF09C6 /* SwiftUIIntrospect */,
 			);
 			productName = "Choir Arranger";
 			productReference = 9EF59DB92F3F9A9300DF09C6 /* Choir Arranger.app */;
@@ -214,6 +217,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				9EF59E0B2F3F9C3A00DF09C6 /* XCRemoteSwiftPackageReference "MIDIKit" */,
+				9EF59E112F3F9C9800DF09C6 /* XCRemoteSwiftPackageReference "swiftui-introspect" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 9EF59DBA2F3F9A9300DF09C6 /* Products */;
@@ -610,6 +614,14 @@
 				minimumVersion = 0.11.0;
 			};
 		};
+		9EF59E112F3F9C9800DF09C6 /* XCRemoteSwiftPackageReference "swiftui-introspect" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/siteline/swiftui-introspect";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 26.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -617,6 +629,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 9EF59E0B2F3F9C3A00DF09C6 /* XCRemoteSwiftPackageReference "MIDIKit" */;
 			productName = MIDIKit;
+		};
+		9EF59E0F2F3F9C9800DF09C6 /* SwiftUIIntrospect */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9EF59E112F3F9C9800DF09C6 /* XCRemoteSwiftPackageReference "swiftui-introspect" */;
+			productName = SwiftUIIntrospect;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
