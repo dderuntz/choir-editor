@@ -78,7 +78,7 @@ struct SequencerView: View {
                     .popover(isPresented: $showNudgeTip) {
                         Text("onboarding.roll.nudgeTip", bundle: localizedBundle)
                             .font(.system(size: 12))
-                            .foregroundColor(Theme.dark)
+                            .foregroundColor(Theme.text(colorScheme))
                             .padding()
                             .frame(width: 240)
                     }
@@ -123,7 +123,7 @@ struct SequencerView: View {
             .popover(isPresented: $showInspectorTip) {
                 Text("onboarding.roll.inspectorTip", bundle: localizedBundle)
                     .font(.system(size: 12))
-                    .foregroundColor(Theme.dark)
+                    .foregroundColor(Theme.text(colorScheme))
                     .padding()
                     .frame(width: 240)
             }
@@ -258,7 +258,7 @@ struct SequencerView: View {
             HStack(spacing: 12) {
                 HStack(spacing: 12) {
                     Image(systemName: "music.note.list")
-                        .foregroundColor(Theme.dark.opacity(model.showScaleHelper ? 1 : 0.5))
+                        .foregroundColor(Theme.text(colorScheme).opacity(model.showScaleHelper ? 1 : 0.5))
 
                     Picker("", selection: Binding(
                     get: { model.showScaleHelper ? model.musicalKey.rawValue : -1 },
@@ -281,8 +281,8 @@ struct SequencerView: View {
                 .labelsHidden()
                 .buttonStyle(.borderless)
                 .fixedSize()
-                .tint(Theme.dark)
-                .foregroundStyle(Theme.dark)
+                .tint(Theme.text(colorScheme))
+                .foregroundStyle(Theme.text(colorScheme))
 
                     if model.showScaleHelper {
                         Picker("", selection: $model.scaleType) {
@@ -293,15 +293,15 @@ struct SequencerView: View {
                         .labelsHidden()
                         .buttonStyle(.borderless)
                         .fixedSize()
-                        .tint(Theme.dark)
-                        .foregroundStyle(Theme.dark)
+                        .tint(Theme.text(colorScheme))
+                        .foregroundStyle(Theme.text(colorScheme))
                     }
                 }
                 .popover(isPresented: $showScaleGuideInvite) {
                     VStack(spacing: 12) {
                         Text("onboarding.roll.scaleGuideInvite", bundle: localizedBundle)
                             .font(.system(size: 12))
-                            .foregroundColor(Theme.dark)
+                            .foregroundColor(Theme.text(colorScheme))
                             .multilineTextAlignment(.center)
                         Button {
                             withAnimation(.easeInOut(duration: 0.15)) {
@@ -325,7 +325,7 @@ struct SequencerView: View {
                 Button(action: { showSequencerTips.toggle() }) {
                     Label("Help", systemImage: "questionmark.circle")
                 }
-                .buttonStyle(HoverPillStyle(colorScheme: colorScheme, textColor: Theme.dark))
+                .buttonStyle(HoverPillStyle(colorScheme: colorScheme, textColor: Theme.text(colorScheme)))
                 .popover(isPresented: $showSequencerTips) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("help.rollTips.title", bundle: localizedBundle)
@@ -340,7 +340,7 @@ struct SequencerView: View {
                         Text("help.rollTips.deleteKey", bundle: localizedBundle)
                     }
                     .font(.system(size: 12))
-                    .foregroundColor(Theme.dark)
+                    .foregroundColor(Theme.text(colorScheme))
                     .padding()
                     .frame(width: 260)
                 }
@@ -365,13 +365,13 @@ struct SequencerView: View {
                         : "Clear Selection (\(model.selectedNoteIds.count))",
                           systemImage: "eraser.line.dashed")
                 }
-                .buttonStyle(HoverPillStyle(colorScheme: colorScheme, textColor: Theme.dark))
+                .buttonStyle(HoverPillStyle(colorScheme: colorScheme, textColor: Theme.text(colorScheme)))
                 .disabled(model.notes.isEmpty && model.selectedNoteIds.isEmpty)
-                
-                
+
+
                 Button(action: { model.isLooping.toggle() }) {
                     Label("Loop", systemImage: "repeat.circle.fill")
-                        .foregroundColor(model.isLooping ? Theme.dark : Theme.dark.opacity(0.25))
+                        .foregroundColor(model.isLooping ? Theme.text(colorScheme) : Theme.text(colorScheme).opacity(0.25))
                 }
                 .buttonStyle(.borderless)
                 .help(model.isLooping ? "Looping" : "Loop")
@@ -382,7 +382,7 @@ struct SequencerView: View {
                 ), in: 1...16)
                 .monospacedDigit()
                 .controlSize(.small)
-                .tint(Theme.fieldLight)
+                .tint(Theme.fieldColor(colorScheme))
                 .fixedSize()
                 .padding(.leading, 6)
             }
@@ -400,7 +400,7 @@ struct SequencerView: View {
             Button(action: { togglePlayback() }) {
                 Image(systemName: model.isPlaying ? "stop.fill" : "play.fill")
                     .font(.system(size: 16))
-                    .foregroundColor(Theme.dark)
+                    .foregroundColor(Theme.text(colorScheme))
                     .frame(width: PianoRollLayout.pianoKeyWidth)
                     .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
@@ -410,7 +410,7 @@ struct SequencerView: View {
             .popover(isPresented: $showTransportTip) {
                 Text("onboarding.roll.transportTip", bundle: localizedBundle)
                     .font(.system(size: 12))
-                    .foregroundColor(Theme.dark)
+                    .foregroundColor(Theme.text(colorScheme))
                     .padding()
                     .frame(width: 240)
             }

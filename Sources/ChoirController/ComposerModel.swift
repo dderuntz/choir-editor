@@ -201,10 +201,6 @@ class ComposerModel: ObservableObject {
     @Published var errorMessage: String? = nil
     @Published var llmStatusMessage: String? = nil
 
-    // Approval
-    @Published var isApproved: Bool = false
-    var savedExampleCount: Int { PhonemeExampleStore.load().count }
-
     /// Whether the Composer has any content (for icon indicator)
     var hasContent: Bool {
         !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !phonemes.isEmpty
@@ -292,21 +288,6 @@ class ComposerModel: ObservableObject {
     // MARK: - Phoneme Extraction
 
     @MainActor
-    func approveResult() {
-        let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !phonemes.isEmpty else { return }
-
-        let syllables = phonemes.map { p -> PhonemeExample.SyllableExample in
-            let cID = Consonant.all.first(where: { $0.ccValue == p.consonantCC })?.id ?? "none"
-            let vID = Vowel.all.first(where: { $0.ccValue == p.vowelCC })?.id ?? "schwa"
-            return PhonemeExample.SyllableExample(text: p.text, consonant: cID, vowel: vID)
-        }
-        let example = PhonemeExample(inputText: text, syllables: syllables)
-        PhonemeExampleStore.addExample(example)
-        isApproved = true
-    }
-
-    @MainActor
     func extractPhonemes() async {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
@@ -314,7 +295,6 @@ class ComposerModel: ObservableObject {
         saveUndo()
         isProcessing = true
         errorMessage = nil
-        isApproved = false
 
         // ── Tier 1: Cheap heuristic — basic whitespace split → dictionary ──
         let firstTry = PhonemeDictionary.lookupSentence(text)
@@ -924,7 +904,6 @@ class ComposerModel: ObservableObject {
         inputText = ""
         phonemes = []
         lastExtractedText = nil
-        isApproved = false
         errorMessage = nil
     }
 
@@ -933,7 +912,6 @@ class ComposerModel: ObservableObject {
         saveUndo()
         phonemes = []
         lastExtractedText = nil
-        isApproved = false
         errorMessage = nil
     }
 

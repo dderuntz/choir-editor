@@ -441,10 +441,10 @@ struct ContentView: View {
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 12, height: 12)
-                        .foregroundColor(Theme.dark)
+                        .foregroundColor(Theme.text(colorScheme))
                 }
             }
-            .buttonStyle(HoverPillStyle(colorScheme: colorScheme, textColor: Theme.dark))
+            .buttonStyle(HoverPillStyle(colorScheme: colorScheme, textColor: Theme.text(colorScheme)))
             .help("Return to Piano Roll")
 
             Button(action: { showComposerHelp.toggle() }) {
@@ -463,7 +463,7 @@ struct ContentView: View {
                     Text("help.composerTips.copyToRoll", bundle: localizedBundle)
                 }
                 .font(.system(size: 12))
-                .foregroundColor(Theme.dark)
+                .foregroundColor(Theme.text(colorScheme))
                 .padding()
                 .frame(width: 260)
             }
@@ -501,7 +501,7 @@ struct ContentView: View {
             .popover(isPresented: $showComposerHint) {
                 (Text(Image(systemName: "eyebrow")) + Text(" ") + Text("onboarding.roll.composerHint", bundle: localizedBundle))
                     .font(.system(size: 12))
-                    .foregroundColor(Theme.dark)
+                    .foregroundColor(Theme.text(colorScheme))
                     .padding()
                     .frame(width: 240)
             }
@@ -529,13 +529,13 @@ struct ContentView: View {
             .popover(isPresented: $showKeyboardHint) {
                 (Text(Image(systemName: "pianokeys")) + Text(" ") + Text("onboarding.roll.keyboardHint", bundle: localizedBundle))
                     .font(.system(size: 12))
-                    .foregroundColor(Theme.dark)
+                    .foregroundColor(Theme.text(colorScheme))
                     .padding()
                     .frame(width: 240)
             }
 
             Button(action: { startBluetoothSetup() }) {
-                ConnectionStatusView(midiService: midiService)
+                ConnectionStatusView(midiService: midiService, colorScheme: colorScheme)
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 12)
@@ -543,8 +543,8 @@ struct ContentView: View {
             .background(
                 RoundedRectangle(cornerRadius: 12)
                     .fill(midiService.isConnected
-                          ? Color(red: 0xD8/255, green: 0xD6/255, blue: 0xD3/255).opacity(0.6)
-                          : Theme.dark)
+                          ? Theme.fieldColor(colorScheme).opacity(0.6)
+                          : Theme.text(colorScheme))
             )
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .padding(.leading, 2)
