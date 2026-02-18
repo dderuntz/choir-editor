@@ -68,27 +68,22 @@ struct ComposerView: View {
         )
     }
 
-    /// Animate the bouncing ball - either in place or to next chip
-    private func animateBounce(chipIndex: Int, chipX: CGFloat) {
+    /// Animate the up-phase of a bounce
+    private func animateBounceUp(chipIndex: Int, chipX: CGFloat) {
         let isLastBounce = composerModel.currentBounceIndex >= composerModel.currentBounceCount - 1
         let nextCx = isLastBounce ? (chipCenters[chipIndex + 1] ?? chipX) : chipX
         let distance = abs(nextCx - chipX)
 
-        // Arc height: higher for in-place bounces, distance-based for advancing
         let arcHeight: CGFloat
         if isLastBounce {
             arcHeight = -min(100, max(32, max(distance, 30) * 0.7))
         } else {
-            arcHeight = -60  // consistent height for in-place bounces
+            arcHeight = -60
         }
 
-        let fullArc = Double(composerModel.currentArcDuration) / 1000.0
-        let halfArc = fullArc * 0.5
-
+        let halfArc = Double(composerModel.currentArcDuration) / 1000.0 * 0.5
         let steepOut = Animation.timingCurve(0, 0, 0.05, 1, duration: halfArc)
-        let steepIn = Animation.timingCurve(0.95, 0, 1, 1, duration: halfArc)
 
-        // First half: go up (and maybe start moving toward next)
         withAnimation(steepOut) {
             ballY = arcHeight
         }
@@ -97,16 +92,22 @@ struct ComposerView: View {
                 ballX = (chipX + nextCx) / 2
             }
         }
+    }
 
-        // Second half: come down (and land on target)
-        DispatchQueue.main.asyncAfter(deadline: .now() + halfArc) {
-            withAnimation(steepIn) {
-                ballY = 0
-            }
-            if isLastBounce {
-                withAnimation(.linear(duration: halfArc)) {
-                    ballX = nextCx
-                }
+    /// Animate the down-phase of a bounce
+    private func animateBounceDown(chipIndex: Int, chipX: CGFloat) {
+        let isLastBounce = composerModel.currentBounceIndex >= composerModel.currentBounceCount - 1
+        let nextCx = isLastBounce ? (chipCenters[chipIndex + 1] ?? chipX) : chipX
+
+        let halfArc = Double(composerModel.currentArcDuration) / 1000.0 * 0.5
+        let steepIn = Animation.timingCurve(0.95, 0, 1, 1, duration: halfArc)
+
+        withAnimation(steepIn) {
+            ballY = 0
+        }
+        if isLastBounce {
+            withAnimation(.linear(duration: halfArc)) {
+                ballX = nextCx
             }
         }
     }
@@ -316,14 +317,19 @@ struct ComposerView: View {
                     }
                     .onChange(of: composerModel.currentPlayIndex) { _, newIndex in
                         guard let idx = newIndex, let cx = chipCenters[idx] else { return }
-                        animateBounce(chipIndex: idx, chipX: cx)
+                        animateBounceUp(chipIndex: idx, chipX: cx)
                     }
                     .onChange(of: composerModel.currentBounceIndex) { oldBounce, newBounce in
-                        // Re-trigger animation when bounce index changes (for multi-bounce)
                         guard newBounce > oldBounce,
                               let idx = composerModel.currentPlayIndex,
                               let cx = chipCenters[idx] else { return }
-                        animateBounce(chipIndex: idx, chipX: cx)
+                        animateBounceUp(chipIndex: idx, chipX: cx)
+                    }
+                    .onChange(of: composerModel.bouncePhase) { _, newPhase in
+                        guard newPhase == 1,
+                              let idx = composerModel.currentPlayIndex,
+                              let cx = chipCenters[idx] else { return }
+                        animateBounceDown(chipIndex: idx, chipX: cx)
                     }
                     .padding(.horizontal)
 
