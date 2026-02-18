@@ -14,15 +14,13 @@ let package = Package(
             targets: ["ChoirController"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/orchetect/MIDIKit.git", from: "0.9.5"),
-        .package(url: "https://github.com/siteline/swiftui-introspect", from: "26.0.0")
+        .package(url: "https://github.com/orchetect/MIDIKit.git", from: "0.9.5")
     ],
     targets: [
         .executableTarget(
             name: "ChoirController",
             dependencies: [
-                .product(name: "MIDIKit", package: "MIDIKit"),
-                .product(name: "SwiftUIIntrospect", package: "swiftui-introspect")
+                .product(name: "MIDIKit", package: "MIDIKit")
             ],
             resources: [
                 .process("Assets.xcassets"),
