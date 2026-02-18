@@ -3,6 +3,43 @@ import os
 
 private let log = Logger(subsystem: "com.choir-arranger", category: "menu")
 
+// MARK: - App Language
+
+enum AppLanguage: String, CaseIterable, Identifiable {
+    case english = "en"
+    case spanish = "es"
+    case japanese = "ja"
+    case swedish = "sv"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .english: return "English"
+        case .spanish: return "Español"
+        case .japanese: return "日本語"
+        case .swedish: return "Svenska"
+        }
+    }
+}
+
+// MARK: - Localization Helper
+
+/// Bundle for localized resources — SPM uses .module, Xcode app uses .main
+var localizedBundle: Bundle {
+    #if SWIFT_PACKAGE
+    return .module
+    #else
+    return .main
+    #endif
+}
+
+/// Look up a localized string from the resource bundle.
+/// UI element names embedded as **bold** in the catalog stay untranslated.
+func L(_ key: String.LocalizationValue) -> String {
+    String(localized: key, bundle: localizedBundle)
+}
+
 // MARK: - Appearance Mode
 
 enum AppearanceMode: String, CaseIterable {
@@ -260,6 +297,7 @@ struct AboutCommands: Commands {
 
 struct HelpCommands: Commands {
     @ObservedObject var onboardingManager: OnboardingManager
+    @AppStorage("appLanguage") private var appLanguage: AppLanguage = .english
     private let repoURL = "https://github.com/dderuntz/choir-editor"
 
     var body: some Commands {
@@ -278,8 +316,31 @@ struct HelpCommands: Commands {
 
             Divider()
 
+            Menu {
+                ForEach(AppLanguage.allCases) { lang in
+                    Button {
+                        appLanguage = lang
+                    } label: {
+                        HStack {
+                            Text(lang.label)
+                            if lang == appLanguage {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Label("Language", systemImage: "globe")
+            }
+
+            Divider()
+
             Button("Reset Tutorial") {
                 onboardingManager.reset()
+            }
+
+            Button("Nuke All State & Quit") {
+                onboardingManager.nukeEverything()
             }
 
             Divider()

@@ -3,6 +3,10 @@ import SwiftUI
 extension Notification.Name {
     static let showSoundPad = Notification.Name("showSoundPad")
     static let showComposer = Notification.Name("showComposer")
+    static let rollTransportTipDismissed = Notification.Name("rollTransportTipDismissed")
+    static let rollDemoLoaded = Notification.Name("rollDemoLoaded")
+    static let rollStartAdding = Notification.Name("rollStartAdding")
+    static let rollCopiedFromComposer = Notification.Name("rollCopiedFromComposer")
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {

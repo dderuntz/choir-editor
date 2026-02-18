@@ -531,6 +531,22 @@ class SequencerModel: ObservableObject {
         log.info("Renamed to \(newURL.lastPathComponent)")
     }
     
+    /// Load the bundled demo file (Robots.choir) from Documents
+    func loadDemoFile() {
+        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+        guard let demoURL = documentsURL?.appendingPathComponent("Robots.choir"),
+              FileManager.default.fileExists(atPath: demoURL.path) else {
+            log.warning("Demo file not found in Documents")
+            return
+        }
+        do {
+            try load(from: demoURL)
+            log.info("Loaded demo file")
+        } catch {
+            log.error("Failed to load demo file: \(error)")
+        }
+    }
+
     /// Auto-open the last file on launch
     func loadLastFileIfAvailable() {
         guard let path = UserDefaults.standard.string(forKey: "lastOpenedFile") else { return }
