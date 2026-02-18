@@ -254,6 +254,7 @@ class ComposerModel: ObservableObject {
     @Published var currentBounceIndex: Int = 0     // which bounce we're on (0-based)
     @Published var currentBounceCount: Int = 1     // total bounces for current chip
     @Published var currentArcDuration: Int = 330   // ms per bounce — consistent rhythm
+    @Published var bouncePhase: Int = 0              // 0 = going up, 1 = coming down
     private var playbackTask: Task<Void, Never>? = nil
     private var activeMidiPitches: Set<UInt8> = []
 
@@ -743,12 +744,9 @@ class ComposerModel: ObservableObject {
                 let bounceCount = isEmphasizedEnsemble ? 2 : 1
                 self.currentBounceCount = bounceCount
 
-                // Duration per bounce:
-                // - Emphasized ensemble: normal duration, double bounce handles the extra time
-                // - Non-emphasized ensemble: 1.5x duration, single bounce
-                // - Non-ensemble: normal duration, single bounce
-                let useEnsembleMultiplier = phoneme.isEnsemble && !isEmphasizedEnsemble
-                let baseDuration = durationFor(weight: phoneme.weight, isEnsemble: useEnsembleMultiplier)
+                // Duration: all ensemble chips get the 2x multiplier for a longer hold.
+                // Emphasized ensemble splits that time across 2 bounces.
+                let baseDuration = durationFor(weight: phoneme.weight, isEnsemble: phoneme.isEnsemble)
                 let gap = Int(Double(phoneme.weight >= 3 ? 80 : 50) * speedMultiplier)
 
                 let pitch = pitchForPhoneme(index: index, weight: phoneme.weight, total: total)
@@ -786,21 +784,28 @@ class ComposerModel: ObservableObject {
 
                     let bounceDuration: Int
                     if bounceCount > 1 {
-                        bounceDuration = bounceIdx == 0
-                            ? Int(Double(totalMs) * 0.4)   // snappy in-place pop
-                            : totalMs - Int(Double(totalMs) * 0.4)  // longer travel arc
+                        // 50/50 split between in-place hold and travel hop
+                        bounceDuration = totalMs / 2
                     } else {
                         bounceDuration = totalMs
                     }
+                    let halfArc = bounceDuration / 2
+
                     self.currentArcDuration = bounceDuration
+                    self.bouncePhase = 0  // up phase
                     self.currentBounceIndex = bounceIdx
 
                     if bounceIdx == 0 {
-                        self.currentPlayIndex = index  // trigger first bounce via playIndex
+                        self.currentPlayIndex = index
                     }
-                    // Subsequent bounces triggered via bounceIndex onChange
 
-                    try? await Task.sleep(for: .milliseconds(bounceDuration))
+                    // Sleep first half (ball going up), then publish down phase
+                    try? await Task.sleep(for: .milliseconds(halfArc))
+                    guard !Task.isCancelled else { break }
+                    self.bouncePhase = 1  // down phase
+
+                    // Sleep second half (ball coming down)
+                    try? await Task.sleep(for: .milliseconds(bounceDuration - halfArc))
                 }
 
                 // Stop the note after all bounces
