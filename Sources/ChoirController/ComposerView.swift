@@ -48,7 +48,7 @@ struct ComposerView: View {
         return max(1, min(3, visualLines))
     }
 
-    private static let placeholderText = "prompt or lyric"
+    private static let placeholderText = "type here"
 
     /// Binding that enforces max 3 lines and 120 characters
     private var limitedInputText: Binding<String> {
