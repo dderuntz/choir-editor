@@ -28,6 +28,23 @@ alwaysApply: false
 - **Button border radius on macOS**: `.buttonBorderShape(.roundedRectangle(radius:))` is ignored by macOS system button chrome. To get custom corner radius, use `.buttonStyle(.plain)` and manually draw the background with `RoundedRectangle(cornerRadius:)` + `.clipShape()`.
 - **Custom Toggle switch**: The system `.toggleStyle(.switch)` doesn't allow customizing the knob color. Use `IvorySwitchStyle` (in Theme.swift) for a custom switch with a glass knob and themed track colors.
 
+## onChange in Conditional Views — FOOTGUN
+`onChange` handlers attached to views inside `if` blocks **only exist when the condition is true**. If you need to observe a value when the condition might be false, attach the `onChange` to a parent view outside the conditional branch.
+
+```swift
+// ❌ BAD — handler doesn't exist when phonemes are empty
+if !model.phonemes.isEmpty {
+    ScrollView { ... }
+        .onChange(of: model.inputText) { ... } // DEAD when phonemes empty
+}
+
+// ✅ GOOD — handler on outer body, always alive
+VStack { ... }
+    .onChange(of: model.inputText) { ... } // Always fires
+```
+
+Same applies to `onAppear`, `onDisappear`, `task`, and any other view lifecycle modifiers inside conditional branches.
+
 ## TextEditor Patterns
 
 ### Placeholder Text

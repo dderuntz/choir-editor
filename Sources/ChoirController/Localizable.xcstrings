@@ -1,0 +1,486 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "onboarding.welcome.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Welcome to the Composer!"
+          }
+        }
+      }
+    },
+    "onboarding.welcome.body" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Type a lyric, then tap **Reveal Phonemes** to create the sounds the choir sings. You can recompose your lyrics in different styles."
+          }
+        }
+      }
+    },
+    "onboarding.welcome.dismiss" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Got it"
+          }
+        }
+      }
+    },
+    "onboarding.firstPlay.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You're hearing the local synth"
+          }
+        }
+      }
+    },
+    "onboarding.firstPlay.body" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connect your Choir dolls via Bluetooth to play on hardware."
+          }
+        }
+      }
+    },
+    "onboarding.firstPlay.subtitle" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local sound turns off automatically when dolls connect. Change this in **Preferences** → **Audio**."
+          }
+        }
+      }
+    },
+    "onboarding.firstPlay.connect" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connect dolls"
+          }
+        }
+      }
+    },
+    "onboarding.firstPlay.keepPlaying" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep playing"
+          }
+        }
+      }
+    },
+    "onboarding.empty.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Where to start?"
+          }
+        }
+      }
+    },
+    "onboarding.empty.composerDesc" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open the **Composer** to craft a lyric for the choir and quickly test it out."
+          }
+        }
+      }
+    },
+    "onboarding.empty.rollDesc" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Challenge — Start manually arranging phonemes and notes on the **Piano Roll** and hit play!"
+          }
+        }
+      }
+    },
+    "onboarding.empty.composerBtn" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start with ideas"
+          }
+        }
+      }
+    },
+    "onboarding.empty.rollBtn" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start with melody"
+          }
+        }
+      }
+    },
+    "composer.prompt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "What will we sing?"
+          }
+        }
+      }
+    },
+    "onboarding.composer.recomposeTip" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use **Recompose** to restyle your lyrics. There are 5 different styles to try in the **Composer** menu."
+          }
+        }
+      }
+    },
+    "composer.revealHint" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap to convert your lyrics into phonemes — the sounds your choir will sing."
+          }
+        }
+      }
+    },
+    "composer.copyToRollHint" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy your phonemes to the **Piano Roll** for fine control over pitch, timing, and arrangement."
+          }
+        }
+      }
+    },
+    "composer.phonemeGuide.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your Phonemes"
+          }
+        }
+      }
+    },
+    "composer.phonemeGuide.body" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Each phoneme pairs a consonant with a vowel. Tap any to hear it and tweak its sound. Use the **Keyboard** to play phonemes at different pitches."
+          }
+        }
+      }
+    },
+    "composer.phonemeGuide.dismiss" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Got it"
+          }
+        }
+      }
+    },
+    "help.composerTips.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Composer Tips"
+          }
+        }
+      }
+    },
+    "help.composerTips.body" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Type lyrics and tap **Reveal Phonemes** to create the sounds your choir sings. You can recompose in different styles, then copy to the **Piano Roll** to arrange."
+          }
+        }
+      }
+    },
+    "help.composerTips.clickPhoneme" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "• Click a phoneme to hear it and inspect"
+          }
+        }
+      }
+    },
+    "help.composerTips.shiftClick" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "• Shift-click a phoneme to add ensemble"
+          }
+        }
+      }
+    },
+    "help.composerTips.longPress" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "• Long-press a phoneme to toggle ensemble"
+          }
+        }
+      }
+    },
+    "help.composerTips.rightClick" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "• Right-click a phoneme to insert or delete"
+          }
+        }
+      }
+    },
+    "help.composerTips.copyToRoll" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "• Use **Copy to Piano Roll** when ready to arrange"
+          }
+        }
+      }
+    },
+    "help.language" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Language"
+          }
+        }
+      }
+    },
+    "onboarding.rollEntry.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Piano Roll"
+          }
+        }
+      }
+    },
+    "onboarding.rollEntry.body" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap the grid to place notes — each one carries a phoneme, the sound your choir sings."
+          }
+        }
+      }
+    },
+    "onboarding.rollEntry.startAdding" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start adding"
+          }
+        }
+      }
+    },
+    "onboarding.rollEntry.loadDemo" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Load demo song"
+          }
+        }
+      }
+    },
+    "onboarding.roll.inspectorTip" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This is the note inspector. Change the **Consonant** and **Vowel** to control what the choir sings on this note."
+          }
+        }
+      }
+    },
+    "onboarding.roll.transportTip" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hit play to hear your arrangement. Drag the yellow transport bar to scrub through and trigger phonemes."
+          }
+        }
+      }
+    },
+    "onboarding.roll.keyboardHint" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toggle the keyboard to play phonemes at different pitches and find rows in the **Piano Roll**."
+          }
+        }
+      }
+    },
+    "onboarding.roll.composerHint" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Try the **Composer** — write lyrics first and let the app create phonemes for you."
+          }
+        }
+      }
+    },
+    "onboarding.roll.scaleGuideInvite" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your composer used a scale to place these notes. Enable the **Scale Guide** to see which rows are in key?"
+          }
+        }
+      }
+    },
+    "onboarding.roll.scaleGuideEnable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Scale Guide"
+          }
+        }
+      }
+    },
+    "onboarding.roll.nudgeTip" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap the grid below to add your first phoneme!"
+          }
+        }
+      }
+    },
+    "help.rollTips.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Piano Roll Tips"
+          }
+        }
+      }
+    },
+    "help.rollTips.body" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This is the piano roll — arrange your choir's sounds here. Use the scale guide to help place notes in the correct key."
+          }
+        }
+      }
+    },
+    "help.rollTips.tapGrid" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "• Tap the grid to add a note"
+          }
+        }
+      }
+    },
+    "help.rollTips.dragNotes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "• Drag notes to rearrange"
+          }
+        }
+      }
+    },
+    "help.rollTips.optionDrag" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "• Option-drag to duplicate a note"
+          }
+        }
+      }
+    },
+    "help.rollTips.tapNote" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "• Tap a note to select and edit the phoneme in the inspector"
+          }
+        }
+      }
+    },
+    "help.rollTips.shiftClick" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "• Shift-click to select multiple notes"
+          }
+        }
+      }
+    },
+    "help.rollTips.shiftDrag" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "• Shift-click and drag to select multiple"
+          }
+        }
+      }
+    },
+    "help.rollTips.deleteKey" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "• Use Delete key to remove selected notes"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

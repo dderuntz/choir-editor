@@ -15,6 +15,15 @@ struct SequencerView: View {
     @State private var lastTickTime: Date? = nil
     @State private var pendingClearAll = false
     @State private var showSequencerTips = false
+
+    // Onboarding
+    @EnvironmentObject var onboarding: OnboardingManager
+    @State private var showInspectorTip = false
+    @State private var showTransportTip = false
+    @State private var isDemoPath = false  // demo loaded → different tip order
+    @State private var showNudgeTip = false  // blank path: "tap grid to add" reminder
+    @State private var nudgeTimer: Timer?
+    @State private var showScaleGuideInvite = false
     
     // Scroll sync between scrub zone and piano roll grid
     @StateObject private var scrollSync = ScrollSyncManager()
@@ -62,6 +71,18 @@ struct SequencerView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.bottom, model.selectedNote != nil ? 80 : 0)
             .animation(.easeInOut(duration: 0.15), value: model.selectedNote != nil)
+            .overlay {
+                // Invisible center anchor for the nudge tip popover
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .popover(isPresented: $showNudgeTip) {
+                        Text("onboarding.roll.nudgeTip", bundle: localizedBundle)
+                            .font(.system(size: 12))
+                            .foregroundColor(Theme.dark)
+                            .padding()
+                            .frame(width: 240)
+                    }
+            }
         }
         .overlay(alignment: .bottom) {
             // Note Inspector (always alive, overlays bottom edge)
@@ -99,6 +120,13 @@ struct SequencerView: View {
             .offset(y: model.selectedNote != nil ? 0 : 100)
             .allowsHitTesting(model.selectedNote != nil)
             .animation(.easeInOut(duration: 0.15), value: model.selectedNote != nil)
+            .popover(isPresented: $showInspectorTip) {
+                Text("onboarding.roll.inspectorTip", bundle: localizedBundle)
+                    .font(.system(size: 12))
+                    .foregroundColor(Theme.dark)
+                    .padding()
+                    .frame(width: 240)
+            }
         }
         .onDeleteCommand {
             model.deleteSelectedNote()
@@ -113,6 +141,109 @@ struct SequencerView: View {
         }
         .onDisappear {
             stopPlayback()
+            nudgeTimer?.invalidate()
+        }
+        // Copy-from-composer path: scale guide invite first, then demo tip tour
+        .onReceive(NotificationCenter.default.publisher(for: .rollCopiedFromComposer)) { _ in
+            if !onboarding.hasSeenScaleGuideInvite {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    showScaleGuideInvite = true
+                }
+            } else if !onboarding.hasSeenTransportTip {
+                // Scale guide already seen, go straight to tip tour
+                isDemoPath = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    showTransportTip = true
+                }
+            }
+        }
+        .onChange(of: showScaleGuideInvite) { wasShowing, isShowing in
+            if wasShowing && !isShowing {
+                onboarding.hasSeenScaleGuideInvite = true
+                // After scale guide dismissed, start demo tip tour if unseen
+                if !onboarding.hasSeenTransportTip {
+                    isDemoPath = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        showTransportTip = true
+                    }
+                }
+            }
+        }
+        // Demo path: transport tip shown first via notification
+        .onReceive(NotificationCenter.default.publisher(for: .rollDemoLoaded)) { _ in
+            guard !onboarding.hasSeenTransportTip else { return }
+            isDemoPath = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                showTransportTip = true
+            }
+        }
+        // Blank path: 3s nudge if user hasn't placed a note
+        .onReceive(NotificationCenter.default.publisher(for: .rollStartAdding)) { _ in
+            guard !onboarding.hasSeenInspectorTip else { return }
+            nudgeTimer?.invalidate()
+            nudgeTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
+                Task { @MainActor in
+                    guard model.notes.isEmpty else { return }
+                    showNudgeTip = true
+                }
+            }
+        }
+        .onChange(of: model.selectedNoteId) { _, newId in
+            // Cancel nudge if user places a note
+            if newId != nil {
+                nudgeTimer?.invalidate()
+                showNudgeTip = false
+            }
+            // Show inspector tip on first note selection (both paths)
+            if newId != nil && !onboarding.hasSeenInspectorTip && !isDemoPath {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    showInspectorTip = true
+                }
+            }
+        }
+        // Also cancel nudge when notes are added (in case selectedNoteId doesn't change)
+        .onChange(of: model.notes.count) { oldCount, newCount in
+            if newCount > oldCount {
+                nudgeTimer?.invalidate()
+                showNudgeTip = false
+            }
+        }
+        .onChange(of: showInspectorTip) { wasShowing, isShowing in
+            if wasShowing && !isShowing {
+                onboarding.hasSeenInspectorTip = true
+                if isDemoPath {
+                    // Demo path: inspector was last tip here, hand off to keyboard/composer chain
+                    NotificationCenter.default.post(name: .rollTransportTipDismissed, object: nil)
+                } else {
+                    // Blank path: show transport tip next
+                    if !onboarding.hasSeenTransportTip {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            showTransportTip = true
+                        }
+                    }
+                }
+            }
+        }
+        .onChange(of: showTransportTip) { wasShowing, isShowing in
+            if wasShowing && !isShowing {
+                onboarding.hasSeenTransportTip = true
+                if isDemoPath {
+                    // Demo path: after transport tip, scroll to first note and show inspector
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        if let firstNote = model.notes.sorted(by: { $0.startBeat < $1.startBeat }).first {
+                            model.selectNote(firstNote.id)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                if !onboarding.hasSeenInspectorTip {
+                                    showInspectorTip = true
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Blank path: hand off to keyboard/composer chain
+                    NotificationCenter.default.post(name: .rollTransportTipDismissed, object: nil)
+                }
+            }
         }
         .onChange(of: model.togglePlaybackTrigger) {
             togglePlayback()
@@ -166,6 +297,30 @@ struct SequencerView: View {
                         .foregroundStyle(Theme.dark)
                     }
                 }
+                .popover(isPresented: $showScaleGuideInvite) {
+                    VStack(spacing: 12) {
+                        Text("onboarding.roll.scaleGuideInvite", bundle: localizedBundle)
+                            .font(.system(size: 12))
+                            .foregroundColor(Theme.dark)
+                            .multilineTextAlignment(.center)
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                model.showScaleHelper = true
+                            }
+                            showScaleGuideInvite = false
+                        } label: {
+                            Text("onboarding.roll.scaleGuideEnable", bundle: localizedBundle)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(Theme.dark)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                        }
+                        .buttonStyle(.plain)
+                        .background(Theme.accent, in: RoundedRectangle(cornerRadius: 6))
+                    }
+                    .padding()
+                    .frame(width: 260)
+                }
 
                 Button(action: { showSequencerTips.toggle() }) {
                     Label("Help", systemImage: "questionmark.circle")
@@ -173,16 +328,16 @@ struct SequencerView: View {
                 .buttonStyle(HoverPillStyle(colorScheme: colorScheme, textColor: Theme.dark))
                 .popover(isPresented: $showSequencerTips) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Piano Roll Tips")
+                        Text("help.rollTips.title", bundle: localizedBundle)
                             .font(.system(size: 13, weight: .semibold))
-                        Text("This is the piano roll. It's where you can arrange your choir's sounds. Use the scale guide to help you place notes in the correct key.")
-                        Text("• Tap the grid to add a note")
-                        Text("• Drag notes to rearrange")
-                        Text("• Option-drag to duplicate a note")
-                        Text("• Tap a notes to select and edit the phoneme in the inspector")
-                        Text("• Shift-click to select multiple notes")
-                        Text("• Shift-click and drag to select multiple")
-                        Text("• Use Delete key to remove selected notes")
+                        Text("help.rollTips.body", bundle: localizedBundle)
+                        Text("help.rollTips.tapGrid", bundle: localizedBundle)
+                        Text("help.rollTips.dragNotes", bundle: localizedBundle)
+                        Text("help.rollTips.optionDrag", bundle: localizedBundle)
+                        Text("help.rollTips.tapNote", bundle: localizedBundle)
+                        Text("help.rollTips.shiftClick", bundle: localizedBundle)
+                        Text("help.rollTips.shiftDrag", bundle: localizedBundle)
+                        Text("help.rollTips.deleteKey", bundle: localizedBundle)
                     }
                     .font(.system(size: 12))
                     .foregroundColor(Theme.dark)
@@ -252,7 +407,14 @@ struct SequencerView: View {
             }
             .buttonStyle(.plain)
             .help(model.isPlaying ? "Stop" : "Play")
-            
+            .popover(isPresented: $showTransportTip) {
+                Text("onboarding.roll.transportTip", bundle: localizedBundle)
+                    .font(.system(size: 12))
+                    .foregroundColor(Theme.dark)
+                    .padding()
+                    .frame(width: 240)
+            }
+
             Theme.structuralDivider.frame(width: 1)
             
             // Scrub zone (same width as the grid, scrolls in sync)

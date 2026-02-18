@@ -1009,6 +1009,7 @@ class ComposerModel: ObservableObject {
 
         var cursor = startBeat
         let total = phonemes.count
+        let allScaleNotes = scaleNotes(center: 60, range: 24)
 
         for (index, phoneme) in phonemes.enumerated() {
             let pitch = pitchForPhoneme(index: index, weight: phoneme.weight, total: total)
@@ -1028,6 +1029,25 @@ class ComposerModel: ObservableObject {
             note.reverb = phoneme.isEnsemble ? 48 : 32
 
             sequencer.notes.append(note)
+
+            // Ensemble: add harmony notes (3rd + 5th below melody within scale)
+            if phoneme.isEnsemble {
+                let harmonyPitches = harmonyBelow(root: pitch, scaleNotes: allScaleNotes)
+                for (i, hPitch) in harmonyPitches.enumerated() {
+                    var harmony = SequencerNote(
+                        pitch: hPitch,
+                        startBeat: cursor,
+                        duration: durationBeats,
+                        velocity: max(1, velocity - UInt8(10 + i * 5)),
+                        consonant: phoneme.consonantCC,
+                        vowel: phoneme.vowelCC
+                    )
+                    harmony.vibrato = 64
+                    harmony.reverb = 48
+                    sequencer.notes.append(harmony)
+                }
+            }
+
             cursor += durationBeats
         }
 
@@ -1039,5 +1059,19 @@ class ComposerModel: ObservableObject {
 
         sequencer.hasUnsavedChanges = true
         print("[Composer] Copied \(phonemes.count) phonemes to grid at beat \(startBeat), ending at \(cursor)")
+    }
+
+    /// Returns up to 2 harmony pitches below the root, walking down the scale
+    /// (scale-degree 3rd and 5th below = 2 and 4 scale steps down)
+    private func harmonyBelow(root: UInt8, scaleNotes: [UInt8]) -> [UInt8] {
+        guard let rootIdx = scaleNotes.firstIndex(of: root) else { return [] }
+        var pitches: [UInt8] = []
+        // 3rd below: 2 scale steps down
+        let thirdIdx = rootIdx - 2
+        if thirdIdx >= 0 { pitches.append(scaleNotes[thirdIdx]) }
+        // 5th below: 4 scale steps down
+        let fifthIdx = rootIdx - 4
+        if fifthIdx >= 0 { pitches.append(scaleNotes[fifthIdx]) }
+        return pitches
     }
 }

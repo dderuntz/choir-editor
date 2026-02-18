@@ -5,6 +5,7 @@ import PackageDescription
 
 let package = Package(
     name: "ChoirController",
+    defaultLocalization: "en",
     platforms: [
         .macOS(.v26)
     ],
@@ -26,7 +27,8 @@ let package = Package(
                 .process("Assets.xcassets"),
                 .copy("AnimaleSounds"),
                 .copy("cmudict.txt"),
-                .copy("Robots.choir")
+                .copy("Robots.choir"),
+                .process("Localizable.xcstrings")
             ]
         ),
         .testTarget(

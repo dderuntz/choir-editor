@@ -21,6 +21,16 @@ struct ComposerView: View {
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var isTextFocused: Bool
 
+    // Onboarding
+    @EnvironmentObject var onboarding: OnboardingManager
+    @State private var showRecomposeTip = false
+    @State private var recomposeTipTimer: Timer?
+    @State private var showRevealHint = false
+    @State private var revealHintTimer: Timer?
+    @State private var showPhonemeGuide = false
+    @State private var showCopyToRollHint = false
+    @State private var copyToRollHintTimer: Timer?
+
     // Bouncing ball state
     @State private var chipCenters: [Int: CGFloat] = [:]
     @State private var ballX: CGFloat = 0
@@ -121,7 +131,7 @@ struct ComposerView: View {
             VStack(alignment: .center, spacing: 4) {
                 Spacer()
 
-                Text("What shall we sing?")
+                Text("composer.prompt", bundle: localizedBundle)
                     .font(.system(size: 18, weight: .regular))
                     .foregroundColor(hasText ? Theme.field : Theme.dark)
                     .padding(.bottom, 8)
@@ -146,6 +156,25 @@ struct ComposerView: View {
                         .multilineTextAlignment(.center)
                 }
                 .frame(height: CGFloat(editorLineCount) * lineHeight)
+                .popover(isPresented: Binding(
+                    get: { onboarding.showChipsModal },
+                    set: { if !$0 { onboarding.dismissChipsModal() } }
+                )) {
+                    VStack(spacing: 8) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "eyebrow")
+                                .font(.system(size: 13, weight: .semibold))
+                            Text("onboarding.welcome.title", bundle: localizedBundle)
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        Text("onboarding.welcome.body", bundle: localizedBundle)
+                            .font(.system(size: 12))
+                            .multilineTextAlignment(.center)
+                    }
+                    .foregroundColor(Theme.dark)
+                    .padding()
+                    .frame(width: 280)
+                }
 
                 HStack(spacing: 8) {
                     let btnHeight: CGFloat = 16
@@ -160,6 +189,13 @@ struct ComposerView: View {
                     .buttonStyle(HoverPillStyle(colorScheme: colorScheme))
                     .disabled(summonDisabled)
                     .opacity(summonDisabled ? 0.3 : 1)
+                    .popover(isPresented: $showRecomposeTip) {
+                        Text("onboarding.composer.recomposeTip", bundle: localizedBundle)
+                            .font(.system(size: 12))
+                            .foregroundColor(Theme.dark)
+                            .padding()
+                            .frame(width: 260)
+                    }
                 }
                 .padding(.top, -2)
 
@@ -203,6 +239,9 @@ struct ComposerView: View {
                 VStack {
                     Spacer()
                     Button(action: {
+                        showRevealHint = false
+                        onboarding.hasSeenRevealHint = true
+                        revealHintTimer?.invalidate()
                         Task { await composerModel.extractPhonemes() }
                     }) {
                         Label(composerModel.isProcessing ? "Thinking…" : "Reveal Phonemes",
@@ -220,6 +259,13 @@ struct ComposerView: View {
                     .buttonStyle(.plain)
                     .disabled(revealDisabled)
                     .help("Turn words into sounds")
+                    .popover(isPresented: $showRevealHint) {
+                        Text("composer.revealHint", bundle: localizedBundle)
+                            .font(.system(size: 12))
+                            .foregroundColor(Theme.dark)
+                            .padding()
+                            .frame(width: 240)
+                    }
                     Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: (geo.size.height - 52) * 0.33)
@@ -291,14 +337,30 @@ struct ComposerView: View {
                         .help("Clear phonemes")
 
                         Button(action: {
+                            showCopyToRollHint = false
+                            copyToRollHintTimer?.invalidate()
+                            onboarding.hasSeenCopyToRollHint = true
                             composerModel.copyToGrid(sequencer: sequencerModel)
                             withAnimation(.easeInOut(duration: 0.25)) {
                                 onDismiss?()
+                            }
+                            // Trigger scale guide invite + piano roll tip tour if unseen
+                            if !onboarding.hasSeenScaleGuideInvite || !onboarding.hasSeenTransportTip {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                    NotificationCenter.default.post(name: .rollCopiedFromComposer, object: nil)
+                                }
                             }
                         }) {
                             Label("Copy to Piano Roll", systemImage: "document.on.document")
                         }
                         .buttonStyle(HoverPillStyle(colorScheme: colorScheme))
+                        .popover(isPresented: $showCopyToRollHint) {
+                            Text("composer.copyToRollHint", bundle: localizedBundle)
+                                .font(.system(size: 12))
+                                .foregroundColor(Theme.dark)
+                                .padding()
+                                .frame(width: 240)
+                        }
                     }
                 }
                 .padding(.horizontal)
@@ -308,6 +370,17 @@ struct ComposerView: View {
                 Spacer()
 
                 phonemeStrip(leadingPad: 0)
+                    .popover(isPresented: $showPhonemeGuide) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("composer.phonemeGuide.title", bundle: localizedBundle)
+                                .font(.system(size: 13, weight: .semibold))
+                            Text("composer.phonemeGuide.body", bundle: localizedBundle)
+                                .font(.system(size: 12))
+                        }
+                        .foregroundColor(Theme.dark)
+                        .padding()
+                        .frame(width: 280)
+                    }
                     .onPreferenceChange(ChipCenterKey.self) { chipCenters = $0 }
                     .onChange(of: composerModel.isPlaying) { _, playing in
                         if playing, let cx = chipCenters[0] {
@@ -361,8 +434,8 @@ struct ComposerView: View {
                 Spacer()
             }
 
-            // Bottom keyboard divider
-            if showKeyboard {
+            // Bottom keyboard divider (keyboard hidden in composer until chips exist)
+            if showKeyboard && !composerModel.phonemes.isEmpty {
                 Theme.dark.opacity(0.15)
                     .frame(height: 1)
             }
@@ -377,6 +450,88 @@ struct ComposerView: View {
         }
         .onChange(of: sequencerModel.musicalKey) { composerModel.musicalKey = sequencerModel.musicalKey }
         .onChange(of: sequencerModel.scaleType) { composerModel.scaleType = sequencerModel.scaleType }
+        // MARK: Onboarding — Recompose tip + Reveal Phonemes hint timer
+        .onChange(of: composerModel.inputText) { _, newText in
+            let trimmed = newText.trimmingCharacters(in: .whitespacesAndNewlines)
+            print("[onboarding] inputText changed, trimmed length: \(trimmed.count), phonemes: \(composerModel.phonemes.count), hasSeenRecomposeTip: \(onboarding.hasSeenRecomposeTip)")
+
+            // Cancel any existing timers
+            recomposeTipTimer?.invalidate()
+            recomposeTipTimer = nil
+            revealHintTimer?.invalidate()
+            revealHintTimer = nil
+
+            // Start timer if text is non-empty, no phonemes, and tips not yet seen
+            let needsRecomposeTip = !onboarding.hasSeenRecomposeTip
+            let needsRevealHint = !onboarding.hasSeenRevealHint
+            if !trimmed.isEmpty && composerModel.phonemes.isEmpty && (needsRecomposeTip || needsRevealHint) {
+                let timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { _ in
+                    DispatchQueue.main.async {
+                        // Re-check conditions at fire time
+                        guard !composerModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            && composerModel.phonemes.isEmpty else { return }
+                        if !onboarding.hasSeenRecomposeTip {
+                            print("[onboarding] Showing recompose tip popover")
+                            withAnimation { showRecomposeTip = true }
+                        } else if !onboarding.hasSeenRevealHint {
+                            print("[onboarding] Showing reveal hint popover")
+                            withAnimation { showRevealHint = true }
+                        }
+                    }
+                }
+                if needsRecomposeTip {
+                    recomposeTipTimer = timer
+                } else {
+                    revealHintTimer = timer
+                }
+            }
+        }
+        // MARK: Onboarding — Recompose tip dismissed → Reveal hint
+        .onChange(of: showRecomposeTip) { wasShowing, isShowing in
+            if wasShowing && !isShowing {
+                onboarding.hasSeenRecomposeTip = true
+                // Immediately show reveal hint
+                if !onboarding.hasSeenRevealHint && composerModel.phonemes.isEmpty {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        withAnimation { showRevealHint = true }
+                    }
+                }
+            }
+        }
+        // MARK: Onboarding — Post-reveal phoneme guide
+        .onChange(of: composerModel.phonemes.count) { oldCount, newCount in
+            print("[onboarding] phonemes count changed: \(oldCount) → \(newCount), hasSeenPhonemeGuide: \(onboarding.hasSeenPhonemeRevealGuide)")
+            if oldCount == 0 && newCount > 0 && !onboarding.hasSeenPhonemeRevealGuide {
+                // Dismiss reveal hint if still showing
+                showRevealHint = false
+                revealHintTimer?.invalidate()
+                revealHintTimer = nil
+                // Show phoneme guide after a brief delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    print("[onboarding] Showing phoneme guide popover")
+                    withAnimation { showPhonemeGuide = true }
+                }
+            }
+        }
+        // MARK: Onboarding — Copy to Piano Roll hint (after phoneme guide dismissed)
+        .onChange(of: showPhonemeGuide) { wasShowing, isShowing in
+            // User just dismissed the phoneme guide
+            if wasShowing && !isShowing {
+                onboarding.hasSeenPhonemeRevealGuide = true
+            }
+            if wasShowing && !isShowing && !onboarding.hasSeenCopyToRollHint {
+                copyToRollHintTimer?.invalidate()
+                copyToRollHintTimer = Timer.scheduledTimer(withTimeInterval: 8.0, repeats: false) { _ in
+                    DispatchQueue.main.async {
+                        if !composerModel.phonemes.isEmpty && !onboarding.hasSeenCopyToRollHint {
+                            print("[onboarding] Showing copy-to-roll hint")
+                            withAnimation { showCopyToRollHint = true }
+                            onboarding.hasSeenCopyToRollHint = true
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Phoneme Strip

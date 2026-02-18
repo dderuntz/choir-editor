@@ -55,17 +55,28 @@ struct ContentView: View {
     @State private var showComposerHelp = false
     @State private var emptyHelperDismissed = false
     @State private var hasCompletedInitialLoad = false
+    @State private var showRollEntryModal = false
     @FocusState private var isTitleFocused: Bool
 
     // Onboarding
     @EnvironmentObject var onboarding: OnboardingManager
+    @State private var showKeyboardHint = false
+    @State private var showComposerHint = false
+    @State private var keyboardHintTimer: Timer?
+    @State private var composerHintTimer: Timer?
     
     private var isEmptyState: Bool {
-        showComposer ? !composerModel.hasContent : model.notes.isEmpty
+        model.notes.isEmpty && !composerModel.hasContent
+    }
+
+    /// Keyboard is unavailable when in composer with no phoneme chips
+    private var keyboardAvailable: Bool {
+        !showComposer || !composerModel.phonemes.isEmpty
     }
     
     private var showEmptyHelper: Bool {
-        isEmptyState && !emptyHelperDismissed && hasCompletedInitialLoad
+        // Show on true empty state, OR when Reset Tutorial forces it
+        (isEmptyState && !emptyHelperDismissed && hasCompletedInitialLoad) || onboarding.showIntroPicker
     }
     
     var body: some View {
@@ -93,16 +104,66 @@ struct ContentView: View {
                 localAudioMode: localAudioMode,
                 applyLocalAudioMode: applyLocalAudioMode
             ))
+            // Piano roll onboarding: keyboard hint (8s after transport tip dismissed)
+            .onReceive(NotificationCenter.default.publisher(for: .rollTransportTipDismissed)) { _ in
+                guard !onboarding.hasSeenKeyboardHint else { return }
+                keyboardHintTimer?.invalidate()
+                keyboardHintTimer = Timer.scheduledTimer(withTimeInterval: 8, repeats: false) { _ in
+                    Task { @MainActor in showKeyboardHint = true }
+                }
+            }
+            .onChange(of: showKeyboardHint) { wasShowing, isShowing in
+                if wasShowing && !isShowing {
+                    onboarding.hasSeenKeyboardHint = true
+                    // Start composer hint timer (15s) if user hasn't visited composer
+                    if !onboarding.hasSeenComposerHint && !onboarding.hasVisitedComposer {
+                        composerHintTimer?.invalidate()
+                        composerHintTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: false) { _ in
+                            Task { @MainActor in showComposerHint = true }
+                        }
+                    }
+                }
+            }
+            .onChange(of: showComposerHint) { wasShowing, isShowing in
+                if wasShowing && !isShowing {
+                    onboarding.hasSeenComposerHint = true
+                }
+            }
+            // Cancel pending roll hints if user navigates to composer
+            .onChange(of: showComposer) { _, isComposer in
+                if isComposer {
+                    keyboardHintTimer?.invalidate()
+                    composerHintTimer?.invalidate()
+                    showKeyboardHint = false
+                    showComposerHint = false
+                }
+            }
     }
 
     private func handleAppear() {
-        showKeyboard = showKeyboardStorage
-        showComposer = showComposerStorage
         showSettings = showSettingsStorage
         midiService.start()
         model.loadLastFileIfAvailable()
         hasCompletedInitialLoad = true
         applyLocalAudioMode()
+
+        let isEmpty = model.notes.isEmpty && !composerModel.hasContent
+
+        // Default to piano roll on empty launch so the empty-state helper
+        // isn't competing with the composer view behind it
+        if isEmpty {
+            showComposer = false
+            showKeyboard = false  // hide keyboard on fresh/empty launch
+        } else {
+            showComposer = showComposerStorage
+            showKeyboard = showKeyboardStorage
+        }
+
+        // Trigger phonemes explanation if composer is already showing on launch
+        // (onChange won't fire for the initial value)
+        if showComposer {
+            onboarding.showChipsExplanationIfNeeded(hasPhonemes: !composerModel.phonemes.isEmpty)
+        }
     }
     
     // MARK: - Title Editing
@@ -228,25 +289,59 @@ struct ContentView: View {
                     onStartWithMelody: {
                         withAnimation(.easeInOut(duration: 0.2)) {
                             emptyHelperDismissed = true
+                            onboarding.dismissIntroPicker()
                             if showComposer { showComposer = false }
+                        }
+                        // Give a beat before showing the roll entry modal
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showRollEntryModal = true
+                            }
                         }
                     },
                     onStartWithIdeas: {
                         withAnimation(.easeInOut(duration: 0.25)) {
                             emptyHelperDismissed = true
+                            onboarding.dismissIntroPicker()
                             if !showComposer { showComposer = true }
                         }
                     },
                     onDismiss: {
-                        withAnimation(.easeInOut(duration: 0.2)) { emptyHelperDismissed = true }
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            emptyHelperDismissed = true
+                            onboarding.dismissIntroPicker()
+                        }
                     }
                 )
             }
-            if onboarding.showChipsModal {
-                ChipsExplanationModal()
-            }
+            // ChipsExplanation is now a popover on the text field in ComposerView
             if onboarding.showFirstPlayModal {
                 FirstPlayGuideModal(onConnectDolls: startBluetoothSetup)
+            }
+            if showRollEntryModal {
+                PianoRollEntryModal(
+                    onStartAdding: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showRollEntryModal = false
+                        }
+                        NotificationCenter.default.post(name: .rollStartAdding, object: nil)
+                    },
+                    onLoadDemo: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showRollEntryModal = false
+                        }
+                        model.loadDemoFile()
+                        // Kick off demo onboarding path after a brief settle
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            NotificationCenter.default.post(name: .rollDemoLoaded, object: nil)
+                        }
+                    },
+                    onDismiss: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showRollEntryModal = false
+                        }
+                    }
+                )
             }
         }
     }
@@ -358,15 +453,14 @@ struct ContentView: View {
             .buttonStyle(HoverPillStyle(colorScheme: colorScheme))
             .popover(isPresented: $showComposerHelp) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Composer Tips")
+                    Text("help.composerTips.title", bundle: localizedBundle)
                         .font(.system(size: 13, weight: .semibold))
-                    Text("This is the composer. It turns ideas into lyrics if you want. And it turns lyrics into phonemes for your choir to sing. Edit chips to edit consonants and vowels and refine the phoneme (the sounds your choir makes), then copy to the piano roll to arrange.")
-                    Text("• Click a chip to hear it and inspect")
-                    Text("• Click a chip to hear it and inspect")
-                    Text("• Shift-click a chip to add choir")
-                    Text("• Long-press a chip to toggle ensemble")
-                    Text("• Right-click a chip to insert or delete")
-                    Text("• Use Copy to Piano Roll when ready to arrange")
+                    Text("help.composerTips.body", bundle: localizedBundle)
+                    Text("help.composerTips.clickPhoneme", bundle: localizedBundle)
+                    Text("help.composerTips.shiftClick", bundle: localizedBundle)
+                    Text("help.composerTips.longPress", bundle: localizedBundle)
+                    Text("help.composerTips.rightClick", bundle: localizedBundle)
+                    Text("help.composerTips.copyToRoll", bundle: localizedBundle)
                 }
                 .font(.system(size: 12))
                 .foregroundColor(Theme.dark)
@@ -404,6 +498,13 @@ struct ContentView: View {
             }
             .buttonStyle(.plain)
             .help("Compose")
+            .popover(isPresented: $showComposerHint) {
+                (Text(Image(systemName: "eyebrow")) + Text(" ") + Text("onboarding.roll.composerHint", bundle: localizedBundle))
+                    .font(.system(size: 12))
+                    .foregroundColor(Theme.dark)
+                    .padding()
+                    .frame(width: 240)
+            }
 
             Button(action: { showSoundPad = true }) {
                 Image(systemName: "ear")
@@ -416,10 +517,22 @@ struct ContentView: View {
             Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showKeyboard.toggle(); showKeyboardStorage = showKeyboard } }) {
                 Image(systemName: "pianokeys")
                     .font(.system(size: Theme.toolbarIconSize, weight: .light))
-                    .foregroundColor(showKeyboard ? Theme.text(colorScheme).opacity(0.85) : Theme.text(colorScheme).opacity(0.4))
+                    .foregroundColor(
+                        !keyboardAvailable ? Theme.text(colorScheme).opacity(0.15)
+                        : showKeyboard ? Theme.text(colorScheme).opacity(0.85)
+                        : Theme.text(colorScheme).opacity(0.4)
+                    )
             }
             .buttonStyle(.plain)
-            .help("Touch")
+            .disabled(!keyboardAvailable)
+            .help(keyboardAvailable ? "Touch" : "Add phonemes to use the keyboard")
+            .popover(isPresented: $showKeyboardHint) {
+                (Text(Image(systemName: "pianokeys")) + Text(" ") + Text("onboarding.roll.keyboardHint", bundle: localizedBundle))
+                    .font(.system(size: 12))
+                    .foregroundColor(Theme.dark)
+                    .padding()
+                    .frame(width: 240)
+            }
 
             Button(action: { startBluetoothSetup() }) {
                 ConnectionStatusView(midiService: midiService)
@@ -445,7 +558,7 @@ struct ContentView: View {
                 ComposerView(midiService: midiService, audioMonitor: audioMonitor, onDismiss: { showComposer = false })
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(NonDraggableArea())
-                    .padding(.bottom, showKeyboard ? 150 : 0)
+                    .padding(.bottom, showKeyboard && keyboardAvailable ? 150 : 0)
                     .transition(.opacity)
             } else {
                 SequencerView(midiService: midiService, audioMonitor: audioMonitor)
@@ -454,11 +567,12 @@ struct ContentView: View {
                     .padding(.bottom, showKeyboard ? 150 : 0)
             }
 
-            if showKeyboard {
+            if showKeyboard && keyboardAvailable {
                 KeyboardView(midiService: midiService, audioMonitor: audioMonitor, isComposerActive: showComposer)
                     .frame(height: 150)
                     .background(NonDraggableArea())
                     .background(Theme.bg(colorScheme))
+                    .zIndex(1)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -524,7 +638,7 @@ private struct ContentViewEventHandlers: ViewModifier {
     func body(content: Content) -> some View {
         content
             .modifier(KeyboardHandlers(showKeyboardStorage: $showKeyboardStorage, showKeyboard: $showKeyboard))
-            .modifier(ComposerHandlers(showComposerStorage: $showComposerStorage, showComposer: $showComposer, onboarding: onboarding))
+            .modifier(ComposerHandlers(showComposerStorage: $showComposerStorage, showComposer: $showComposer, onboarding: onboarding, composerModel: composerModel))
             .modifier(SettingsHandlers(showSettingsStorage: $showSettingsStorage, showSettings: $showSettings, showBluetoothSetup: $showBluetoothSetup))
             .modifier(PlaybackHandlers(model: model, composerModel: composerModel, onboarding: onboarding, midiService: midiService))
             .modifier(AudioHandlers(localAudioEnabled: $localAudioEnabled, localAudioMode: localAudioMode, audioMonitor: audioMonitor, midiService: midiService, applyLocalAudioMode: applyLocalAudioMode))
@@ -546,12 +660,16 @@ private struct ComposerHandlers: ViewModifier {
     @Binding var showComposerStorage: Bool
     @Binding var showComposer: Bool
     @ObservedObject var onboarding: OnboardingManager
+    @ObservedObject var composerModel: ComposerModel
     func body(content: Content) -> some View {
         content
             .onChange(of: showComposerStorage) { _, v in withAnimation(.easeInOut(duration: 0.25)) { showComposer = v } }
             .onChange(of: showComposer) { _, v in
                 showComposerStorage = v
-                if v { onboarding.showChipsExplanationIfNeeded() }
+                if v {
+                    onboarding.showChipsExplanationIfNeeded(hasPhonemes: !composerModel.phonemes.isEmpty)
+                    onboarding.hasVisitedComposer = true
+                }
             }
     }
 }
@@ -612,7 +730,7 @@ private struct MiscHandlers: ViewModifier {
     @ObservedObject var audioMonitor: AudioMonitorService
     func body(content: Content) -> some View {
         content
-            .onChange(of: isEmptyState) { _, isEmpty in if !isEmpty { emptyHelperDismissed = false } }
+            // Empty helper shows once per launch — don't re-trigger when content changes
             .onChange(of: midiService.isConnected) { _, connected in if connected { bluetoothManager.closeBluetoothMIDIWindow() } }
             .onReceive(NotificationCenter.default.publisher(for: .showSoundPad)) { _ in showSoundPad = true }
             .onReceive(NotificationCenter.default.publisher(for: .showComposer)) { _ in withAnimation(.easeInOut(duration: 0.25)) { showComposer = true } }
