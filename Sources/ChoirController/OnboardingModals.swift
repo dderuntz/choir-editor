@@ -65,10 +65,7 @@ struct FirstPlayGuideModal: View {
                         .font(.system(size: 13))
                         .foregroundColor(Theme.text(colorScheme).opacity(0.9))
                         .multilineTextAlignment(.center)
-                    Text("onboarding.firstPlay.subtitle", bundle: localizedBundle)
-                        .font(.system(size: 12))
-                        .foregroundColor(Theme.text(colorScheme).opacity(0.6))
-                        .multilineTextAlignment(.center)
+
                 }
                 .padding(24)
                 HStack(spacing: 12) {

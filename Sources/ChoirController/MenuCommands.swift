@@ -339,7 +339,7 @@ struct HelpCommands: Commands {
                 onboardingManager.reset()
             }
 
-            Button("Nuke All State & Quit") {
+            Button("Reset App & Quit") {
                 onboardingManager.nukeEverything()
             }
 

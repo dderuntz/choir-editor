@@ -1,0 +1,1 @@
+../../Sources/ChoirController/NoteInspectorView.swift
