@@ -750,7 +750,6 @@ class ComposerModel: ObservableObject {
                 let useEnsembleMultiplier = phoneme.isEnsemble && !isEmphasizedEnsemble
                 let baseDuration = durationFor(weight: phoneme.weight, isEnsemble: useEnsembleMultiplier)
                 let gap = Int(Double(phoneme.weight >= 3 ? 80 : 50) * speedMultiplier)
-                self.currentArcDuration = baseDuration + gap
 
                 let pitch = pitchForPhoneme(index: index, weight: phoneme.weight, total: total)
                 let velocity = velocityForWeight(phoneme.weight)
@@ -779,20 +778,29 @@ class ComposerModel: ObservableObject {
                 }
 
                 // Multiple bounces on same chip
+                // For double-bounce: first bounce is a quick in-place pop (40% of time),
+                // second bounce gets the rest to travel to the next chip.
+                let totalMs = baseDuration + gap
                 for bounceIdx in 0..<bounceCount {
                     guard !Task.isCancelled else { break }
+
+                    let bounceDuration: Int
+                    if bounceCount > 1 {
+                        bounceDuration = bounceIdx == 0
+                            ? Int(Double(totalMs) * 0.4)   // snappy in-place pop
+                            : totalMs - Int(Double(totalMs) * 0.4)  // longer travel arc
+                    } else {
+                        bounceDuration = totalMs
+                    }
+                    self.currentArcDuration = bounceDuration
                     self.currentBounceIndex = bounceIdx
+
                     if bounceIdx == 0 {
                         self.currentPlayIndex = index  // trigger first bounce via playIndex
                     }
                     // Subsequent bounces triggered via bounceIndex onChange
 
-                    try? await Task.sleep(for: .milliseconds(baseDuration + gap))
-                }
-
-                // Small buffer to let final bounce animation complete
-                if bounceCount > 1 {
-                    try? await Task.sleep(for: .milliseconds(50))
+                    try? await Task.sleep(for: .milliseconds(bounceDuration))
                 }
 
                 // Stop the note after all bounces
