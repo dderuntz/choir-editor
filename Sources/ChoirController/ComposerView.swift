@@ -133,7 +133,7 @@ struct ComposerView: View {
 
                 Text("composer.prompt", bundle: localizedBundle)
                     .font(.system(size: 18, weight: .regular))
-                    .foregroundColor(hasText ? Theme.field : Theme.dark)
+                    .foregroundColor(hasText ? Theme.field : Theme.text(colorScheme))
                     .padding(.bottom, 8)
 
                 ZStack {
@@ -142,7 +142,7 @@ struct ComposerView: View {
                         Text(Self.placeholderText)
                             .font(.system(size: 48, weight: .light))
                             .kerning(-1.0)
-                            .foregroundColor(Theme.fieldLight)
+                            .foregroundColor(Theme.fieldColor(colorScheme))
                             .allowsHitTesting(false)
                     }
 
@@ -171,7 +171,7 @@ struct ComposerView: View {
                             .font(.system(size: 12))
                             .multilineTextAlignment(.center)
                     }
-                    .foregroundColor(Theme.dark)
+                    .foregroundColor(Theme.text(colorScheme))
                     .padding()
                     .frame(width: 280)
                 }
@@ -192,7 +192,7 @@ struct ComposerView: View {
                     .popover(isPresented: $showRecomposeTip) {
                         Text("onboarding.composer.recomposeTip", bundle: localizedBundle)
                             .font(.system(size: 12))
-                            .foregroundColor(Theme.dark)
+                            .foregroundColor(Theme.text(colorScheme))
                             .padding()
                             .frame(width: 260)
                     }
@@ -262,7 +262,7 @@ struct ComposerView: View {
                     .popover(isPresented: $showRevealHint) {
                         Text("composer.revealHint", bundle: localizedBundle)
                             .font(.system(size: 12))
-                            .foregroundColor(Theme.dark)
+                            .foregroundColor(Theme.text(colorScheme))
                             .padding()
                             .frame(width: 240)
                     }
@@ -357,7 +357,7 @@ struct ComposerView: View {
                         .popover(isPresented: $showCopyToRollHint) {
                             Text("composer.copyToRollHint", bundle: localizedBundle)
                                 .font(.system(size: 12))
-                                .foregroundColor(Theme.dark)
+                                .foregroundColor(Theme.text(colorScheme))
                                 .padding()
                                 .frame(width: 240)
                         }
@@ -377,7 +377,7 @@ struct ComposerView: View {
                             Text("composer.phonemeGuide.body", bundle: localizedBundle)
                                 .font(.system(size: 12))
                         }
-                        .foregroundColor(Theme.dark)
+                        .foregroundColor(Theme.text(colorScheme))
                         .padding()
                         .frame(width: 280)
                     }
@@ -604,17 +604,6 @@ struct ComposerView: View {
                     }
                 }
 
-                // Thumbs up at end of strip
-                Button(action: { composerModel.approveResult() }) {
-                    Image(systemName: composerModel.isApproved ? "hand.thumbsup.fill" : "hand.thumbsup")
-                        .font(.title2)
-                        .foregroundColor(composerModel.isApproved ? Theme.accent : Theme.text(colorScheme).opacity(0.3))
-                }
-                .buttonStyle(.plain)
-                .padding(.leading, 10)
-                .help(composerModel.isApproved
-                      ? "Saved (\(composerModel.savedExampleCount) examples)"
-                      : "Approve — save as training example")
             }
             .padding(.leading, leadingPad)
             .padding(.top, 40)
@@ -721,11 +710,11 @@ struct PhonemeChip: View {
             if isRandomCons && isRandomVowel {
                 Image(systemName: "shuffle")
                     .font(.system(size: 13))
-                    .foregroundColor(Theme.dark)
+                    .foregroundColor(Theme.text(colorScheme))
             } else {
                 Text(phoneme.text)
                     .font(.system(size: 13, weight: .regular))
-                    .foregroundColor(Theme.dark)
+                    .foregroundColor(Theme.text(colorScheme))
             }
 
             if !phonemeLabel.isEmpty || isRandomCons || isRandomVowel || phoneme.isEnsemble {
@@ -747,7 +736,7 @@ struct PhonemeChip: View {
                             .font(.system(size: 7))
                     }
                 }
-                .foregroundColor(Theme.dark.opacity(0.4))
+                .foregroundColor(Theme.text(colorScheme).opacity(0.4))
             }
         }
         .padding(.horizontal, 22)

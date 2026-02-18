@@ -109,7 +109,7 @@ struct HoverPillStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundColor(isHovered ? Theme.dark : textColor)
+            .foregroundColor(isHovered ? Theme.text(colorScheme) : textColor)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(
