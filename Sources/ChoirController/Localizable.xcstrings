@@ -6,7 +6,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Welcome to the Composer!"
+            "value" : "The Composer"
           }
         }
       }
@@ -16,7 +16,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Type a lyric, then tap **Reveal Phonemes** to create the sounds the choir sings. You can recompose your lyrics in different styles."
+            "value" : "Type lyrics, then tap **Reveal Phonemes** to turn them into the sounds your choir sings."
           }
         }
       }
@@ -26,7 +26,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Got it"
+            "value" : "Let's begin"
           }
         }
       }
@@ -36,7 +36,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "You're hearing the local synth"
+            "value" : "Playing with the built-in synth"
           }
         }
       }
@@ -46,17 +46,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Connect your Choir dolls via Bluetooth to play on hardware."
-          }
-        }
-      }
-    },
-    "onboarding.firstPlay.subtitle" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Local sound turns off automatically when dolls connect. Change this in **Preferences** → **Audio**."
+            "value" : "No dolls are connected, so playback is using the built-in synth. Connect Choir dolls over Bluetooth to hear them sing instead — the synth turns off automatically when they connect."
           }
         }
       }
@@ -86,7 +76,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Where to start?"
+            "value" : "How do you want to start?"
           }
         }
       }
@@ -96,7 +86,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Open the **Composer** to craft a lyric for the choir and quickly test it out."
+            "value" : "Write lyrics in the **Composer** and hear the choir sing them back."
           }
         }
       }
@@ -106,7 +96,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Challenge — Start manually arranging phonemes and notes on the **Piano Roll** and hit play!"
+            "value" : "Place **Phonemes** directly on the **Piano Roll** — full control over your arrangement."
           }
         }
       }
@@ -116,7 +106,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Start with ideas"
+            "value" : "Compose lyrics"
           }
         }
       }
@@ -126,7 +116,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Start with melody"
+            "value" : "Manually score"
           }
         }
       }
@@ -146,7 +136,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Use **Recompose** to restyle your lyrics. There are 5 different styles to try in the **Composer** menu."
+            "value" : "Try **Recompose** to stylize your lyrics or prompt — five styles in the **Composer** menu."
           }
         }
       }
@@ -156,7 +146,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tap to convert your lyrics into phonemes — the sounds your choir will sing."
+            "value" : "Turn your lyrics into phonemes — the sound elements your choir uses to sing."
           }
         }
       }
@@ -166,7 +156,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Copy your phonemes to the **Piano Roll** for fine control over pitch, timing, and arrangement."
+            "value" : "Copy your phonemes to the **Piano Roll** for control over pitch, timing, and arrangement."
           }
         }
       }
@@ -186,17 +176,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Each phoneme pairs a consonant with a vowel. Tap any to hear it and tweak its sound. Use the **Keyboard** to play phonemes at different pitches."
-          }
-        }
-      }
-    },
-    "composer.phonemeGuide.dismiss" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Got it"
+            "value" : "Each phoneme pairs a consonant with a vowel. Tap any to hear it and tweak its sound. Hit **Play** to hear them sung together, and change the **Key** and **Scale** to shape your melody."
           }
         }
       }
@@ -216,7 +196,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Type lyrics and tap **Reveal Phonemes** to create the sounds your choir sings. You can recompose in different styles, then copy to the **Piano Roll** to arrange."
+            "value" : "Type lyrics and try different styles with **Recompose**. Tap **Reveal Phonemes** to generate the sounds your choir sings, then copy to the **Piano Roll** to arrange."
           }
         }
       }
@@ -226,7 +206,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "• Click a phoneme to hear it and inspect"
+            "value" : "Click a phoneme to hear and inspect it"
           }
         }
       }
@@ -236,17 +216,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "• Shift-click a phoneme to add ensemble"
-          }
-        }
-      }
-    },
-    "help.composerTips.longPress" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "• Long-press a phoneme to toggle ensemble"
+            "value" : "Shift-click or long-press to toggle harmony"
           }
         }
       }
@@ -256,7 +226,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "• Right-click a phoneme to insert or delete"
+            "value" : "Right-click a phoneme to insert or delete"
           }
         }
       }
@@ -266,17 +236,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "• Use **Copy to Piano Roll** when ready to arrange"
-          }
-        }
-      }
-    },
-    "help.language" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Language"
+            "value" : "**Copy to Piano Roll** when you're ready to arrange"
           }
         }
       }
@@ -296,7 +256,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tap the grid to place notes — each one carries a phoneme, the sound your choir sings."
+            "value" : "Tap the grid to place notes. Each note carries a phoneme — a sound element your choir sings."
           }
         }
       }
@@ -306,7 +266,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Start adding"
+            "value" : "Start blank"
           }
         }
       }
@@ -326,7 +286,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "This is the note inspector. Change the **Consonant** and **Vowel** to control what the choir sings on this note."
+            "value" : "This is the note inspector. Change the **Consonant** and **Vowel** to shape what the choir sings."
           }
         }
       }
@@ -336,7 +296,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hit play to hear your arrangement. Drag the yellow transport bar to scrub through and trigger phonemes."
+            "value" : "Press play to hear your arrangement. Drag the playhead to scrub through."
           }
         }
       }
@@ -346,7 +306,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Toggle the keyboard to play phonemes at different pitches and find rows in the **Piano Roll**."
+            "value" : "Show the keyboard to play phonemes at different pitches and find rows on the **Piano Roll**."
           }
         }
       }
@@ -356,7 +316,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Try the **Composer** — write lyrics first and let the app create phonemes for you."
+            "value" : "Try the **Composer** — write lyrics and let it create phonemes for you."
           }
         }
       }
@@ -366,7 +326,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Your composer used a scale to place these notes. Enable the **Scale Guide** to see which rows are in key?"
+            "value" : "These notes were placed in a scale. Turn on the **Scale Guide** to see which rows are in key?"
           }
         }
       }
@@ -376,7 +336,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Enable Scale Guide"
+            "value" : "Turn on Scale Guide"
           }
         }
       }
@@ -386,7 +346,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tap the grid below to add your first phoneme!"
+            "value" : "Tap the grid to place your first note."
           }
         }
       }
@@ -406,7 +366,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "This is the piano roll — arrange your choir's sounds here. Use the scale guide to help place notes in the correct key."
+            "value" : "Arrange your choir's sounds here. Use the **Scale Guide** to keep notes in key."
           }
         }
       }
@@ -416,7 +376,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "• Tap the grid to add a note"
+            "value" : "Tap the grid to add a note"
           }
         }
       }
@@ -426,7 +386,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "• Drag notes to rearrange"
+            "value" : "Drag notes to move them"
           }
         }
       }
@@ -436,7 +396,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "• Option-drag to duplicate a note"
+            "value" : "Option-drag to duplicate a note"
           }
         }
       }
@@ -446,7 +406,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "• Tap a note to select and edit the phoneme in the inspector"
+            "value" : "Tap a note to select and edit its phoneme"
           }
         }
       }
@@ -456,7 +416,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "• Shift-click to select multiple notes"
+            "value" : "Shift-click to select multiple notes"
           }
         }
       }
@@ -466,7 +426,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "• Shift-click and drag to select multiple"
+            "value" : "Shift-drag to marquee select"
           }
         }
       }
@@ -476,7 +436,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "• Use Delete key to remove selected notes"
+            "value" : "Delete key to remove selected notes"
           }
         }
       }

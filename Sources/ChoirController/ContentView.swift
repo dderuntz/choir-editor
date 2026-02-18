@@ -456,11 +456,10 @@ struct ContentView: View {
                     Text("help.composerTips.title", bundle: localizedBundle)
                         .font(.system(size: 13, weight: .semibold))
                     Text("help.composerTips.body", bundle: localizedBundle)
-                    Text("help.composerTips.clickPhoneme", bundle: localizedBundle)
-                    Text("help.composerTips.shiftClick", bundle: localizedBundle)
-                    Text("help.composerTips.longPress", bundle: localizedBundle)
-                    Text("help.composerTips.rightClick", bundle: localizedBundle)
-                    Text("help.composerTips.copyToRoll", bundle: localizedBundle)
+                    Label { Text("help.composerTips.clickPhoneme", bundle: localizedBundle) } icon: { Image(systemName: "circle.fill").font(.system(size: 4)).opacity(0.6) }
+                    Label { Text("help.composerTips.shiftClick", bundle: localizedBundle) } icon: { Image(systemName: "circle.fill").font(.system(size: 4)).opacity(0.6) }
+                    Label { Text("help.composerTips.rightClick", bundle: localizedBundle) } icon: { Image(systemName: "circle.fill").font(.system(size: 4)).opacity(0.6) }
+                    Label { Text("help.composerTips.copyToRoll", bundle: localizedBundle) } icon: { Image(systemName: "circle.fill").font(.system(size: 4)).opacity(0.6) }
                 }
                 .font(.system(size: 12))
                 .foregroundColor(Theme.text(colorScheme))
@@ -499,7 +498,7 @@ struct ContentView: View {
             .buttonStyle(.plain)
             .help("Compose")
             .popover(isPresented: $showComposerHint) {
-                (Text(Image(systemName: "eyebrow")) + Text(" ") + Text("onboarding.roll.composerHint", bundle: localizedBundle))
+                Text("\(Image(systemName: "eyebrow")) \(Text("onboarding.roll.composerHint", bundle: localizedBundle))")
                     .font(.system(size: 12))
                     .foregroundColor(Theme.text(colorScheme))
                     .padding()
@@ -527,7 +526,7 @@ struct ContentView: View {
             .disabled(!keyboardAvailable)
             .help(keyboardAvailable ? "Touch" : "Add phonemes to use the keyboard")
             .popover(isPresented: $showKeyboardHint) {
-                (Text(Image(systemName: "pianokeys")) + Text(" ") + Text("onboarding.roll.keyboardHint", bundle: localizedBundle))
+                Text("\(Image(systemName: "pianokeys")) \(Text("onboarding.roll.keyboardHint", bundle: localizedBundle))")
                     .font(.system(size: 12))
                     .foregroundColor(Theme.text(colorScheme))
                     .padding()
