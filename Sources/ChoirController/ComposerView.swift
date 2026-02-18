@@ -10,6 +10,7 @@ struct ChipCenterKey: PreferenceKey {
     }
 }
 
+
 struct ComposerView: View {
     @EnvironmentObject var composerModel: ComposerModel
     @EnvironmentObject var sequencerModel: SequencerModel
@@ -369,7 +370,7 @@ struct ComposerView: View {
 
                 Spacer()
 
-                phonemeStrip(leadingPad: 0)
+                phonemeStrip(leadingPad: 0, containerWidth: geo.size.width)
                     .popover(isPresented: $showPhonemeGuide) {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("composer.phonemeGuide.title", bundle: localizedBundle)
@@ -536,7 +537,7 @@ struct ComposerView: View {
 
     // MARK: - Phoneme Strip
 
-    private func phonemeStrip(leadingPad: CGFloat = 0) -> some View {
+    private func phonemeStrip(leadingPad: CGFloat = 0, containerWidth: CGFloat = 0) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 0) {
                 ForEach(Array(composerModel.phonemes.enumerated()), id: \.element.id) { index, phoneme in
@@ -607,7 +608,7 @@ struct ComposerView: View {
             }
             .padding(.leading, leadingPad)
             .padding(.top, 40)
-            .frame(minWidth: nsScrollView?.frame.width ?? 0, alignment: .center)
+            .frame(minWidth: containerWidth, alignment: .center)
             .coordinateSpace(name: "phonemeStrip")
             .overlay(alignment: .topLeading) {
                 // Bouncing ball — lives inside scroll content so it scrolls with chips
