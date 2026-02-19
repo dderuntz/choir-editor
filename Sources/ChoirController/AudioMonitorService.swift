@@ -13,6 +13,7 @@ class AudioMonitorService: ObservableObject {
     private var reverbNode: AVAudioUnitReverb?
     private var sampleRate: Double = 44100.0
     private var isSetUp = false
+    private var configChangeObserver: NSObjectProtocol?
 
     @Published var isMuted: Bool = false
     @Published var engineType: SynthEngineType = .formant
@@ -38,6 +39,12 @@ class AudioMonitorService: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async {
             reverb.loadFactoryPreset(.cathedral)
             reverb.wetDryMix = 25
+        }
+    }
+
+    deinit {
+        if let observer = configChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 
@@ -69,6 +76,11 @@ class AudioMonitorService: ObservableObject {
 
     /// Tear down the engine when local audio is disabled.
     func tearDown() {
+        // Remove config change observer for this engine
+        if let observer = configChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            configChangeObserver = nil
+        }
         audioEngine?.stop()
         if let node = sourceNode { audioEngine?.detach(node) }
         // Only detach reverb if it's currently attached
@@ -127,12 +139,31 @@ class AudioMonitorService: ObservableObject {
             newEngine.connect(sourceNode!, to: newEngine.mainMixerNode, format: nil)
         }
 
+        // Listen for audio configuration changes (device switches, etc.)
+        if configChangeObserver == nil {
+            configChangeObserver = NotificationCenter.default.addObserver(
+                forName: .AVAudioEngineConfigurationChange,
+                object: newEngine,
+                queue: .main
+            ) { [weak self] _ in
+                self?.handleAudioConfigChange()
+            }
+        }
+
         do {
             try newEngine.start()
             isSetUp = true
         } catch {
             log.error("Audio Engine failed to start: \(error)")
         }
+    }
+
+    private func handleAudioConfigChange() {
+        log.info("Audio configuration changed, restarting engine")
+        guard isSetUp else { return }
+        // Restart the audio engine with new configuration
+        tearDown()
+        setupAudio()
     }
 
     // MARK: - Note Control

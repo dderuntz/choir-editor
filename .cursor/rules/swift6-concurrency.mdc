@@ -1,0 +1,98 @@
+---
+description: Swift 6 strict concurrency patterns and workarounds
+globs: Sources/**/*.swift
+alwaysApply: true
+---
+
+# Swift 6 Strict Concurrency
+
+## Common Errors & Fixes
+
+### "Compiler unable to type-check this expression"
+SwiftUI `body` gets too complex. Fix by extracting into computed properties:
+```swift
+// BAD - body with 15+ modifiers or nested views
+var body: some View {
+    ZStack { ... }
+        .onChange(of: x) { ... }
+        .onChange(of: y) { ... }
+        // 10 more modifiers...
+}
+
+// GOOD - extract views and use ViewModifiers
+var body: some View {
+    rootContent
+        .modifier(MyEventHandlers(...))
+}
+
+private var rootContent: some View { ... }
+```
+
+### "Sending 'self' risks causing data races"
+Can't capture `self` in async closures from non-isolated classes. Avoid `DispatchQueue.main.asyncAfter` with `[weak self]`.
+
+```swift
+// BAD
+DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+    self?.doThing()
+}
+
+// GOOD - do it synchronously if possible
+doThing()
+
+// OR - if delay needed, mark class @MainActor
+@MainActor class MyService { ... }
+```
+
+### "Static property is not concurrency-safe"
+Mutable static vars need explicit annotation:
+```swift
+// BAD
+private static var cache: [String: Data]? = nil
+
+// GOOD
+private nonisolated(unsafe) static var cache: [String: Data]? = nil
+```
+
+### ViewModifier body too complex
+Same fix - split into multiple smaller modifiers:
+```swift
+// BAD - one modifier with 10+ .onChange
+struct AllHandlers: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .onChange(...) // x10
+    }
+}
+
+// GOOD - group by concern
+struct KeyboardHandlers: ViewModifier { ... }
+struct AudioHandlers: ViewModifier { ... }
+```
+
+## Audio Engine
+
+### Device Changes
+AVAudioEngine stops working when audio device changes. Listen and restart:
+```swift
+NotificationCenter.default.addObserver(
+    forName: .AVAudioEngineConfigurationChange,
+    object: engine,
+    queue: .main
+) { _ in
+    tearDown()
+    setupAudio()
+}
+```
+
+### Render Block Safety
+NO Swift classes or locks in AVAudioSourceNode render block:
+```swift
+// Capture primitives before the block
+let sr = Float(sampleRate)
+let engineRef = synth // class pointer is fine, just don't alloc inside
+
+sourceNode = AVAudioSourceNode { _, _, frameCount, bufferList in
+    // Only use captured values and raw pointers here
+}
+```

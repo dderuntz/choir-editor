@@ -1,10 +1,12 @@
 import SwiftUI
+import AppKit
 
 struct SequencerView: View {
     var midiService: MidiService
     @ObservedObject var audioMonitor: AudioMonitorService
     @EnvironmentObject var model: SequencerModel
     @AppStorage("localAudioEnabled") private var localAudioEnabled = false
+    @AppStorage("appLanguage") private var appLanguage: AppLanguage = .system
     @Environment(\.colorScheme) private var colorScheme
     
     /// Stable identity for the inspector when no note is selected (avoids per-frame recreation)
@@ -13,13 +15,25 @@ struct SequencerView: View {
     // Playback timer
     @State private var playbackTimer: Timer? = nil
     @State private var lastTickTime: Date? = nil
+    @State private var pendingClearAll = false
+    @State private var showSequencerTips = false
+    @State private var pendingCCWorkItem: DispatchWorkItem? = nil
+
+    // Onboarding
+    @EnvironmentObject var onboarding: OnboardingManager
+    @State private var showInspectorTip = false
+    @State private var showTransportTip = false
+    @State private var isDemoPath = false  // demo loaded → different tip order
+    @State private var showNudgeTip = false  // blank path: "tap grid to add" reminder
+    @State private var nudgeTimer: Timer?
+    @State private var showScaleGuideInvite = false
     
     // Scroll sync between scrub zone and piano roll grid
     @StateObject private var scrollSync = ScrollSyncManager()
     
     /// X position of the callout arrow (note center, accounting for scroll offset)
     private var noteArrowX: CGFloat {
-        guard let note = model.selectedNote else { return -20 }
+        guard let note = model.selectedNote else { return -100 }
         let pianoOffset = PianoRollLayout.pianoKeyWidth + 1 // piano keys + divider
         let noteCenterX = PianoRollLayout.xForBeat(note.startBeat)
             + CGFloat(note.duration) * PianoRollLayout.beatWidth / 2
@@ -40,11 +54,38 @@ struct SequencerView: View {
                 onNotePreview: { note in
                     playNoteForDuration(note)
                 },
+                onNoteUpdate: { updatedNote in
+                    let ids = model.selectedNoteIds.isEmpty ? [updatedNote.id] : model.selectedNoteIds
+                    for id in ids {
+                        model.updateNote(id: id) { note in
+                            note.consonant = updatedNote.consonant
+                            note.vowel = updatedNote.vowel
+                            note.velocity = updatedNote.velocity
+                            note.vibrato = updatedNote.vibrato
+                            note.reverb = updatedNote.reverb
+                        }
+                    }
+                },
+                onNoteDelete: {
+                    model.deleteSelectedNote()
+                },
                 scrollSync: scrollSync
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.bottom, model.selectedNote != nil ? 70 : 0)
+            .padding(.bottom, model.selectedNote != nil ? 80 : 0)
             .animation(.easeInOut(duration: 0.15), value: model.selectedNote != nil)
+            .overlay {
+                // Invisible center anchor for the nudge tip popover
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .popover(isPresented: $showNudgeTip) {
+                        Text("onboarding.roll.nudgeTip", bundle: localizedBundle)
+                            .font(.system(size: 12))
+                            .foregroundColor(Theme.text(colorScheme))
+                            .padding()
+                            .frame(width: 240)
+                    }
+            }
         }
         .overlay(alignment: .bottom) {
             // Note Inspector (always alive, overlays bottom edge)
@@ -68,6 +109,10 @@ struct SequencerView: View {
                 onPlay: { note in
                     playNoteForDuration(note)
                 },
+                noteDurationSeconds: {
+                    let n = model.selectedNote ?? SequencerNote.placeholder
+                    return n.duration / (model.tempo / 60.0)
+                }(),
                 onDelete: {
                     model.deleteSelectedNote()
                 }
@@ -75,21 +120,135 @@ struct SequencerView: View {
             .id(model.selectedNoteId ?? SequencerView.noSelectionId)
             .compositingGroup()
             .shadow(color: Color.black.opacity(0.15), radius: 20, x: 0, y: -4)
-            .offset(y: model.selectedNote != nil ? 0 : 70)
+            .offset(y: model.selectedNote != nil ? 0 : 100)
             .allowsHitTesting(model.selectedNote != nil)
             .animation(.easeInOut(duration: 0.15), value: model.selectedNote != nil)
+            .popover(isPresented: $showInspectorTip) {
+                Text("onboarding.roll.inspectorTip", bundle: localizedBundle)
+                    .font(.system(size: 12))
+                    .foregroundColor(Theme.text(colorScheme))
+                    .padding()
+                    .frame(width: 240)
+            }
         }
         .onDeleteCommand {
             model.deleteSelectedNote()
         }
-        .alert("Delete \(model.selectedNoteIds.count) notes?", isPresented: $model.pendingDeleteConfirm) {
-            Button("Delete", role: .destructive) { model.confirmDeleteSelected() }
-            Button("Cancel", role: .cancel) {}
+        .alert(L("roll.deleteConfirm \(model.selectedNoteIds.count)"), isPresented: $model.pendingDeleteConfirm) {
+            Button(L("roll.delete"), role: .destructive) { model.confirmDeleteSelected() }
+            Button(L("roll.cancel"), role: .cancel) {}
+        }
+        .alert(L("roll.clearAllConfirm"), isPresented: $pendingClearAll) {
+            Button(L("roll.clearAll"), role: .destructive) { clearAll() }
+            Button(L("roll.cancel"), role: .cancel) {}
         }
         .onDisappear {
             stopPlayback()
+            nudgeTimer?.invalidate()
         }
-        .onChange(of: model.togglePlaybackTrigger) { _ in
+        // Copy-from-composer path: scale guide invite first, then demo tip tour
+        .onReceive(NotificationCenter.default.publisher(for: .rollCopiedFromComposer)) { _ in
+            if !onboarding.hasSeenScaleGuideInvite {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    showScaleGuideInvite = true
+                }
+            } else if !onboarding.hasSeenTransportTip {
+                // Scale guide already seen, go straight to tip tour
+                isDemoPath = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    showTransportTip = true
+                }
+            }
+        }
+        .onChange(of: showScaleGuideInvite) { wasShowing, isShowing in
+            if wasShowing && !isShowing {
+                onboarding.hasSeenScaleGuideInvite = true
+                // After scale guide dismissed, start demo tip tour if unseen
+                if !onboarding.hasSeenTransportTip {
+                    isDemoPath = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        showTransportTip = true
+                    }
+                }
+            }
+        }
+        // Demo path: transport tip shown first via notification
+        .onReceive(NotificationCenter.default.publisher(for: .rollDemoLoaded)) { _ in
+            guard !onboarding.hasSeenTransportTip else { return }
+            isDemoPath = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                showTransportTip = true
+            }
+        }
+        // Blank path: 3s nudge if user hasn't placed a note
+        .onReceive(NotificationCenter.default.publisher(for: .rollStartAdding)) { _ in
+            guard !onboarding.hasSeenInspectorTip else { return }
+            nudgeTimer?.invalidate()
+            nudgeTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
+                Task { @MainActor in
+                    guard model.notes.isEmpty else { return }
+                    showNudgeTip = true
+                }
+            }
+        }
+        .onChange(of: model.selectedNoteId) { _, newId in
+            // Cancel nudge if user places a note
+            if newId != nil {
+                nudgeTimer?.invalidate()
+                showNudgeTip = false
+            }
+            // Show inspector tip on first note selection (both paths)
+            if newId != nil && !onboarding.hasSeenInspectorTip && !isDemoPath {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    showInspectorTip = true
+                }
+            }
+        }
+        // Also cancel nudge when notes are added (in case selectedNoteId doesn't change)
+        .onChange(of: model.notes.count) { oldCount, newCount in
+            if newCount > oldCount {
+                nudgeTimer?.invalidate()
+                showNudgeTip = false
+            }
+        }
+        .onChange(of: showInspectorTip) { wasShowing, isShowing in
+            if wasShowing && !isShowing {
+                onboarding.hasSeenInspectorTip = true
+                if isDemoPath {
+                    // Demo path: inspector was last tip here, hand off to keyboard/composer chain
+                    NotificationCenter.default.post(name: .rollTransportTipDismissed, object: nil)
+                } else {
+                    // Blank path: show transport tip next
+                    if !onboarding.hasSeenTransportTip {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            showTransportTip = true
+                        }
+                    }
+                }
+            }
+        }
+        .onChange(of: showTransportTip) { wasShowing, isShowing in
+            if wasShowing && !isShowing {
+                onboarding.hasSeenTransportTip = true
+                if isDemoPath {
+                    // Demo path: after transport tip, scroll to first note and show inspector
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        if let firstNote = model.notes.sorted(by: { $0.startBeat < $1.startBeat }).first {
+                            model.selectNote(firstNote.id)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                if !onboarding.hasSeenInspectorTip {
+                                    showInspectorTip = true
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Blank path: hand off to keyboard/composer chain
+                    NotificationCenter.default.post(name: .rollTransportTipDismissed, object: nil)
+                }
+            }
+        }
+        .onChange(of: model.togglePlaybackTrigger) {
             togglePlayback()
         }
     }
@@ -97,111 +256,143 @@ struct SequencerView: View {
     // MARK: - Toolbar
     
     private var sequencerToolbar: some View {
-        HStack(spacing: 12) {
-            // Enable Guide group
-            Button(action: { withAnimation(.easeInOut(duration: 0.15)) { model.showScaleHelper.toggle() } }) {
-                HStack(spacing: 5) {
+        ZStack {
+            // Left: Key/Scale
+            HStack(spacing: 12) {
+                HStack(spacing: 12) {
                     Image(systemName: "music.note.list")
-                    if !model.showScaleHelper {
-                        Text("Enable guide")
+                        .foregroundColor(Theme.text(colorScheme).opacity(model.showScaleHelper ? 1 : 0.5))
+
+                    Picker("", selection: Binding(
+                    get: { model.showScaleHelper ? model.musicalKey.rawValue : -1 },
+                    set: { newValue in
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            if newValue == -1 {
+                                model.showScaleHelper = false
+                            } else {
+                                model.musicalKey = MusicalKey(rawValue: newValue) ?? .C
+                                model.showScaleHelper = true
+                            }
+                        }
                     }
-                }
-                .foregroundColor(model.showScaleHelper ? Theme.accent : Theme.text(colorScheme).opacity(0.7))
-            }
-            .buttonStyle(.plain)
-            .help("Scale guide")
-            
-            if model.showScaleHelper {
-                Picker("", selection: $model.musicalKey) {
+                )) {
+                    Text("roll.noScale", bundle: localizedBundle).tag(-1)
                     ForEach(MusicalKey.allCases) { key in
-                        Text(key.name).tag(key)
+                        Text(L("roll.keyOf \(key.name)")).tag(key.rawValue)
                     }
                 }
                 .labelsHidden()
-                .frame(width: 50)
-                .controlSize(.small)
-                .tint(Theme.text(colorScheme).opacity(0.7))
-                .accentColor(Theme.text(colorScheme).opacity(0.7))
-                
-                Picker("", selection: $model.scaleType) {
-                    ForEach(ScaleType.allCases) { scale in
-                        Text(scale.rawValue).tag(scale)
+                .buttonStyle(.borderless)
+                .fixedSize()
+                .tint(Theme.text(colorScheme))
+                .foregroundStyle(Theme.text(colorScheme))
+
+                    if model.showScaleHelper {
+                        Picker("", selection: $model.scaleType) {
+                            ForEach(ScaleType.allCases) { scale in
+                                Text("\(scale.rawValue) Scale").tag(scale)
+                            }
+                        }
+                        .labelsHidden()
+                        .buttonStyle(.borderless)
+                        .fixedSize()
+                        .tint(Theme.text(colorScheme))
+                        .foregroundStyle(Theme.text(colorScheme))
                     }
                 }
-                .labelsHidden()
-                .frame(width: 110)
+                .popover(isPresented: $showScaleGuideInvite) {
+                    VStack(spacing: 12) {
+                        Text("onboarding.roll.scaleGuideInvite", bundle: localizedBundle)
+                            .font(.system(size: 12))
+                            .foregroundColor(Theme.text(colorScheme))
+                            .multilineTextAlignment(.center)
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                model.showScaleHelper = true
+                            }
+                            showScaleGuideInvite = false
+                        } label: {
+                            Text("onboarding.roll.scaleGuideEnable", bundle: localizedBundle)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(Theme.dark)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                        }
+                        .buttonStyle(.plain)
+                        .background(Theme.accent, in: RoundedRectangle(cornerRadius: 6))
+                    }
+                    .padding()
+                    .frame(width: 260)
+                }
+
+                Button(action: { showSequencerTips.toggle() }) {
+                    Label { Text("roll.help", bundle: localizedBundle) } icon: { Image(systemName: "questionmark.circle") }
+                }
+                .buttonStyle(HoverPillStyle(colorScheme: colorScheme, textColor: Theme.text(colorScheme)))
+                .popover(isPresented: $showSequencerTips) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("help.rollTips.title", bundle: localizedBundle)
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("help.rollTips.body", bundle: localizedBundle)
+                        Label { Text("help.rollTips.tapGrid", bundle: localizedBundle) } icon: { Image(systemName: "circle.fill").font(.system(size: 4)).opacity(0.6) }
+                        Label { Text("help.rollTips.dragNotes", bundle: localizedBundle) } icon: { Image(systemName: "circle.fill").font(.system(size: 4)).opacity(0.6) }
+                        Label { Text("help.rollTips.optionDrag", bundle: localizedBundle) } icon: { Image(systemName: "circle.fill").font(.system(size: 4)).opacity(0.6) }
+                        Label { Text("help.rollTips.tapNote", bundle: localizedBundle) } icon: { Image(systemName: "circle.fill").font(.system(size: 4)).opacity(0.6) }
+                        Label { Text("help.rollTips.shiftClick", bundle: localizedBundle) } icon: { Image(systemName: "circle.fill").font(.system(size: 4)).opacity(0.6) }
+                        Label { Text("help.rollTips.shiftDrag", bundle: localizedBundle) } icon: { Image(systemName: "circle.fill").font(.system(size: 4)).opacity(0.6) }
+                        Label { Text("help.rollTips.deleteKey", bundle: localizedBundle) } icon: { Image(systemName: "circle.fill").font(.system(size: 4)).opacity(0.6) }
+                    }
+                    .font(.system(size: 12))
+                    .foregroundColor(Theme.text(colorScheme))
+                    .padding()
+                    .frame(width: 260)
+                }
+                .help(L("tooltip.tips"))
+                
+                Spacer()
+            }
+            
+            // Right: Clear + Loop + Bar stepper
+            HStack(spacing: 12) {
+                Spacer()
+                
+                Button(action: {
+                    if model.selectedNoteIds.isEmpty {
+                        pendingClearAll = true
+                    } else {
+                        model.deleteSelectedNote()
+                    }
+                }) {
+                    Label {
+                        Text(model.selectedNoteIds.isEmpty
+                            ? L("roll.clearAll")
+                            : L("roll.clearSelection \(model.selectedNoteIds.count)"))
+                    } icon: { Image(systemName: "eraser.line.dashed") }
+                }
+                .buttonStyle(HoverPillStyle(colorScheme: colorScheme, textColor: Theme.text(colorScheme)))
+                .disabled(model.notes.isEmpty && model.selectedNoteIds.isEmpty)
+
+
+                Button(action: { model.isLooping.toggle() }) {
+                    Label { Text("roll.loop", bundle: localizedBundle) } icon: { Image(systemName: "repeat.circle.fill") }
+                        .foregroundColor(model.isLooping ? Theme.text(colorScheme) : Theme.text(colorScheme).opacity(0.25))
+                }
+                .buttonStyle(.borderless)
+                .help(L("roll.loop"))
+                
+                Stepper(L("roll.bars \(model.totalBeats / 4)"), value: Binding(
+                    get: { model.totalBeats / 4 },
+                    set: { model.totalBeats = $0 * 4 }
+                ), in: 1...16)
+                .monospacedDigit()
                 .controlSize(.small)
-                .tint(Theme.text(colorScheme).opacity(0.7))
-                .accentColor(Theme.text(colorScheme).opacity(0.7))
-                
-                Button(action: { withAnimation(.easeInOut(duration: 0.15)) { model.showScaleHelper = false } }) {
-                    Text("Clear guide")
-                        .foregroundColor(Theme.text(colorScheme).opacity(0.5))
-                }
-                .buttonStyle(.plain)
+                .tint(Theme.fieldColor(colorScheme))
+                .fixedSize()
+                .padding(.leading, 6)
             }
-            
-            Rectangle()
-                .fill(Theme.text(colorScheme).opacity(0.15))
-                .frame(width: 1, height: 16)
-            
-            // Bar navigation: < X Bars >
-            HStack(spacing: 6) {
-                Button(action: { if model.totalBeats > 4 { model.totalBeats -= 4 } }) {
-                    Image(systemName: "chevron.left.circle.fill")
-                        .foregroundColor(model.totalBeats > 4 ? Theme.text(colorScheme).opacity(0.7) : Theme.text(colorScheme).opacity(0.2))
-                }
-                .buttonStyle(.plain)
-                .disabled(model.totalBeats <= 4)
-                
-                Text("\(model.totalBeats / 4) Bars")
-                    .foregroundColor(Theme.text(colorScheme).opacity(0.7))
-                    .monospacedDigit()
-                
-                Button(action: { if model.totalBeats < 64 { model.totalBeats += 4 } }) {
-                    Image(systemName: "chevron.right.circle.fill")
-                        .foregroundColor(model.totalBeats < 64 ? Theme.text(colorScheme).opacity(0.7) : Theme.text(colorScheme).opacity(0.2))
-                }
-                .buttonStyle(.plain)
-                .disabled(model.totalBeats >= 64)
-            }
-            
-            Rectangle()
-                .fill(Theme.text(colorScheme).opacity(0.15))
-                .frame(width: 1, height: 16)
-            
-            // Loop toggle
-            Button(action: { model.isLooping.toggle() }) {
-                Label("Loop", systemImage: "repeat")
-                    .foregroundColor(model.isLooping ? Theme.accent : Theme.text(colorScheme).opacity(0.7))
-            }
-            .buttonStyle(.plain)
-            .help(model.isLooping ? "Looping" : "Loop")
-            
-            Spacer()
-            
-            // Clear button (right-aligned)
-            Button(action: {
-                if model.selectedNoteIds.isEmpty {
-                    clearAll()
-                } else {
-                    model.deleteSelectedNote()
-                }
-            }) {
-                Label(
-                    model.selectedNoteIds.isEmpty
-                        ? "Clear Notes"
-                        : "Clear Selection (\(model.selectedNoteIds.count))",
-                    systemImage: "xmark.circle.fill"
-                )
-                .foregroundColor(Theme.text(colorScheme).opacity(0.7))
-            }
-            .buttonStyle(.plain)
-            .disabled(model.notes.isEmpty && model.selectedNoteIds.isEmpty)
         }
-        .font(Theme.toolbarFont)
         .padding(.horizontal)
-        .frame(height: 32)
+        .padding(.vertical, 8)
         .background(Theme.bg(colorScheme))
     }
     
@@ -209,17 +400,25 @@ struct SequencerView: View {
     
     private var transportBar: some View {
         HStack(spacing: 0) {
-            // Play/Stop + Loop buttons (aligned with piano key column)
+            // Play/Stop button (aligned with piano key column)
             Button(action: { togglePlayback() }) {
                 Image(systemName: model.isPlaying ? "stop.fill" : "play.fill")
-                    .font(.system(size: 14))
-                    .foregroundColor(Theme.dark)
-                    .frame(width: PianoRollLayout.pianoKeyWidth, height: 32)
+                    .font(.system(size: 16))
+                    .foregroundColor(Theme.text(colorScheme))
+                    .frame(width: PianoRollLayout.pianoKeyWidth)
+                    .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(model.isPlaying ? "Stop" : "Play")
-            
+            .help(model.isPlaying ? L("tooltip.stop") : L("tooltip.play"))
+            .popover(isPresented: $showTransportTip) {
+                Text("onboarding.roll.transportTip", bundle: localizedBundle)
+                    .font(.system(size: 12))
+                    .foregroundColor(Theme.text(colorScheme))
+                    .padding()
+                    .frame(width: 240)
+            }
+
             Theme.structuralDivider.frame(width: 1)
             
             // Scrub zone (same width as the grid, scrolls in sync)
@@ -228,19 +427,46 @@ struct SequencerView: View {
                     // Beat markers
                     scrubBackground
                     
+                    // Minimap: notes compressed into transport
+                    let minimapHeight: CGFloat = 40 // 56 - 8px top - 8px bottom
+                    let sourceHeight: CGFloat = CGFloat(PitchConstants.pitchCount) // 42
+                    let scaleY = minimapHeight / sourceHeight
+                    Canvas { context, size in
+                        let bw = PianoRollLayout.beatWidth
+                        for note in model.notes {
+                            let x = CGFloat(note.startBeat) * bw
+                            let w = CGFloat(note.duration) * bw
+                            let row = CGFloat(Int(PitchConstants.maxPitch) - Int(note.pitch))
+                            let rect = CGRect(x: x, y: row - 0.5, width: max(w, 2), height: 2)
+                            context.fill(Path(rect), with: .color(Theme.dark.opacity(0.1)))
+                        }
+                    }
+                    .frame(
+                        width: PianoRollLayout.gridWidth(beats: model.totalBeats),
+                        height: sourceHeight
+                    )
+                    .scaleEffect(x: 1, y: scaleY, anchor: .top)
+                    .offset(y: 8)
+                    .allowsHitTesting(false)
+                    
                     // Playhead line (dark on gold transport)
                     Rectangle()
                         .fill(Theme.dark)
-                        .frame(width: 2, height: 32)
+                        .frame(width: 2).frame(maxHeight: .infinity)
                         .offset(x: PianoRollLayout.xForBeat(model.playheadBeat))
                         .allowsHitTesting(false)
                         .animation(nil, value: model.playheadBeat)
                 }
-                .frame(
-                    width: PianoRollLayout.gridWidth(beats: model.totalBeats),
-                    height: 32
-                )
+                .frame(width: PianoRollLayout.gridWidth(beats: model.totalBeats))
+                .frame(maxHeight: .infinity)
                 .contentShape(Rectangle())
+                .onHover { hovering in
+                    if hovering {
+                        NSCursor.iBeam.push()
+                    } else {
+                        NSCursor.pop()
+                    }
+                }
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { value in
@@ -258,7 +484,7 @@ struct SequencerView: View {
                 }
             }
         }
-        .frame(height: 32)
+        .frame(height: 56)
         .background(model.isPlaying ? Theme.green : Theme.accent)
     }
     
@@ -288,10 +514,8 @@ struct SequencerView: View {
                 }
             }
         }
-        .frame(
-            width: PianoRollLayout.gridWidth(beats: model.totalBeats),
-            height: 32
-        )
+        .frame(width: PianoRollLayout.gridWidth(beats: model.totalBeats))
+        .frame(maxHeight: .infinity)
     }
     
     // MARK: - Playback Engine
@@ -323,6 +547,8 @@ struct SequencerView: View {
         playbackTimer?.invalidate()
         playbackTimer = nil
         lastTickTime = nil
+        pendingCCWorkItem?.cancel()
+        pendingCCWorkItem = nil
         stopAllActiveNotes()
     }
     
@@ -427,11 +653,15 @@ struct SequencerView: View {
     /// Activate up to 8 notes (first 8 by ascending pitch)
     private func activateNotes(_ notes: [SequencerNote]) {
         guard !notes.isEmpty else { return }
-        
+
+        // Cancel any pending pre-send from the previous note
+        pendingCCWorkItem?.cancel()
+        pendingCCWorkItem = nil
+
         // 8-poly limit: first 8 by ascending pitch
         let sorted = notes.sorted { $0.pitch < $1.pitch }
         let toPlay = sorted.prefix(8)
-        
+
         for note in toPlay {
             // Set CC values then NoteOn
             midiService.consonant = note.consonant
@@ -442,9 +672,46 @@ struct SequencerView: View {
             if localAudioEnabled { audioMonitor.playNote(note: note.pitch, velocity: note.velocity, vibrato: note.vibrato, reverb: note.reverb, vowel: note.vowel, consonant: note.consonant) }
             model.activeNoteIDs.insert(note.id)
         }
+
+        // CC Pre-Send: look ahead to next note and send its CCs after a configurable delay.
+        // Delay is clamped so the pre-send never arrives after the next NoteOn.
+        if midiService.ccPreSendEnabled, let currentNote = toPlay.first {
+            let upcoming = model.notes
+                .filter { $0.startBeat > currentNote.startBeat }
+                .sorted { $0.startBeat < $1.startBeat }
+                .first
+
+            if let nextNote = upcoming {
+                let ccChanged = nextNote.consonant != midiService.consonant ||
+                                nextNote.vowel != midiService.vowel ||
+                                nextNote.vibrato != midiService.vibrato ||
+                                nextNote.reverb != midiService.reverb
+
+                if ccChanged {
+                    let beatsPerSecond = model.tempo / 60.0
+                    let timeToNextNoteOn = (nextNote.startBeat - currentNote.startBeat) / beatsPerSecond
+                    let requestedDelay = midiService.ccPreSendDelayMs / 1000.0
+                    // Clamp: never later than halfway to the next NoteOn
+                    let delay = min(requestedDelay, max(0.001, timeToNextNoteOn / 2.0))
+
+                    let workItem = DispatchWorkItem { [weak midiService] in
+                        midiService?.preSendCC(
+                            consonant: nextNote.consonant,
+                            vowel: nextNote.vowel,
+                            vibrato: nextNote.vibrato,
+                            reverb: nextNote.reverb
+                        )
+                    }
+                    pendingCCWorkItem = workItem
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+                }
+            }
+        }
     }
     
     private func stopAllActiveNotes() {
+        pendingCCWorkItem?.cancel()
+        pendingCCWorkItem = nil
         for id in model.activeNoteIDs {
             if let note = model.notes.first(where: { $0.id == id }) {
                 midiService.sendNoteOff(note: note.pitch)
@@ -487,205 +754,6 @@ struct SequencerView: View {
             model.notes.removeAll()
             model.clearSelection()
             model.markDirty()
-        }
-    }
-}
-
-// MARK: - Note Inspector
-
-// MARK: - Callout Arrow Shape
-
-struct CalloutArrow: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.midX, y: rect.minY))     // tip
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))  // bottom-right
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))  // bottom-left
-        path.closeSubpath()
-        return path
-    }
-}
-
-struct NoteInspectorView: View {
-    let note: SequencerNote
-    var arrowX: CGFloat = 0  // horizontal position of arrow from leading edge
-    var groupCount: Int = 1  // number of selected notes (1 = single)
-    var onUpdate: (SequencerNote) -> Void
-    var onPlay: (SequencerNote) -> Void
-    var onDelete: () -> Void
-    
-    // Local editing state synced from the note (view is recreated via .id() on selection change)
-    @State private var consonant: UInt8 = 125
-    @State private var vowel: UInt8 = 0
-    @State private var velocity: Double = 100
-    @State private var vibrato: Double = 64
-    @State private var reverb: Double = 32
-    @State private var isSyncing = true  // suppress pushUpdate during initial sync
-    
-    private var isBlackKey: Bool { PitchConstants.isBlackKey(note.pitch) }
-    private var bg: Color { isBlackKey ? Theme.dark : Theme.ivory }
-    private var fg: Color { isBlackKey ? Theme.ivory : Theme.dark }
-    private var fgDim: Color { fg.opacity(0.5) }
-    private var dividerColor: Color { fg.opacity(0.15) }
-    
-    var body: some View {
-        HStack(spacing: 16) {
-            // Note info
-            VStack(alignment: .leading, spacing: 2) {
-                if groupCount > 1 {
-                    Text("\(groupCount) notes")
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .foregroundColor(Theme.accent)
-                } else {
-                    Text(PitchConstants.noteName(for: note.pitch))
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .foregroundColor(fg)
-                    Text("Beat \(Int(note.startBeat + 1))")
-                        .font(.caption2)
-                        .foregroundColor(fgDim)
-                        .monospacedDigit()
-                }
-            }
-            .frame(width: 55, alignment: .leading)
-            
-            dividerColor.frame(width: 1, height: 40)
-            
-            // Consonant picker
-            HStack(spacing: 6) {
-                Text("Consonant")
-                    .font(.caption)
-                    .foregroundColor(fgDim)
-                Picker("", selection: $consonant) {
-                    ForEach(Consonant.all) { c in
-                        Text(c.name).tag(c.ccValue)
-                    }
-                }
-                .labelsHidden()
-                .frame(width: 80)
-                .controlSize(.small)
-                .tint(fg)
-                .accentColor(fg)
-                .onChange(of: consonant) { _ in pushUpdate() }
-            }
-            
-            // Vowel picker
-            HStack(spacing: 6) {
-                Text("Vowel")
-                    .font(.caption)
-                    .foregroundColor(fgDim)
-                Picker("", selection: $vowel) {
-                    ForEach(Vowel.all) { v in
-                        Text(v.ccValue == 0 ? "Random" : "\(v.symbol) \(v.example)").tag(v.ccValue)
-                    }
-                }
-                .labelsHidden()
-                .frame(width: 110)
-                .controlSize(.small)
-                .tint(fg)
-                .accentColor(fg)
-                .onChange(of: vowel) { _ in pushUpdate() }
-            }
-            
-            // Velocity
-            inspectorSlider(label: "Velocity", value: $velocity, range: 1...127) { pushUpdate() }
-            
-            // Vibrato
-            inspectorSlider(label: "Vibrato", value: $vibrato, range: 0...127) { pushUpdate() }
-            
-            // Reverb
-            inspectorSlider(label: "Reverb", value: $reverb, range: 0...127) { pushUpdate() }
-            
-            Spacer()
-            
-            // Test button
-            Button(action: { onPlay(currentNote()) }) {
-                HStack(spacing: 5) {
-                    Image(systemName: "ear")
-                    Text("Test")
-                }
-                .font(Theme.toolbarFont)
-                .foregroundColor(Theme.dark)
-                .padding(.horizontal, Theme.buttonPaddingH)
-                .padding(.vertical, Theme.buttonPaddingV)
-                .background(
-                    RoundedRectangle(cornerRadius: Theme.buttonRadius)
-                        .fill(Theme.accent)
-                )
-            }
-            .buttonStyle(.plain)
-            
-            // Delete
-            Button(action: onDelete) {
-                Image(systemName: "trash")
-                    .font(.system(size: 16))
-                    .foregroundColor(fg.opacity(0.5))
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal)
-        .frame(height: 70)
-        .background(bg)
-        .overlay(alignment: .bottom) {
-            Theme.structuralDivider.opacity(0.25).frame(height: 1)
-        }
-        .overlay(alignment: .topLeading) {
-            // Callout arrow pointing up toward the note
-            CalloutArrow()
-                .fill(bg)
-                .frame(width: 14, height: 8)
-                .offset(x: arrowX - 7, y: -8)
-                .allowsHitTesting(false)
-        }
-        .environment(\.colorScheme, isBlackKey ? .dark : .light)
-        .onAppear { syncFromNote() }
-    }
-    
-    private func syncFromNote() {
-        isSyncing = true
-        consonant = note.consonant
-        vowel = note.vowel
-        velocity = Double(note.velocity)
-        vibrato = Double(note.vibrato)
-        reverb = Double(note.reverb)
-        // Allow onChange to settle before re-enabling pushUpdate
-        DispatchQueue.main.async { isSyncing = false }
-    }
-    
-    private func currentNote() -> SequencerNote {
-        var n = note
-        n.consonant = consonant
-        n.vowel = vowel
-        n.velocity = UInt8(velocity)
-        n.vibrato = UInt8(vibrato)
-        n.reverb = UInt8(reverb)
-        return n
-    }
-    
-    private func pushUpdate() {
-        guard !isSyncing else { return }
-        onUpdate(currentNote())
-    }
-    
-    private func inspectorSlider(label: String, value: Binding<Double>, range: ClosedRange<Double>, onChange: @escaping () -> Void) -> some View {
-        HStack(spacing: 4) {
-            HStack(spacing: 4) {
-                Text(label)
-                    .font(.caption)
-                    .foregroundColor(fgDim)
-                Text("\(Int(value.wrappedValue))")
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(fg)
-                    .monospacedDigit()
-            }
-            .frame(minWidth: 48, alignment: .leading)
-            
-            Slider(value: value, in: range)
-                .tint(fg)
-                .accentColor(fg)
-                .onChange(of: value.wrappedValue) { _ in onChange() }
         }
     }
 }

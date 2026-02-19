@@ -20,7 +20,7 @@ protocol SynthEngine: AnyObject {
     func renderSample(dt: Double) -> Float
 }
 
-/// Local audio monitor mode — automatic follows BLE connection state.
+/// Local playback mode — automatic follows BLE connection state.
 enum LocalAudioMode: String, CaseIterable, Identifiable {
     case automatic = "Automatic"
     case on = "On"
@@ -41,6 +41,14 @@ enum SynthEngineType: String, CaseIterable, Identifiable {
         case .animalese: return "Animalese"
         case .fof: return "FOF (Grain)"
         case .lpc: return "Speak & Spell"
+        }
+    }
+    var blurb: String {
+        switch self {
+        case .formant: return L("settings.engine.formant")
+        case .animalese: return L("settings.engine.animalese")
+        case .fof: return L("settings.engine.fof")
+        case .lpc: return L("settings.engine.lpc")
         }
     }
 }

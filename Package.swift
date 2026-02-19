@@ -1,12 +1,13 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
 
 let package = Package(
     name: "ChoirController",
+    defaultLocalization: "en",
     platforms: [
-        .macOS(.v13)
+        .macOS(.v26)
     ],
     products: [
         .executable(
@@ -24,7 +25,11 @@ let package = Package(
             ],
             resources: [
                 .process("Assets.xcassets"),
-                .copy("AnimaleSounds")
+                .copy("AnimaleSounds"),
+                .copy("cmudict.txt"),
+                .copy("swe_lexicon.txt"),
+                .copy("Robots.choir"),
+                .process("Localizable.xcstrings")
             ]
         ),
         .testTarget(
