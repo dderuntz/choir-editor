@@ -23,14 +23,23 @@ let package = Package(
             dependencies: [
                 .product(name: "MIDIKit", package: "MIDIKit")
             ],
+            exclude: [
+                "cmudict.txt",          // Source lexicon (used by DictCompiler)
+                "swe_lexicon.txt",      // Source lexicon (used by DictCompiler)
+                "Info.plist",
+            ],
             resources: [
                 .process("Assets.xcassets"),
                 .copy("AnimaleSounds"),
-                .copy("cmudict.txt"),
-                .copy("swe_lexicon.txt"),
+                .copy("en.choirdict"),
+                .copy("sv.choirdict"),
                 .copy("Robots.choir"),
                 .process("Localizable.xcstrings")
             ]
+        ),
+        .executableTarget(
+            name: "DictCompiler",
+            path: "Sources/DictCompiler"
         ),
         .testTarget(
             name: "ChoirControllerTests",

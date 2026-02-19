@@ -27,6 +27,24 @@
             "name": "Release ChoirController",
             "program": "${workspaceFolder:choir-editor}/.build/release/ChoirController",
             "preLaunchTask": "swift: Build Release ChoirController"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:choir-editor}",
+            "name": "Debug DictCompiler",
+            "program": "${workspaceFolder:choir-editor}/.build/debug/DictCompiler",
+            "preLaunchTask": "swift: Build Debug DictCompiler"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:choir-editor}",
+            "name": "Release DictCompiler",
+            "program": "${workspaceFolder:choir-editor}/.build/release/DictCompiler",
+            "preLaunchTask": "swift: Build Release DictCompiler"
         }
     ]
 }
