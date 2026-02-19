@@ -550,7 +550,7 @@ struct ComposerView: View {
     private func phonemeStrip() -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 0) {
-                ForEach(Array(composerModel.phonemes.enumerated()), id: \.element.id) { index, phoneme in
+                ForEach(Array(composerModel.phonemes.enumerated()), id: \.offset) { index, phoneme in
                     let isNewWord = index > 0 && phoneme.wordIndex != composerModel.phonemes[index - 1].wordIndex
                     let isLastOfWord = index == composerModel.phonemes.count - 1 || composerModel.phonemes[index + 1].wordIndex != phoneme.wordIndex
                     let isFirstOfWord = index == 0 || isNewWord
