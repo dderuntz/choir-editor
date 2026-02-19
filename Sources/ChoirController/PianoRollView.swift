@@ -176,15 +176,6 @@ struct PianoRollView: View {
                     }
                 }
             }
-            .onChange(of: model.selectedNoteId) { _, _ in
-                if let note = model.selectedNote {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        withAnimation(.easeInOut(duration: 0.15)) {
-                            proxy.scrollTo(Int(note.pitch), anchor: .bottom)
-                        }
-                    }
-                }
-            }
         }
     }
     
