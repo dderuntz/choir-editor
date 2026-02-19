@@ -7,6 +7,8 @@ struct SettingsPanelView: View {
     @Binding var showSettings: Bool
     @AppStorage("localAudioMode") private var localAudioMode = LocalAudioMode.automatic.rawValue
     @AppStorage("lyricStyle") private var lyricStyle: LyricStyle = .senryu
+    @AppStorage("ccPreSendWarningShown") private var ccPreSendWarningShown = false
+    @State private var showCCPreSendWarning = false
     @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
@@ -61,11 +63,23 @@ struct SettingsPanelView: View {
                             Toggle("", isOn: $midiService.ccPreSendEnabled)
                                 .labelsHidden()
                                 .toggleStyle(.checkbox)
+                                .onChange(of: midiService.ccPreSendEnabled) {
+                                    if !ccPreSendWarningShown {
+                                        showCCPreSendWarning = true
+                                        ccPreSendWarningShown = true
+                                    }
+                                }
                         }
 
                         if midiService.ccPreSendEnabled {
                             SliderWithDefault(label: L("settings.ccPreSend.sendAfter"), value: $midiService.ccPreSendDelayMs, range: 1...300, defaultValue: 185, displayText: "\(Int(midiService.ccPreSendDelayMs))ms", displayWidth: 40) { val in
                                 val.rounded()
+                            }
+                            .onChange(of: midiService.ccPreSendDelayMs) {
+                                if !ccPreSendWarningShown {
+                                    showCCPreSendWarning = true
+                                    ccPreSendWarningShown = true
+                                }
                             }
 
                             Text("settings.ccPreSend.description", bundle: localizedBundle)
@@ -179,6 +193,11 @@ struct SettingsPanelView: View {
                 .padding()
                 .tint(Theme.text(colorScheme))
             }
+        }
+        .alert(L("settings.ccPreSend.warning.title"), isPresented: $showCCPreSendWarning) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("settings.ccPreSend.warning.message", bundle: localizedBundle)
         }
     }
 }
