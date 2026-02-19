@@ -58,8 +58,6 @@ The app detects the doll automatically once paired and closes the setup panel.
 
 ### Note Inspector
 
-![Sound Test](docs/tester.gif)
-
 Each note carries five parameters that control the doll's voice:
 
 - **Consonant** — the attack sound (None, B, D, G, H, L, M, N, R, S, T, W, Y, Random)
@@ -67,6 +65,12 @@ Each note carries five parameters that control the doll's voice:
 - **Velocity** — how loud (0-127)
 - **Vibrato** — pitch modulation depth (0-127)
 - **Reverb** — room effect (0-127)
+
+### Test Mode
+
+![Test Mode](docs/tester.gif)
+
+Pick a consonant and vowel combo to test phonemes directly. Useful for dialing in sounds before placing notes.
 
 ### Composer Mode
 
