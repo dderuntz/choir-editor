@@ -440,6 +440,236 @@
           }
         }
       }
+    },
+    "settings.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prefer"
+          }
+        }
+      }
+    },
+    "settings.sequencer" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sequencer"
+          }
+        }
+      }
+    },
+    "settings.tempo" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tempo"
+          }
+        }
+      }
+    },
+    "settings.minNote" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Min Note"
+          }
+        }
+      }
+    },
+    "settings.ccPreSend" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CC Pre-Send"
+          }
+        }
+      }
+    },
+    "settings.ccPreSend.sendAfter" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Send After"
+          }
+        }
+      }
+    },
+    "settings.ccPreSend.description" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Send the next phoneme's sound parameters early. Larger values wait longer after the last note to send."
+          }
+        }
+      }
+    },
+    "settings.globalEffects" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Global Effects"
+          }
+        }
+      }
+    },
+    "settings.audio" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio"
+          }
+        }
+      }
+    },
+    "settings.localPlayback" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Playback"
+          }
+        }
+      }
+    },
+    "settings.playbackEngine" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playback Engine"
+          }
+        }
+      }
+    },
+    "settings.composer" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Composer"
+          }
+        }
+      }
+    },
+    "settings.recompositionStyle" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recomposition Style (AI)"
+          }
+        }
+      }
+    },
+    "settings.lyricStyle.senryu" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A weary robot observes life with dry wit and quiet humor using the Japanese form called Senryū. It's like haiku but about human, err robot, nature."
+          }
+        }
+      }
+    },
+    "settings.lyricStyle.bellman" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Warm, vivid scenes painted in simple words meant to be sung aloud. Inspired by the bellman — a town crier who sang the news. Golden light, painted windows, that sort of thing."
+          }
+        }
+      }
+    },
+    "settings.lyricStyle.kulning" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A robot calls lost machines home across mountain valleys using kulning — a Scandinavian herding call meant to carry for miles. Sparse, haunting, nature and wire entwined."
+          }
+        }
+      }
+    },
+    "settings.lyricStyle.dada" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A choir of robots embraces the surreal in the spirit of the Dada art movement. The fork left. The calendar sneezed. You get the idea."
+          }
+        }
+      }
+    },
+    "settings.lyricStyle.nursery" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nursery rhymes for robots. Timeless and simple in rhyme, fun to say aloud. Cute on the surface, and unsettling in your motherboard."
+          }
+        }
+      }
+    },
+    "settings.engine.formant" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vowel-shaped resonance filters. Smooth, choir-like tones."
+          }
+        }
+      }
+    },
+    "settings.engine.animalese" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pitched speech samples à la Animal Crossing. Playful and chattery."
+          }
+        }
+      }
+    },
+    "settings.engine.fof" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Formant-wave-function grains. Breathy, organic vocal texture."
+          }
+        }
+      }
+    },
+    "settings.engine.lpc" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Linear predictive coding. Robotic, lo-fi speech synthesis."
+          }
+        }
+      }
+    },
+    "settings.composer.privacy" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The composer uses Apple's on-device Foundation Model. All processing happens locally on your Mac — no data is sent to external servers."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

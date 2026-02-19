@@ -235,11 +235,11 @@ enum LyricStyle: String, CaseIterable, Identifiable {
 
     var blurb: String {
         switch self {
-        case .senryu: return "A weary robot observes life with dry wit and quiet humor using the Japanese form called Senryū. It's like haiku but about human, err robot, nature."
-        case .bellman: return "Warm, vivid scenes painted in simple words meant to be sung aloud. Inspired by the bellman — a town crier who sang the news. Golden light, painted windows, that sort of thing."
-        case .kulning: return "A robot calls lost machines home across mountain valleys using kulning — a Scandinavian herding call meant to carry for miles. Sparse, haunting, nature and wire entwined."
-        case .dada: return "A choir of robots embraces the surreal in the spirit of the Dada art movement. The fork left. The calendar sneezed. You get the idea."
-        case .nursery: return "Nursery rhymes for robots. Timeless and simple in rhyme, fun to say aloud. Cute on the surface, and unsettling in your motherboard."
+        case .senryu: return L("settings.lyricStyle.senryu")
+        case .bellman: return L("settings.lyricStyle.bellman")
+        case .kulning: return L("settings.lyricStyle.kulning")
+        case .dada: return L("settings.lyricStyle.dada")
+        case .nursery: return L("settings.lyricStyle.nursery")
         }
     }
 

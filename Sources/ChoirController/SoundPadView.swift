@@ -54,6 +54,7 @@ struct SoundPadView: View {
                     .font(.system(size: 56, weight: .ultraLight))
                     .kerning(-1.4)
                     .foregroundColor(txt)
+                    .textSelection(.disabled)
                 Spacer()
                 if hasModifiedDefaults {
                     Button(action: {
@@ -71,9 +72,11 @@ struct SoundPadView: View {
                     }
                 }
                 Button(action: { isPresented = false }) {
-                    Text("Close")
+                    Image(systemName: "xmark")
+                        .font(.title2)
+                        .foregroundColor(txt.opacity(0.4))
                 }
-                .buttonStyle(HoverPillStyle(colorScheme: colorScheme))
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 20)
@@ -146,7 +149,7 @@ struct SoundPadView: View {
                 .padding(.top, 20)
 
                 Divider()
-                    .background(Theme.explorerGridBorder)
+                    .background(Theme.explorerGridBorder(colorScheme))
                     .padding(.top, 16)
 
                 // CC discovery row (full width, outside vowel column)
@@ -261,13 +264,13 @@ struct SoundPadView: View {
                             Color.clear
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 40)
-                                .border(width: borderEdges(col: row.count + i, row: rowIndex, totalCols: columns, totalRows: rowCount), color: Theme.explorerGridBorder)
+                                .border(width: borderEdges(col: row.count + i, row: rowIndex, totalCols: columns, totalRows: rowCount), color: Theme.explorerGridBorder(colorScheme))
                         }
                     }
                 }
             }
         }
-        .background(Color(red: 0xBC/255.0, green: 0xBD/255.0, blue: 0xB4/255.0))
+        .background(Theme.dark.opacity(0.15))
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
     
@@ -291,7 +294,7 @@ struct SoundPadView: View {
         .frame(maxWidth: .infinity)
         .frame(height: 40)
         .background(isSelected ? Theme.accent : Color.clear)
-        .border(width: borderEdges, color: Theme.explorerGridBorder)
+        .border(width: borderEdges, color: Theme.explorerGridBorder(colorScheme))
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 0)

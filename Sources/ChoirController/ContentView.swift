@@ -358,6 +358,7 @@ struct ContentView: View {
         .onTapGesture {
             if isTitleFocused { isTitleFocused = false }
         }
+        .allowsHitTesting(!showSettings && !showBluetoothSetup)
     }
 
     private var toolbar: some View {
