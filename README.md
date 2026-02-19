@@ -70,7 +70,7 @@ Each note carries five parameters that control the doll's voice:
 
 ![Test Mode](docs/tester.gif)
 
-Pick a consonant and vowel combo to test phonemes directly. Useful for dialing in sounds before placing notes.
+Pick a consonant and vowel combo to test phonemes directly. Sliders control note, hold time, velocity, and pitch bend. The bottom panel sends raw MIDI CC signals and sweeps — useful for exploring how the dolls respond to different control values.
 
 ### Composer Mode
 
