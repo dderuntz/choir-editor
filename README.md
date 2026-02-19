@@ -6,9 +6,13 @@ A native macOS app for arranging and performing with [Teenage Engineering's Choi
 
 ## Download
 
-**[Download Choir Arranger v1.1](https://github.com/dderuntz/choir-editor/releases/latest/download/ChoirArranger.zip)** — macOS 13+, signed and notarized.
+**[Download Choir Arranger](https://github.com/dderuntz/choir-editor/releases/latest/download/ChoirArranger.zip)** — signed and notarized.
 
 Unzip and drag to Applications. No Xcode or build tools needed.
+
+### Requirements
+- macOS 13+ (Composer features require macOS 26+)
+- Apple Silicon or Intel Mac
 
 ## Features
 
