@@ -1147,6 +1147,26 @@
           }
         }
       }
+    },
+    "settings.ccPreSend.warning.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CC Pre-Send"
+          }
+        }
+      }
+    },
+    "settings.ccPreSend.warning.message": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Changing these settings may degrade device playback. The default values work well for most setups."
+          }
+        }
+      }
     }
   },
   "version": "1.1"

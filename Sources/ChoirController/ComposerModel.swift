@@ -375,13 +375,16 @@ class ComposerModel: ObservableObject {
         isPlaying = true
         let phonemesToPlay = phonemes
         let total = phonemesToPlay.count
+        let lastWordIndex = phonemesToPlay.map(\.wordIndex).max() ?? -1
         playbackTask = Task { @MainActor in
             for (index, phoneme) in phonemesToPlay.enumerated() {
                 guard !Task.isCancelled else { break }
 
                 // Bounce count: emphasized ensemble (w3) = 2 bounces, everything else = 1
+                // Last word's emphasis gets doubled again (4 bounces) for a big finish
                 let isEmphasizedEnsemble = phoneme.isEnsemble && phoneme.weight >= 3
-                let bounceCount = isEmphasizedEnsemble ? 2 : 1
+                let isLastWordEmphasis = isEmphasizedEnsemble && phoneme.wordIndex == lastWordIndex
+                let bounceCount = isLastWordEmphasis ? 4 : (isEmphasizedEnsemble ? 2 : 1)
                 self.currentBounceCount = bounceCount
 
                 // Duration: all ensemble chips get the 2x multiplier for a longer hold.
@@ -393,7 +396,7 @@ class ComposerModel: ObservableObject {
                 let velocity = velocityForWeight(phoneme.weight)
 
                 let ensemble = phoneme.isEnsemble
-                print("[Composer] ▶ [\(index)] \(phoneme.text): \(phoneme.consonantName)·\(phoneme.vowelSymbol) w\(phoneme.weight) → note \(pitch) vel \(velocity) \(bounceCount) bounce(s)\(ensemble ? " 🎵ensemble" : "")")
+                log.debug("▶ [\(index)] \(phoneme.text): w\(phoneme.weight) note \(pitch) vel \(velocity) ×\(bounceCount)\(ensemble ? " 🎵" : "")")
 
                 // Start the note
                 var activePitches: [UInt8]
@@ -416,20 +419,15 @@ class ComposerModel: ObservableObject {
                 }
 
                 // Multiple bounces on same chip
-                // For double-bounce: first bounce is a quick in-place pop (40% of time),
-                // second bounce gets the rest to travel to the next chip.
+                // 2 bounces: split in half. 4 bounces (last-word encore): split by 3
+                // so each bounce is long enough to complete its arc visually.
                 let totalMs = baseDuration + gap
+                let bounceDivisor = bounceCount >= 4 ? 3 : max(1, bounceCount)
                 var preSendFired = false
                 for bounceIdx in 0..<bounceCount {
                     guard !Task.isCancelled else { break }
 
-                    let bounceDuration: Int
-                    if bounceCount > 1 {
-                        // 50/50 split between in-place hold and travel hop
-                        bounceDuration = totalMs / 2
-                    } else {
-                        bounceDuration = totalMs
-                    }
+                    let bounceDuration = bounceCount > 1 ? totalMs / bounceDivisor : totalMs
                     let halfArc = bounceDuration / 2
 
                     self.currentArcDuration = bounceDuration
@@ -461,6 +459,7 @@ class ComposerModel: ObservableObject {
                 // Stop the note after all bounces
                 stopAll(pitches: activePitches, audioMonitor: audioMonitor, midiService: midiService)
             }
+
             self.isPlaying = false
             self.currentPlayIndex = nil
             self.currentBounceIndex = 0
@@ -524,7 +523,7 @@ class ComposerModel: ObservableObject {
             pitches.append(snapped)
         }
 
-        print("[Composer] 🎵 quartet: \(pitches.map { String($0) }.joined(separator: " "))")
+        log.debug("🎵 quartet: \(pitches.map { String($0) }.joined(separator: " "))")
         return pitches
     }
 
@@ -603,7 +602,7 @@ class ComposerModel: ObservableObject {
         currentPlayIndex = idx
         let pitch = pitchOverride ?? pitchForPhoneme(index: idx, weight: phoneme.weight, total: phonemes.count)
         let velocity = velocityForWeight(phoneme.weight)
-        print("[Composer] tap: \(phoneme.text) → \(phoneme.consonantName)·\(phoneme.vowelSymbol) w\(phoneme.weight) note \(pitch)\(phoneme.isEnsemble ? " 🎵ensemble" : "")")
+        log.debug("tap: \(phoneme.text) w\(phoneme.weight) note \(pitch)\(phoneme.isEnsemble ? " 🎵" : "")")
         var activePitches: [UInt8]
         if phoneme.isEnsemble {
             activePitches = playEnsemble(pitch: pitch, velocity: velocity, phoneme: phoneme, audioMonitor: audioMonitor, midiService: midiService)
