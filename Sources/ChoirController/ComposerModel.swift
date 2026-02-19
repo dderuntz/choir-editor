@@ -705,9 +705,9 @@ class ComposerModel: ObservableObject {
     }
 
     @MainActor
-    func toggleEnsemble(_ phoneme: ChoirPhoneme) {
-        guard let idx = phonemes.firstIndex(where: { $0.id == phoneme.id }) else { return }
-        phonemes[idx].isEnsemble.toggle()
+    func toggleEnsemble(at index: Int) {
+        guard index >= 0 && index < phonemes.count else { return }
+        phonemes[index].isEnsemble.toggle()
     }
 
     /// Find the nearest scale note to a target MIDI pitch
@@ -783,32 +783,34 @@ class ComposerModel: ObservableObject {
     }
 
     @MainActor
-    func deletePhoneme(_ phoneme: ChoirPhoneme) {
+    func deletePhoneme(at index: Int) {
+        guard index >= 0 && index < phonemes.count else { return }
         saveUndo()
-        phonemes.removeAll(where: { $0.id == phoneme.id })
+        phonemes.remove(at: index)
     }
 
     @MainActor
-    func insertPhoneme(relativeTo phoneme: ChoirPhoneme, before: Bool) {
-        guard let idx = phonemes.firstIndex(where: { $0.id == phoneme.id }) else { return }
+    func insertPhoneme(at index: Int, before: Bool) {
+        guard index >= 0 && index < phonemes.count else { return }
         saveUndo()
         let blank = ChoirPhoneme(
             text: "?",
             consonantCC: 0,   // Random
             vowelCC: 0,       // Random
             weight: 1,
-            wordIndex: phoneme.wordIndex
+            wordIndex: phonemes[index].wordIndex
         )
-        let insertIdx = before ? idx : idx + 1
+        let insertIdx = before ? index : index + 1
         phonemes.insert(blank, at: insertIdx)
     }
 
     @MainActor
-    func updatePhoneme(id: UUID, consonantCC: UInt8? = nil, vowelCC: UInt8? = nil) {
+    func updatePhoneme(at index: Int, consonantCC: UInt8? = nil, vowelCC: UInt8? = nil) {
+        guard index >= 0 && index < phonemes.count else { return }
         saveUndo()
-        guard let idx = phonemes.firstIndex(where: { $0.id == id }) else { return }
-        if let c = consonantCC { phonemes[idx] = ChoirPhoneme(text: phonemes[idx].text, consonantCC: c, vowelCC: phonemes[idx].vowelCC, weight: phonemes[idx].weight, wordIndex: phonemes[idx].wordIndex, isEnsemble: phonemes[idx].isEnsemble) }
-        if let v = vowelCC { phonemes[idx] = ChoirPhoneme(text: phonemes[idx].text, consonantCC: phonemes[idx].consonantCC, vowelCC: v, weight: phonemes[idx].weight, wordIndex: phonemes[idx].wordIndex, isEnsemble: phonemes[idx].isEnsemble) }
+        let p = phonemes[index]
+        if let c = consonantCC { phonemes[index] = ChoirPhoneme(text: p.text, consonantCC: c, vowelCC: p.vowelCC, weight: p.weight, wordIndex: p.wordIndex, isEnsemble: p.isEnsemble) }
+        if let v = vowelCC { phonemes[index] = ChoirPhoneme(text: p.text, consonantCC: p.consonantCC, vowelCC: v, weight: p.weight, wordIndex: p.wordIndex, isEnsemble: p.isEnsemble) }
     }
 
     @MainActor
@@ -834,15 +836,16 @@ class ComposerModel: ObservableObject {
     @MainActor
     func playNextChip(note: UInt8, audioMonitor: AudioMonitorService, midiService: MidiService?) {
         guard !phonemes.isEmpty else { return }
-        let phoneme = phonemes[keyboardStepIndex % phonemes.count]
-        playSinglePhoneme(phoneme, audioMonitor: audioMonitor, midiService: midiService, pitchOverride: note)
+        let idx = keyboardStepIndex % phonemes.count
+        playSinglePhoneme(at: idx, audioMonitor: audioMonitor, midiService: midiService, pitchOverride: note)
         keyboardStepIndex = (keyboardStepIndex + 1) % phonemes.count
     }
 
     @MainActor
-    func playSinglePhoneme(_ phoneme: ChoirPhoneme, audioMonitor: AudioMonitorService, midiService: MidiService? = nil, pitchOverride: UInt8? = nil) {
+    func playSinglePhoneme(at idx: Int, audioMonitor: AudioMonitorService, midiService: MidiService? = nil, pitchOverride: UInt8? = nil) {
         stop(midiService: midiService)
-        let idx = phonemes.firstIndex(where: { $0.id == phoneme.id }) ?? 0
+        guard idx >= 0 && idx < phonemes.count else { return }
+        let phoneme = phonemes[idx]
         currentPlayIndex = idx
         // Use phrase-context pitch when tapping a chip (so it previews where it sits in the contour)
         let pitch: UInt8

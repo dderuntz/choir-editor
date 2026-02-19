@@ -41,7 +41,7 @@ struct ComposerView: View {
     @State private var nsScrollView: NSScrollView?
 
     // Chip inspector
-    @State private var inspectedPhonemeId: UUID? = nil
+    @State private var inspectedPhonemeIndex: Int? = nil
 
     private var lineHeight: CGFloat { 62 }
 
@@ -564,10 +564,9 @@ struct ComposerView: View {
                         phoneme: phoneme,
                         isActive: composerModel.currentPlayIndex == index,
                         wordPosition: position,
-                        onDelete: { composerModel.deletePhoneme(phoneme) }
+                        onDelete: { composerModel.deletePhoneme(at: index) }
                     )
                     .padding(.leading, index == 0 ? 0 : isNewWord ? 12 : 1)
-                    .id(index)
                     .background(
                         GeometryReader { chipGeo in
                             Color.clear.preference(
@@ -578,38 +577,38 @@ struct ComposerView: View {
                     )
                     .onTapGesture {
                         if NSEvent.modifierFlags.contains(.shift) {
-                            composerModel.toggleEnsemble(phoneme)
+                            composerModel.toggleEnsemble(at: index)
                         } else {
-                            composerModel.playSinglePhoneme(phoneme, audioMonitor: audioMonitor, midiService: midiService)
-                            inspectedPhonemeId = (inspectedPhonemeId == phoneme.id) ? nil : phoneme.id
+                            composerModel.playSinglePhoneme(at: index, audioMonitor: audioMonitor, midiService: midiService)
+                            inspectedPhonemeIndex = (inspectedPhonemeIndex == index) ? nil : index
                         }
                     }
                     .onLongPressGesture(minimumDuration: 0.4) {
-                        composerModel.toggleEnsemble(phoneme)
+                        composerModel.toggleEnsemble(at: index)
                     }
                     .contextMenu {
                         Button(L("composer.insertBefore")) {
-                            composerModel.insertPhoneme(relativeTo: phoneme, before: true)
+                            composerModel.insertPhoneme(at: index, before: true)
                         }
                         Button(L("composer.insertAfter")) {
-                            composerModel.insertPhoneme(relativeTo: phoneme, before: false)
+                            composerModel.insertPhoneme(at: index, before: false)
                         }
                         Divider()
                         Button(L("roll.delete"), role: .destructive) {
-                            composerModel.deletePhoneme(phoneme)
+                            composerModel.deletePhoneme(at: index)
                         }
                     }
                     .popover(isPresented: Binding(
-                        get: { inspectedPhonemeId == phoneme.id },
-                        set: { if !$0 { inspectedPhonemeId = nil } }
+                        get: { inspectedPhonemeIndex == index },
+                        set: { if !$0 { inspectedPhonemeIndex = nil } }
                     )) {
                         PhonemeInspector(
                             phoneme: phoneme,
                             onUpdate: { consonant, vowel in
-                                composerModel.updatePhoneme(id: phoneme.id, consonantCC: consonant, vowelCC: vowel)
+                                composerModel.updatePhoneme(at: index, consonantCC: consonant, vowelCC: vowel)
                             },
                             onToggleEnsemble: {
-                                composerModel.toggleEnsemble(phoneme)
+                                composerModel.toggleEnsemble(at: index)
                             }
                         )
                     }
