@@ -675,6 +675,10 @@ private struct ScrollViewFinder: NSViewRepresentable {
         let view = NSView()
         DispatchQueue.main.async {
             if let scrollView = view.enclosingScrollView {
+                // Walk up to the Composer's hosting view so scroll wheel works anywhere in the panel
+                var parent: NSView? = scrollView.superview
+                while let p = parent?.superview { parent = p }
+                VerticalToHorizontalScroller.install(on: scrollView, parentView: parent)
                 onFind(scrollView)
             }
         }
@@ -682,6 +686,41 @@ private struct ScrollViewFinder: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+/// Intercepts vertical scroll-wheel events on a horizontal NSScrollView
+/// and converts them to horizontal scrolling.
+private final class VerticalToHorizontalScroller {
+    private var monitor: Any?
+    private weak var scrollView: NSScrollView?
+
+    /// parentView: the enclosing Composer view — scroll wheel anywhere in it scrolls the chips
+    static func install(on scrollView: NSScrollView, parentView: NSView? = nil) {
+        let scroller = VerticalToHorizontalScroller()
+        scroller.scrollView = scrollView
+        scroller.monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+            guard let sv = scroller.scrollView,
+                  event.deltaX == 0, event.deltaY != 0,
+                  !event.modifierFlags.contains(.shift) else {
+                return event  // pass through shift+scroll (already works natively)
+            }
+            // Hit-test against the parent Composer view (or scroll view if no parent)
+            let hitView = parentView ?? sv
+            let point = hitView.convert(event.locationInWindow, from: nil)
+            guard hitView.bounds.contains(point) else { return event }
+
+            // Convert vertical scroll → horizontal, matching native shift+scroll direction and speed
+            guard let doc = sv.documentView else { return event }
+            let current = sv.contentView.bounds.origin
+            let maxX = doc.frame.width - sv.contentView.bounds.width
+            let newX = max(0, min(maxX, current.x - event.scrollingDeltaY * 4))
+            sv.contentView.scroll(to: NSPoint(x: newX, y: current.y))
+            sv.reflectScrolledClipView(sv.contentView)
+            return nil  // consume the original vertical event
+        }
+        // Prevent deallocation by attaching to the scroll view
+        objc_setAssociatedObject(scrollView, "vtoh", scroller, .OBJC_ASSOCIATION_RETAIN)
+    }
 }
 
 // MARK: - Availability Wrapper

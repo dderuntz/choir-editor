@@ -2545,13 +2545,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Send the next phoneme's sound parameters early. Larger values wait longer after the last note to send."
+            "value" : "Prepares the next sound while the current note is still playing. A larger buffer gives more preparation time but may clip short notes."
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Skicka nästa fonems ljudparametrar i förväg. Större värden väntar längre efter senaste tonen."
+            "value" : "Förbereder nästa ljud medan nuvarande ton fortfarande spelas. En större buffert ger mer förberedelsetid men kan klippa korta toner."
           }
         }
       }
@@ -2561,13 +2561,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Send After"
+            "value" : "Early Buffer"
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Skicka efter"
+            "value" : "Tidig buffert"
           }
         }
       }
