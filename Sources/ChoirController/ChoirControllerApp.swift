@@ -40,12 +40,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Compose phoneme-based choral arrangements for \
         Teenage Engineering Choir dolls.
 
-        Open the composer and type or summon lyrics with your computer's built in AI (Apple's Foundation Model), extract phonemes, tune \
+        Type or summon lyrics with on-device AI \
+        (Apple Foundation Models), extract phonemes, tune \
         each chip's consonant and vowel, watch the bouncing \
         ball, then send to the piano roll and \
         over MIDI to your choir.
 
         Prefer → Compose → Test → Touch
+
+        English phonemes: CMU Pronouncing Dictionary (BSD)
+        Swedish phonemes: OpenSLR #29 (CC BY 4.0, NST)
+        MIDI: MIDIKit by Steffan Andrews (MIT)
+        Protocol: Choirama by jetztgradnet (CC0)
         """
         let attrCredits = NSAttributedString(
             string: credits,
