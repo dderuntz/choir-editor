@@ -16,6 +16,7 @@ struct SequencerView: View {
     @State private var lastTickTime: Date? = nil
     @State private var pendingClearAll = false
     @State private var showSequencerTips = false
+    @State private var pendingCCWorkItem: DispatchWorkItem? = nil
 
     // Onboarding
     @EnvironmentObject var onboarding: OnboardingManager
@@ -544,6 +545,8 @@ struct SequencerView: View {
         playbackTimer?.invalidate()
         playbackTimer = nil
         lastTickTime = nil
+        pendingCCWorkItem?.cancel()
+        pendingCCWorkItem = nil
         stopAllActiveNotes()
     }
     
@@ -648,11 +651,15 @@ struct SequencerView: View {
     /// Activate up to 8 notes (first 8 by ascending pitch)
     private func activateNotes(_ notes: [SequencerNote]) {
         guard !notes.isEmpty else { return }
-        
+
+        // Cancel any pending pre-send from the previous note
+        pendingCCWorkItem?.cancel()
+        pendingCCWorkItem = nil
+
         // 8-poly limit: first 8 by ascending pitch
         let sorted = notes.sorted { $0.pitch < $1.pitch }
         let toPlay = sorted.prefix(8)
-        
+
         for note in toPlay {
             // Set CC values then NoteOn
             midiService.consonant = note.consonant
@@ -663,9 +670,46 @@ struct SequencerView: View {
             if localAudioEnabled { audioMonitor.playNote(note: note.pitch, velocity: note.velocity, vibrato: note.vibrato, reverb: note.reverb, vowel: note.vowel, consonant: note.consonant) }
             model.activeNoteIDs.insert(note.id)
         }
+
+        // CC Pre-Send: look ahead to next note and send its CCs after a configurable delay.
+        // Delay is clamped so the pre-send never arrives after the next NoteOn.
+        if midiService.ccPreSendEnabled, let currentNote = toPlay.first {
+            let upcoming = model.notes
+                .filter { $0.startBeat > currentNote.startBeat }
+                .sorted { $0.startBeat < $1.startBeat }
+                .first
+
+            if let nextNote = upcoming {
+                let ccChanged = nextNote.consonant != midiService.consonant ||
+                                nextNote.vowel != midiService.vowel ||
+                                nextNote.vibrato != midiService.vibrato ||
+                                nextNote.reverb != midiService.reverb
+
+                if ccChanged {
+                    let beatsPerSecond = model.tempo / 60.0
+                    let timeToNextNoteOn = (nextNote.startBeat - currentNote.startBeat) / beatsPerSecond
+                    let requestedDelay = midiService.ccPreSendDelayMs / 1000.0
+                    // Clamp: never later than halfway to the next NoteOn
+                    let delay = min(requestedDelay, max(0.001, timeToNextNoteOn / 2.0))
+
+                    let workItem = DispatchWorkItem { [weak midiService] in
+                        midiService?.preSendCC(
+                            consonant: nextNote.consonant,
+                            vowel: nextNote.vowel,
+                            vibrato: nextNote.vibrato,
+                            reverb: nextNote.reverb
+                        )
+                    }
+                    pendingCCWorkItem = workItem
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+                }
+            }
+        }
     }
     
     private func stopAllActiveNotes() {
+        pendingCCWorkItem?.cancel()
+        pendingCCWorkItem = nil
         for id in model.activeNoteIDs {
             if let note = model.notes.first(where: { $0.id == id }) {
                 midiService.sendNoteOff(note: note.pitch)

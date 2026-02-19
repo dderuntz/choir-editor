@@ -54,6 +54,7 @@ private enum ComposerPersistence {
 
 // MARK: - Composer Model
 
+@MainActor
 class ComposerModel: ObservableObject {
     @Published var inputText: String = "" {
         didSet { ComposerPersistence.saveText(inputText) }
@@ -418,6 +419,7 @@ class ComposerModel: ObservableObject {
                 // For double-bounce: first bounce is a quick in-place pop (40% of time),
                 // second bounce gets the rest to travel to the next chip.
                 let totalMs = baseDuration + gap
+                var preSendFired = false
                 for bounceIdx in 0..<bounceCount {
                     guard !Task.isCancelled else { break }
 
@@ -441,6 +443,15 @@ class ComposerModel: ObservableObject {
                     // Sleep first half (ball going up), then publish down phase
                     try? await Task.sleep(for: .milliseconds(halfArc))
                     guard !Task.isCancelled else { break }
+
+                    // CC Pre-Send at the peak of the first bounce — halfway through the chip.
+                    // Gives BLE time to clear the NoteOn packet before sending next CCs.
+                    if !preSendFired, let ms = midiService, ms.ccPreSendEnabled, ms.isConnected, index + 1 < phonemesToPlay.count {
+                        let next = phonemesToPlay[index + 1]
+                        ms.preSendCC(consonant: next.consonantCC, vowel: next.vowelCC, vibrato: 64, reverb: next.isEnsemble ? 48 : 32)
+                        preSendFired = true
+                    }
+
                     self.bouncePhase = 1  // down phase
 
                     // Sleep second half (ball coming down)

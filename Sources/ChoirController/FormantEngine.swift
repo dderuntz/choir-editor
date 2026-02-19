@@ -45,10 +45,10 @@ enum SynthEngineType: String, CaseIterable, Identifiable {
     }
     var blurb: String {
         switch self {
-        case .formant: return "Vowel-shaped resonance filters. Smooth, choir-like tones."
-        case .animalese: return "Pitched speech samples à la Animal Crossing. Playful and chattery."
-        case .fof: return "Formant-wave-function grains. Breathy, organic vocal texture."
-        case .lpc: return "Linear predictive coding. Robotic, lo-fi speech synthesis."
+        case .formant: return L("settings.engine.formant")
+        case .animalese: return L("settings.engine.animalese")
+        case .fof: return L("settings.engine.fof")
+        case .lpc: return L("settings.engine.lpc")
         }
     }
 }

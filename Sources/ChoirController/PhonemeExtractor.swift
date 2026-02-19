@@ -126,6 +126,7 @@ enum PhonemeExampleStore {
 
 /// Three-tier extraction pipeline: dictionary → LLM normalize + retry → LLM full extraction.
 /// Stateless — returns an ExtractionResult. ComposerModel manages UI state transitions.
+@MainActor
 class EnglishPhonemeExtractor {
 
     /// Check on-device LLM availability

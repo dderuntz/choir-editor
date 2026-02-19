@@ -96,8 +96,10 @@ enum Theme {
     // MARK: Dividers
     
     static let divider = dark.opacity(0.15)
-    /// Alias used by explorer grid borders
-    static let explorerGridBorder = fieldLight
+    /// Alias used by explorer grid borders — scheme-aware
+    static func explorerGridBorder(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? field : fieldLight
+    }
 }
 
 // MARK: - Hover Pill Button Style

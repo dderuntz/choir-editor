@@ -13,9 +13,10 @@ struct SettingsPanelView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Header — lines up with doc title (same horizontal padding)
             HStack {
-                Text("Prefer")
+                Text("settings.title", bundle: localizedBundle)
                     .font(.system(size: 56, weight: .ultraLight))
                     .kerning(-1.4)
+                    .textSelection(.disabled)
                 Spacer()
                 Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showSettings = false } }) {
                     Image(systemName: "xmark")
@@ -33,7 +34,7 @@ struct SettingsPanelView: View {
                     // Sequencer Settings
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
-                            Text("Sequencer")
+                            Text("settings.sequencer", bundle: localizedBundle)
                                 .font(.system(size: 10))
                                 .fontWeight(.medium)
                                 .foregroundColor(Theme.text(colorScheme).opacity(0.3))
@@ -45,21 +46,41 @@ struct SettingsPanelView: View {
                             }
                         }
                         
-                        SliderWithDefault(label: "Tempo", value: $midiService.tempo, range: 40...200, defaultValue: 100, displayText: "\(Int(midiService.tempo))", displayWidth: 30) { val in
+                        SliderWithDefault(label: L("settings.tempo"), value: $midiService.tempo, range: 40...200, defaultValue: 100, displayText: "\(Int(midiService.tempo))", displayWidth: 30) { val in
                             (val / 5).rounded() * 5
                         }
                         
-                        SliderWithDefault(label: "Min Note", value: $midiService.minNoteDuration, range: 0.01...0.5, defaultValue: 0.28, displayText: "\(Int(midiService.minNoteDuration * 1000))ms", displayWidth: 40) { val in
+                        SliderWithDefault(label: L("settings.minNote"), value: $midiService.minNoteDuration, range: 0.01...0.5, defaultValue: 0.28, displayText: "\(Int(midiService.minNoteDuration * 1000))ms", displayWidth: 40) { val in
                             (val * 100).rounded() / 100
                         }
+
+                        HStack {
+                            Text("settings.ccPreSend", bundle: localizedBundle)
+                                .font(Theme.toolbarFont)
+                            Spacer()
+                            Toggle("", isOn: $midiService.ccPreSendEnabled)
+                                .labelsHidden()
+                                .toggleStyle(.checkbox)
+                        }
+
+                        if midiService.ccPreSendEnabled {
+                            SliderWithDefault(label: L("settings.ccPreSend.sendAfter"), value: $midiService.ccPreSendDelayMs, range: 1...300, defaultValue: 185, displayText: "\(Int(midiService.ccPreSendDelayMs))ms", displayWidth: 40) { val in
+                                val.rounded()
+                            }
+
+                            Text("settings.ccPreSend.description", bundle: localizedBundle)
+                                .font(Theme.toolbarFont)
+                                .foregroundColor(Theme.text(colorScheme).opacity(0.6))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
-                    
+
                     Divider().padding(.top, 3)
-                    
+
                     // Voice Controls
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
-                            Text("Global Effects")
+                            Text("settings.globalEffects", bundle: localizedBundle)
                                 .font(.system(size: 10))
                                 .fontWeight(.medium)
                                 .foregroundColor(Theme.text(colorScheme).opacity(0.3))
@@ -78,13 +99,13 @@ struct SettingsPanelView: View {
                     
                     // Audio
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Audio")
+                        Text("settings.audio", bundle: localizedBundle)
                             .font(.system(size: 10))
                             .fontWeight(.medium)
                             .foregroundColor(Theme.text(colorScheme).opacity(0.3))
                             .textCase(.uppercase)
                         HStack {
-                            Text("Local Playback")
+                            Text("settings.localPlayback", bundle: localizedBundle)
                                 .font(Theme.toolbarFont)
                             Spacer()
                             Picker("", selection: $localAudioMode) {
@@ -98,7 +119,7 @@ struct SettingsPanelView: View {
                         }
                         
                         HStack {
-                            Text("Playback Engine")
+                            Text("settings.playbackEngine", bundle: localizedBundle)
                                 .font(Theme.toolbarFont)
                             Spacer()
                             Picker("", selection: Binding(
@@ -124,14 +145,14 @@ struct SettingsPanelView: View {
                     
                     // Composer
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Composer")
+                        Text("settings.composer", bundle: localizedBundle)
                             .font(.system(size: 10))
                             .fontWeight(.medium)
                             .foregroundColor(Theme.text(colorScheme).opacity(0.3))
                             .textCase(.uppercase)
                         
                         HStack {
-                            Text("Recomposition Style (AI)")
+                            Text("settings.recompositionStyle", bundle: localizedBundle)
                                 .font(Theme.toolbarFont)
                             Spacer()
                             Picker("", selection: $lyricStyle) {
@@ -149,7 +170,7 @@ struct SettingsPanelView: View {
                             .foregroundColor(Theme.text(colorScheme).opacity(0.6))
                             .fixedSize(horizontal: false, vertical: true)
                         
-                        Text("The composer uses Apple's on-device Foundation Model. All processing happens locally on your Mac — no data is sent to external servers.")
+                        Text("settings.composer.privacy", bundle: localizedBundle)
                             .font(Theme.toolbarFont)
                             .foregroundColor(Theme.text(colorScheme).opacity(0.6))
                             .fixedSize(horizontal: false, vertical: true)
