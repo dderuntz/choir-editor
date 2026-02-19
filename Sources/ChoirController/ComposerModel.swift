@@ -363,7 +363,7 @@ class ComposerModel: ObservableObject {
         return notes.sorted()
     }
 
-    /// Pick a pitch from the scale based on phoneme index and weight
+    /// Pick a pitch from the scale based on phoneme index and weight (fallback for single-phoneme)
     private func pitchForPhoneme(index: Int, weight: Int, total: Int) -> UInt8 {
         let notes = scaleNotes()
         guard !notes.isEmpty else { return 60 }
@@ -377,6 +377,86 @@ class ComposerModel: ObservableObject {
         }
         let idx = max(0, min(notes.count - 1, mid + offset))
         return notes[idx]
+    }
+
+    /// Pre-compute a phrase-shaped melody: sine arc + word sub-arcs + stress peaks + stepwise motion.
+    /// Each call produces a unique variation — the arc envelope holds but the path through it differs,
+    /// like a singer who knows the shape but phrases it differently each time.
+    private func buildContour(for phonemes: [ChoirPhoneme]) -> [UInt8] {
+        let notes = scaleNotes(center: 60, range: 24)  // full doll range (36–84)
+        guard !notes.isEmpty, !phonemes.isEmpty else {
+            return phonemes.map { _ in 60 }
+        }
+
+        let total = phonemes.count
+
+        // Group phoneme indices by word
+        var wordGroups: [Int: [Int]] = [:]
+        for (i, p) in phonemes.enumerated() {
+            wordGroups[p.wordIndex, default: []].append(i)
+        }
+
+        // Step 1-3: compute a normalized target value (0.0–1.0) per phoneme
+        var targetValues = [Double](repeating: 0.5, count: total)
+        for (i, phoneme) in phonemes.enumerated() {
+            // Phrase-level arc: sine peaking ~60% through
+            let progress = Double(i) / Double(max(1, total - 1))
+            let phraseArc = sin(progress * .pi * 0.85 + 0.15)
+
+            // Word-level sub-arc (±15% variation within each word)
+            let wordPhonemes = wordGroups[phoneme.wordIndex] ?? [i]
+            let posInWord = wordPhonemes.firstIndex(of: i) ?? 0
+            let wordLen = wordPhonemes.count
+            let wordProgress = wordLen > 1
+                ? Double(posInWord) / Double(wordLen - 1)
+                : 0.5
+            let subArc = sin(wordProgress * .pi) * 0.15
+
+            // Stress boost
+            let stressBoost: Double
+            switch phoneme.weight {
+            case 3:  stressBoost = 0.2
+            case 2:  stressBoost = 0.0
+            default: stressBoost = -0.1
+            }
+
+            // Per-note jitter so each playthrough takes a different path.
+            // Wider at the start of the phrase (±0.15) where we want variety,
+            // settling to ±0.06 once the melody has established direction.
+            let openingFade = max(0.06, 0.15 - Double(i) * 0.015)
+            let jitter = Double.random(in: -openingFade...openingFade)
+
+            // Normalize combined value into 0–1 range
+            // phraseArc ranges ~0.15–1.0, so *0.5+0.25 maps it to ~0.33–0.75
+            targetValues[i] = max(0, min(1, (phraseArc + subArc) * 0.5 + 0.25 + stressBoost + jitter))
+        }
+
+        // Steps 4-5: map targets to scale indices with stepwise constraint
+        var resultPitches = [UInt8]()
+        resultPitches.reserveCapacity(total)
+
+        // First note lands freely at its target — no leash from a "previous" note.
+        // Wide wander (±4 scale steps) is safe: scaleNotes() already clamps to doll range (36–84).
+        let firstIdealIdx = Int((targetValues[0] * Double(notes.count - 1)).rounded())
+        let startWander = Int.random(in: -4...4)
+        var previousIdx = max(0, min(notes.count - 1, firstIdealIdx + startWander))
+        resultPitches.append(notes[previousIdx])
+
+        for i in 1..<total {
+            let idealIdx = Int((targetValues[i] * Double(notes.count - 1)).rounded())
+            // Vary step size: stressed syllables can leap up to 4 steps, unstressed 2-3.
+            // scaleNotes array is the boundary — can't exceed doll range.
+            let baseMax = phonemes[i].weight >= 3 ? 4 : 3
+            let maxStep = Bool.random() ? baseMax : max(1, baseMax - 1)
+            // Clamp to within maxStep of previous, then clamp to array bounds
+            let constrained = max(0, min(notes.count - 1,
+                max(previousIdx - maxStep, min(previousIdx + maxStep, idealIdx))
+            ))
+            resultPitches.append(notes[constrained])
+            previousIdx = constrained
+        }
+
+        return resultPitches
     }
 
     /// Duration in ms based on weight, ensemble, and speed
@@ -416,6 +496,107 @@ class ComposerModel: ObservableObject {
         }
     }
 
+    // MARK: - Chord Progressions
+
+    /// Scale-degree triads for a hymn-style progression (I-IV-V-I), adapted per scale type.
+    /// Each inner array is 3 scale degrees (0-indexed) forming a triad.
+    private func progressionForScale() -> [[Int]] {
+        let degreesPerOctave = scaleType.intervals.count
+        if degreesPerOctave <= 5 {
+            // Pentatonic: adjacent-tone triads (only 5 notes available)
+            return [[0, 1, 2], [1, 2, 3], [3, 4, 0], [0, 1, 2]]
+        }
+        // 7-note scales (Major, Minor, Dorian, etc.): standard tertian triads
+        // I → IV → V → I
+        return [[0, 2, 4], [3, 5, 0], [4, 6, 1], [0, 2, 4]]
+    }
+
+    /// Assign a chord (scale-degree triad) to each word, adapting progression length
+    /// to the number of ensemble phonemes so chords have time to breathe.
+    private func buildHarmony(for phonemes: [ChoirPhoneme]) -> [Int: [Int]] {
+        let fullProgression = progressionForScale()
+
+        // Count ensemble phonemes to decide how many chords we can afford
+        let ensembleCount = phonemes.filter(\.isEnsemble).count
+
+        let progression: [[Int]]
+        if ensembleCount <= 6 {
+            // Too few notes — stay on tonic (stable drone)
+            progression = [fullProgression[0]]
+        } else if ensembleCount <= 12 {
+            // Enough for one departure: I → V → I
+            progression = [fullProgression[0], fullProgression[2], fullProgression[0]]
+        } else {
+            // Full hymn: I → IV → V → I
+            progression = fullProgression
+        }
+
+        // Collect unique word indices that have ensemble phonemes
+        let ensembleWordIndices = Array(Set(
+            phonemes.filter(\.isEnsemble).map(\.wordIndex)
+        )).sorted()
+
+        guard !ensembleWordIndices.isEmpty else { return [:] }
+
+        // Distribute progression evenly across ensemble words
+        var chordPerWord: [Int: [Int]] = [:]
+        for (i, wordIdx) in ensembleWordIndices.enumerated() {
+            let slot = (i * progression.count) / ensembleWordIndices.count
+            let clampedSlot = min(slot, progression.count - 1)
+            chordPerWord[wordIdx] = progression[clampedSlot]
+        }
+
+        return chordPerWord
+    }
+
+    /// Build up to 3 harmony voices from chord tones, voiced below the melody.
+    /// Returns pitches with velocity-drop and reverb values matching the barbershop voicing.
+    private func ensembleVoices(
+        melody: UInt8,
+        chordDegrees: [Int],
+        scaleNotes: [UInt8]
+    ) -> [(pitch: UInt8, velDrop: UInt8, reverb: UInt8)] {
+        let degreesPerOctave = scaleType.intervals.count
+        guard degreesPerOctave > 0, !scaleNotes.isEmpty else { return [] }
+
+        // Find the melody's position in the scale array
+        let melodyIdx: Int
+        if let exact = scaleNotes.firstIndex(of: melody) {
+            melodyIdx = exact
+        } else if let nearest = scaleNotes.enumerated().min(by: {
+            abs(Int($0.element) - Int(melody)) < abs(Int($1.element) - Int(melody))
+        }) {
+            melodyIdx = nearest.offset
+        } else {
+            return []
+        }
+
+        let voiceParams: [(velDrop: UInt8, reverb: UInt8)] = [
+            (15, 38),   // Voice 2 — closest below melody
+            (18, 42),   // Voice 3
+            (20, 48),   // Voice 4 — lowest, most reverb
+        ]
+
+        // Place each chord degree below the melody, walking down the scale
+        var voices: [(pitch: UInt8, velDrop: UInt8, reverb: UInt8)] = []
+        var usedPitches: Set<UInt8> = [melody]
+
+        for (i, degree) in chordDegrees.enumerated() {
+            guard i < voiceParams.count else { break }
+            // Target: this scale degree, in the octave below the melody
+            let targetIdx = melodyIdx - (degreesPerOctave - degree)
+            let clampedIdx = max(0, min(scaleNotes.count - 1, targetIdx))
+            let pitch = scaleNotes[clampedIdx]
+
+            if pitch != melody && pitch >= 36 && !usedPitches.contains(pitch) {
+                voices.append((pitch, voiceParams[i].velDrop, voiceParams[i].reverb))
+                usedPitches.insert(pitch)
+            }
+        }
+
+        return voices
+    }
+
     // MARK: - Playback
 
     @MainActor
@@ -425,8 +606,12 @@ class ComposerModel: ObservableObject {
 
         isPlaying = true
         let phonemesToPlay = phonemes
-        let total = phonemesToPlay.count
         let lastWordIndex = phonemesToPlay.map(\.wordIndex).max() ?? -1
+
+        // Pre-compute melodic contour and chord harmony for the whole phrase
+        let contour = buildContour(for: phonemesToPlay)
+        let harmony = buildHarmony(for: phonemesToPlay)
+
         playbackTask = Task { @MainActor in
             for (index, phoneme) in phonemesToPlay.enumerated() {
                 guard !Task.isCancelled else { break }
@@ -443,7 +628,7 @@ class ComposerModel: ObservableObject {
                 let baseDuration = durationFor(weight: phoneme.weight, isEnsemble: phoneme.isEnsemble)
                 let gap = Int(Double(phoneme.weight >= 3 ? 80 : 50) * speedMultiplier)
 
-                let pitch = pitchForPhoneme(index: index, weight: phoneme.weight, total: total)
+                let pitch = contour[index]
                 let velocity = velocityForWeight(phoneme.weight)
 
                 let ensemble = phoneme.isEnsemble
@@ -452,7 +637,8 @@ class ComposerModel: ObservableObject {
                 // Start the note
                 var activePitches: [UInt8]
                 if ensemble {
-                    activePitches = playEnsemble(pitch: pitch, velocity: velocity, phoneme: phoneme, audioMonitor: audioMonitor, midiService: midiService)
+                    let chord = harmony[phoneme.wordIndex]
+                    activePitches = playEnsemble(pitch: pitch, velocity: velocity, phoneme: phoneme, chordDegrees: chord, audioMonitor: audioMonitor, midiService: midiService)
                 } else {
                     audioMonitor.playNote(
                         note: pitch, velocity: velocity, vibrato: 64, reverb: 32,
@@ -530,10 +716,11 @@ class ComposerModel: ObservableObject {
         return scale.min(by: { abs(Int($0) - target) < abs(Int($1) - target) })
     }
 
-    /// Barbershop quartet: lead + 3 harmony voices, all snapped to scale
-    /// Tenor: ~3rd above lead, Baritone: ~3rd below, Bass: ~octave below
+    /// Barbershop quartet: lead + 3 harmony voices.
+    /// When chordDegrees is provided, voices are built from chord tones (progression-aware).
+    /// When nil, falls back to fixed parallel intervals (for single-phoneme preview).
     @MainActor
-    private func playEnsemble(pitch: UInt8, velocity: UInt8, phoneme: ChoirPhoneme, audioMonitor: AudioMonitorService, midiService: MidiService?) -> [UInt8] {
+    private func playEnsemble(pitch: UInt8, velocity: UInt8, phoneme: ChoirPhoneme, chordDegrees: [Int]? = nil, audioMonitor: AudioMonitorService, midiService: MidiService?) -> [UInt8] {
         let scale = scaleNotes(center: pitch, range: 18)
         var pitches: [UInt8] = [pitch]
 
@@ -549,29 +736,35 @@ class ComposerModel: ObservableObject {
             activeMidiPitches.insert(pitch)
         }
 
-        // Quartet intervals — wider open voicing, all snapped to scale
-        let targets: [(offset: Int, velDrop: UInt8, reverb: UInt8)] = [
-            (+7,  15, 38),   // Tenor — 5th above
-            (-5,  18, 42),   // Baritone — 4th below
-            (-12, 20, 48),   // Bass — octave below
-        ]
+        // Harmony voices — chord-aware when progression is available, else fixed intervals
+        let harmonyTargets: [(pitch: UInt8, velDrop: UInt8, reverb: UInt8)]
+        if let degrees = chordDegrees {
+            harmonyTargets = ensembleVoices(melody: pitch, chordDegrees: degrees, scaleNotes: scale)
+        } else {
+            // Fallback: original parallel voicing (single-phoneme tap, no phrase context)
+            harmonyTargets = [(offset: +7, velDrop: UInt8(15), reverb: UInt8(38)),
+                              (offset: -5, velDrop: UInt8(18), reverb: UInt8(42)),
+                              (offset: -12, velDrop: UInt8(20), reverb: UInt8(48))]
+                .compactMap { t -> (pitch: UInt8, velDrop: UInt8, reverb: UInt8)? in
+                    guard let snapped = nearestScaleNote(to: Int(pitch) + t.offset, in: scale),
+                          snapped != pitch else { return nil }
+                    return (snapped, t.velDrop, t.reverb)
+                }
+        }
 
-        for t in targets {
-            let raw = Int(pitch) + t.offset
-            guard let snapped = nearestScaleNote(to: raw, in: scale),
-                  snapped != pitch else { continue }  // skip duplicates
+        for t in harmonyTargets {
             let hv = max(50, velocity - t.velDrop)
-            audioMonitor.playNote(note: snapped, velocity: hv, vibrato: 64, reverb: t.reverb,
+            audioMonitor.playNote(note: t.pitch, velocity: hv, vibrato: 64, reverb: t.reverb,
                                   vowel: phoneme.vowelCC, consonant: phoneme.consonantCC)
             if let ms = midiService, ms.isConnected {
                 ms.consonant = phoneme.consonantCC
                 ms.vowel = phoneme.vowelCC
                 ms.vibrato = 64
                 ms.reverb = t.reverb
-                ms.sendNoteOn(note: snapped, velocity: hv)
-                activeMidiPitches.insert(snapped)
+                ms.sendNoteOn(note: t.pitch, velocity: hv)
+                activeMidiPitches.insert(t.pitch)
             }
-            pitches.append(snapped)
+            pitches.append(t.pitch)
         }
 
         log.debug("🎵 quartet: \(pitches.map { String($0) }.joined(separator: " "))")
@@ -651,7 +844,16 @@ class ComposerModel: ObservableObject {
         stop(midiService: midiService)
         let idx = phonemes.firstIndex(where: { $0.id == phoneme.id }) ?? 0
         currentPlayIndex = idx
-        let pitch = pitchOverride ?? pitchForPhoneme(index: idx, weight: phoneme.weight, total: phonemes.count)
+        // Use phrase-context pitch when tapping a chip (so it previews where it sits in the contour)
+        let pitch: UInt8
+        if let override = pitchOverride {
+            pitch = override
+        } else if phonemes.count > 1 {
+            let contour = buildContour(for: phonemes)
+            pitch = contour[idx]
+        } else {
+            pitch = pitchForPhoneme(index: idx, weight: phoneme.weight, total: phonemes.count)
+        }
         let velocity = velocityForWeight(phoneme.weight)
         log.debug("tap: \(phoneme.text) w\(phoneme.weight) note \(pitch)\(phoneme.isEnsemble ? " 🎵" : "")")
         var activePitches: [UInt8]
@@ -706,11 +908,14 @@ class ComposerModel: ObservableObject {
         let startBeat = (lastEnd / 0.25).rounded(.up) * 0.25
 
         var cursor = startBeat
-        let total = phonemes.count
         let allScaleNotes = scaleNotes(center: 60, range: 24)
 
+        // Pre-compute melodic contour and chord harmony (matches playPhonemes)
+        let contour = buildContour(for: phonemes)
+        let harmony = buildHarmony(for: phonemes)
+
         for (index, phoneme) in phonemes.enumerated() {
-            let pitch = pitchForPhoneme(index: index, weight: phoneme.weight, total: total)
+            let pitch = contour[index]
             let durationMs = Double(durationFor(weight: phoneme.weight, isEnsemble: phoneme.isEnsemble))
             let durationBeats = max(0.25, (durationMs / msPerBeat / 0.25).rounded() * 0.25)
             let velocity = velocityForWeight(phoneme.weight)
@@ -728,21 +933,22 @@ class ComposerModel: ObservableObject {
 
             sequencer.notes.append(note)
 
-            // Ensemble: add harmony notes (3rd + 5th below melody within scale)
+            // Ensemble: add chord-aware harmony voices (consistent with playEnsemble)
             if phoneme.isEnsemble {
-                let harmonyPitches = harmonyBelow(root: pitch, scaleNotes: allScaleNotes)
-                for (i, hPitch) in harmonyPitches.enumerated() {
-                    var harmony = SequencerNote(
-                        pitch: hPitch,
+                let chord = harmony[phoneme.wordIndex]
+                let voices = chord.map { ensembleVoices(melody: pitch, chordDegrees: $0, scaleNotes: allScaleNotes) } ?? []
+                for voice in voices {
+                    var harmonyNote = SequencerNote(
+                        pitch: voice.pitch,
                         startBeat: cursor,
                         duration: durationBeats,
-                        velocity: max(1, velocity - UInt8(10 + i * 5)),
+                        velocity: max(1, velocity - voice.velDrop),
                         consonant: phoneme.consonantCC,
                         vowel: phoneme.vowelCC
                     )
-                    harmony.vibrato = 64
-                    harmony.reverb = 48
-                    sequencer.notes.append(harmony)
+                    harmonyNote.vibrato = 64
+                    harmonyNote.reverb = voice.reverb
+                    sequencer.notes.append(harmonyNote)
                 }
             }
 
@@ -759,17 +965,4 @@ class ComposerModel: ObservableObject {
         print("[Composer] Copied \(phonemes.count) phonemes to grid at beat \(startBeat), ending at \(cursor)")
     }
 
-    /// Returns up to 2 harmony pitches below the root, walking down the scale
-    /// (scale-degree 3rd and 5th below = 2 and 4 scale steps down)
-    private func harmonyBelow(root: UInt8, scaleNotes: [UInt8]) -> [UInt8] {
-        guard let rootIdx = scaleNotes.firstIndex(of: root) else { return [] }
-        var pitches: [UInt8] = []
-        // 3rd below: 2 scale steps down
-        let thirdIdx = rootIdx - 2
-        if thirdIdx >= 0 { pitches.append(scaleNotes[thirdIdx]) }
-        // 5th below: 4 scale steps down
-        let fifthIdx = rootIdx - 4
-        if fifthIdx >= 0 { pitches.append(scaleNotes[fifthIdx]) }
-        return pitches
-    }
 }
