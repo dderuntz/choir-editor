@@ -621,6 +621,16 @@
         }
       }
     },
+    "settings.lyricStyle.svSenryu" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En trött robot skriver senryū på svenska. Rad 1 observerar. Rad 2 vänder. Humorn sitter i vändningen."
+          }
+        }
+      }
+    },
     "settings.engine.formant" : {
       "localizations" : {
         "en" : {
@@ -689,6 +699,1380 @@
             "value" : "Changing these settings may degrade device playback. The default values work well for most setups."
           }
         }
+      }
+    },
+    "bluetooth.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connect Your Choir"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anslut din kör"
+          }
+        }
+      }
+    },
+    "bluetooth.subtitle" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Follow these steps to pair your Choir doll via Bluetooth."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Följ dessa steg för att para din kördocka via Bluetooth."
+          }
+        }
+      }
+    },
+    "bluetooth.step1" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "**Wake your dolls** — give each one a tap"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "**Väck dina dockor** — ge varje docka en knackning"
+          }
+        }
+      }
+    },
+    "bluetooth.step2" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "**Choose your lead doll** — long-press its connect button until it sings *\"Searching for controller\"*"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "**Välj din huvuddocka** — tryck länge på anslutningsknappen tills den sjunger *\"Searching for controller\"*"
+          }
+        }
+      }
+    },
+    "bluetooth.step3" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In the Bluetooth window, click **\"Advertise\"**. The doll should sing *\"Connected to MIDI controller\"*"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I Bluetooth-fönstret, klicka **\"Advertise\"**. Dockan sjunger *\"Connected to MIDI controller\"*"
+          }
+        }
+      }
+    },
+    "bluetooth.step4" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When macOS asks for a PIN, enter:"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "När macOS ber om en PIN-kod, ange:"
+          }
+        }
+      }
+    },
+    "bluetooth.step5" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wait for connection — this panel will close automatically"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vänta på anslutning — panelen stängs automatiskt"
+          }
+        }
+      }
+    },
+    "bluetooth.reopenWindow" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reopen Bluetooth Window"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öppna Bluetooth-fönstret igen"
+          }
+        }
+      }
+    },
+    "bluetooth.connected" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connected!"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ansluten!"
+          }
+        }
+      }
+    },
+    "bluetooth.waiting" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waiting for connection..."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Väntar på anslutning..."
+          }
+        }
+      }
+    },
+    "roll.noScale" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Scale"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ingen skala"
+          }
+        }
+      }
+    },
+    "roll.keyOf %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Key of %@"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@-tonart"
+          }
+        }
+      }
+    },
+    "roll.help" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Help"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hjälp"
+          }
+        }
+      }
+    },
+    "roll.clearAll" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear All"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rensa allt"
+          }
+        }
+      }
+    },
+    "roll.clearSelection %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear Selection (%lld)"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rensa markering (%lld)"
+          }
+        }
+      }
+    },
+    "roll.loop" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loop"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Upprepa"
+          }
+        }
+      }
+    },
+    "roll.bars %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Bars"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld takter"
+          }
+        }
+      }
+    },
+    "roll.clearAllConfirm" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear all notes?"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rensa alla noter?"
+          }
+        }
+      }
+    },
+    "roll.deleteConfirm %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete %lld notes?"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Radera %lld noter?"
+          }
+        }
+      }
+    },
+    "roll.delete" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Radera"
+          }
+        }
+      }
+    },
+    "roll.cancel" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avbryt"
+          }
+        }
+      }
+    },
+    "toolbar.connect" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connect"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anslut"
+          }
+        }
+      }
+    },
+    "toolbar.composerHelp" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Composer Help"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kompositionshjälp"
+          }
+        }
+      }
+    },
+    "menu.new" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ny"
+          }
+        }
+      }
+    },
+    "menu.open" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open…"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öppna…"
+          }
+        }
+      }
+    },
+    "menu.openRecent" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Recent"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öppna senaste"
+          }
+        }
+      }
+    },
+    "menu.noRecentFiles" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Recent Files"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inga senaste filer"
+          }
+        }
+      }
+    },
+    "menu.clearRecents" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear Recents"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rensa senaste"
+          }
+        }
+      }
+    },
+    "menu.save" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spara"
+          }
+        }
+      }
+    },
+    "menu.saveAs" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save As…"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spara som…"
+          }
+        }
+      }
+    },
+    "menu.exportMIDI" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export as MIDI…"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exportera som MIDI…"
+          }
+        }
+      }
+    },
+    "menu.revealInFinder" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reveal in Finder"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Visa i Finder"
+          }
+        }
+      }
+    },
+    "inspector.cons" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cons"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kons"
+          }
+        }
+      }
+    },
+    "inspector.consonant" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consonant"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konsonant"
+          }
+        }
+      }
+    },
+    "inspector.vowel" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vowel"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vokal"
+          }
+        }
+      }
+    },
+    "inspector.vel" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vel"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vel"
+          }
+        }
+      }
+    },
+    "inspector.velocity" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Velocity"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Velocity"
+          }
+        }
+      }
+    },
+    "inspector.vib" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vib"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vib"
+          }
+        }
+      }
+    },
+    "inspector.vibrato" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vibrato"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vibrato"
+          }
+        }
+      }
+    },
+    "inspector.rev" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rev"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rev"
+          }
+        }
+      }
+    },
+    "inspector.reverb" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reverb"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reverb"
+          }
+        }
+      }
+    },
+    "inspector.test" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Test"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Testa"
+          }
+        }
+      }
+    },
+    "inspector.beat %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beat %lld"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Taktslag %lld"
+          }
+        }
+      }
+    },
+    "inspector.beatPosition %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beat %@"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Taktslag %@"
+          }
+        }
+      }
+    },
+    "inspector.random" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Random"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Slumpmässig"
+          }
+        }
+      }
+    },
+    "composer.thinking" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thinking…"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tänker…"
+          }
+        }
+      }
+    },
+    "composer.composing" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Composing…"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Komponerar…"
+          }
+        }
+      }
+    },
+    "composer.syncPhonemes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sync Phonemes"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synka fonem"
+          }
+        }
+      }
+    },
+    "composer.revealPhonemes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reveal Phonemes"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Visa fonem"
+          }
+        }
+      }
+    },
+    "composer.clear" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rensa"
+          }
+        }
+      }
+    },
+    "composer.clearPhonemes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear phonemes"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rensa fonem"
+          }
+        }
+      }
+    },
+    "composer.copyToRoll" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy to Piano Roll"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopiera till Piano Roll"
+          }
+        }
+      }
+    },
+    "composer.play" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Play"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spela"
+          }
+        }
+      }
+    },
+    "composer.stop" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stop"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stopp"
+          }
+        }
+      }
+    },
+    "composer.insertBefore" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Insert Before"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Infoga före"
+          }
+        }
+      }
+    },
+    "composer.insertAfter" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Insert After"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Infoga efter"
+          }
+        }
+      }
+    },
+    "composer.harmony" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Harmony"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Harmoni"
+          }
+        }
+      }
+    },
+    "composer.recompose.senryu" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recompose as Senryū"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skriv om som Senryū"
+          }
+        }
+      }
+    },
+    "composer.recompose.bellman" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recompose as Bellman"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skriv om som Bellman"
+          }
+        }
+      }
+    },
+    "composer.recompose.kulning" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recompose as Kulning"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skriv om som Kulning"
+          }
+        }
+      }
+    },
+    "composer.recompose.dada" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recompose as Dada"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skriv om som Dada"
+          }
+        }
+      }
+    },
+    "composer.recompose.nursery" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recompose as Nursery Rhyme"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skriv om som barnvisa"
+          }
+        }
+      }
+    },
+    "composer.recompose.svSenryu" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recompose as Senryū"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skriv om som Senryū"
+          }
+        }
+      }
+    },
+    "tooltip.file" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "File" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Arkiv" } }
+      }
+    },
+    "tooltip.settings" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Preferences" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Inställningar" } }
+      }
+    },
+    "tooltip.compose" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Compose" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Komponera" } }
+      }
+    },
+    "tooltip.test" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Test" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Testa" } }
+      }
+    },
+    "tooltip.touch" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Touch" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Spela" } }
+      }
+    },
+    "tooltip.addPhonemes" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Add phonemes to use the keyboard" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Lägg till fonem för att använda klaviaturen" } }
+      }
+    },
+    "tooltip.midiConnected" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "MIDI Connected" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "MIDI ansluten" } }
+      }
+    },
+    "tooltip.midiConnect" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Tap to connect Bluetooth MIDI" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Tryck för att ansluta Bluetooth MIDI" } }
+      }
+    },
+    "tooltip.returnToRoll" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Return to Piano Roll" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Tillbaka till Piano Roll" } }
+      }
+    },
+    "tooltip.composerTips" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Composer tips" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Kompositionstips" } }
+      }
+    },
+    "tooltip.tips" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Tips" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Tips" } }
+      }
+    },
+    "tooltip.stop" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Stop" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Stopp" } }
+      }
+    },
+    "tooltip.play" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Play" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Spela" } }
+      }
+    },
+    "menu.preferences" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Preferences" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Inställningar" } }
+      }
+    },
+    "menu.compose" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Compose" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Komponera" } }
+      }
+    },
+    "menu.test" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Test (Dolls + MIDI)" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Testa (Dockor + MIDI)" } }
+      }
+    },
+    "menu.showKeyboard" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Show Keyboard" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Visa klaviatur" } }
+      }
+    },
+    "menu.appearance" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Appearance" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Utseende" } }
+      }
+    },
+    "settings.reset" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "reset" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "nollställ" } }
+      }
+    },
+    "soundpad.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Test" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Testa" } }
+      }
+    },
+    "soundpad.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Pick a consonant and vowel combo to test phonemes. Your choir uses these phonemes to sing lovely songs." } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Välj en konsonant- och vokalkombination för att testa fonem. Din kör använder dessa fonem för att sjunga." } }
+      }
+    },
+    "soundpad.consonants" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Consonants" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Konsonanter" } }
+      }
+    },
+    "soundpad.vowels" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Vowels" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Vokaler" } }
+      }
+    },
+    "soundpad.note" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Note" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Not" } }
+      }
+    },
+    "soundpad.hold" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Hold" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Håll" } }
+      }
+    },
+    "soundpad.velocity" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Velocity" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Velocity" } }
+      }
+    },
+    "soundpad.pitchBend" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Pitch Bend" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Pitch Bend" } }
+      }
+    },
+    "soundpad.value" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Value" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Värde" } }
+      }
+    },
+    "soundpad.testCC %lld" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Test CC%lld" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Testa CC%lld" } }
+      }
+    },
+    "soundpad.stopVal" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Stop Val" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Stoppa" } }
+      }
+    },
+    "soundpad.sweepVal" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Sweep Val 0→127" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Svep 0→127" } }
+      }
+    },
+    "soundpad.fineSweep" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Fine Sweep" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Fint svep" } }
+      }
+    },
+    "soundpad.playing" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Playing..." } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Spelar..." } }
+      }
+    },
+    "soundpad.testingCC %lld" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Testing CC%lld..." } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Testar CC%lld..." } }
+      }
+    },
+    "soundpad.stopHunt" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Stop Hunt" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Stoppa sök" } }
+      }
+    },
+    "soundpad.huntCC" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Hunt CC# 5-119" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Sök CC# 5-119" } }
+      }
+    },
+    "soundpad.send" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "SEND →" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "SKICKA →" } }
+      }
+    },
+    "soundpad.ready" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "READY" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "REDO" } }
+      }
+    },
+    "appearance.system" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "System" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "System" } }
+      }
+    },
+    "appearance.light" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Light" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Ljust" } }
+      }
+    },
+    "appearance.dark" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Dark" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Mörkt" } }
+      }
+    },
+    "menu.undo" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Undo" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Ångra" } }
+      }
+    },
+    "menu.redo" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Redo" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Gör om" } }
+      }
+    },
+    "menu.stop" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Stop" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Stopp" } }
+      }
+    },
+    "menu.play" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Play" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Spela" } }
+      }
+    },
+    "menu.deleteNote" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Delete Note" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Radera not" } }
+      }
+    },
+    "menu.composer" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Composer" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Komposition" } }
+      }
+    },
+    "menu.openComposer" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Open Composer" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Öppna komposition" } }
+      }
+    },
+    "menu.lyricStyle" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Lyric Style" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Textstil" } }
+      }
+    },
+    "menu.about" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "About Choir Arranger" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Om Choir Arranger" } }
+      }
+    },
+    "menu.howToUse" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "How to Use Choir Arranger" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Så använder du Choir Arranger" } }
+      }
+    },
+    "menu.aboutProject" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "About the Project" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Om projektet" } }
+      }
+    },
+    "menu.language" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Language" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Språk" } }
+      }
+    },
+    "menu.resetTutorial" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Reset Tutorial" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Återställ handledning" } }
+      }
+    },
+    "menu.resetAppQuit" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Reset App & Quit" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Återställ app och avsluta" } }
+      }
+    },
+    "menu.reportIssue" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Report an Issue..." } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Rapportera ett problem..." } }
+      }
+    },
+    "menu.connectBluetooth" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Connect Bluetooth MIDI..." } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Anslut Bluetooth MIDI..." } }
+      }
+    },
+    "menu.localPlayback" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Local Playback" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Lokal uppspelning" } }
+      }
+    },
+    "menu.playbackEngine" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Local Playback Engine" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Lokal uppspelningsmotor" } }
+      }
+    },
+    "menu.allNotesOff" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "All Notes Off" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Alla noter av" } }
+      }
+    },
+    "toolbar.done" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Done" } },
+        "sv" : { "stringUnit" : { "state" : "translated", "value" : "Klar" } }
       }
     }
   },

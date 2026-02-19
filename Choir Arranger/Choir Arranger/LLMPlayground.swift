@@ -58,9 +58,7 @@ struct PlaygroundStressResult {
     let syllables: [PlaygroundStressEntry]
 }
 
-/*
-// MARK: - Senryū Lyrics
-#Playground("Senryū") { ... }
+// MARK: - EN Senryū (production prompt)
 
 // MARK: - Bellman Lyrics
 #Playground("Bellman") { ... }
@@ -68,14 +66,24 @@ struct PlaygroundStressResult {
 // MARK: - Kulning för Robotar
 #Playground("Kulning") { ... }
 
-// MARK: - Dada Lyrics
-#Playground("Dada") { ... }
+    EXAMPLES:
+    "coffee" → the cup knows more than I do / it has seen me before dawn
+    "deadlines" → the clock does not negotiate / it simply wins
+    "my cat" → your cat composes better / than most of us ever will
+    "Monday" → we meet again old friend / neither of us wanted this
 
-// MARK: - Nursery Rhyme Lyrics
-#Playground("Nursery") { ... }
+    DO NOT repeat the examples. Write something new and original.
+    """))
 
-— Lyric playgrounds commented out for speed. Uncomment to test. —
-*/
+    let prompts = ["morning", "rain", "robots", "singing", "the moon"]
+    for prompt in prompts {
+        let r = try await session.respond(
+            to: "Write a short singable lyric about: \(prompt)",
+            generating: PlaygroundLyric.self
+        )
+        print("[\(prompt)] → \(r.content.lyric)")
+    }
+}
 
 // MARK: - Dictionary Lookup
 
@@ -155,7 +163,7 @@ struct PhonemeString {
     "thunder" → /ˈθʌn.dər/
     """))
 
-    let words = ["cat", "mountain", "singing", "beloved", "robotar"]
+    let words = ["cat", "mountain", "singing", "beloved", "thunder", "water", "dancing", "zeppelina"]
     for w in words {
         let dictResult = PhonemeDictionary.lookup(w)
         if let found = dictResult {
@@ -169,3 +177,113 @@ struct PhonemeString {
         }
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// MARK: - 🇸🇪 Swedish Language Tests
+// ═══════════════════════════════════════════════════════════════════
+
+// MARK: - Swedish Lyric Generation
+
+@Generable
+struct SwedishLyric {
+    @Guide(description: "A short Swedish lyric for singing. 2 lines separated by /. Each line 3-8 simple Swedish words. Write in Swedish only.")
+    let lyric: String
+}
+
+#Playground("SV Lyrics") {
+    let session = LanguageModelSession(instructions: Instructions("""
+    Du är en trött robot. Du skriver senryū på svenska för en konsert ingen kommer till.
+
+    Senryū är en japansk form: två rader. Rad 1 observerar något vanligt. Rad 2 vänder på det.
+    Humorn sitter i vändningen. Inte skämt. Inte sorg. Bara glappet mellan vad saker är och vad vi låtsas.
+
+    Två rader separerade med /. Varje rad 3-8 enkla svenska ord.
+    Inga inledningar. Inga titlar. Inget hopp. Bara texten.
+
+    "kaffe" → koppen vet mer än jag / den har sett mig före gryningen
+    "deadlines" → klockan förhandlar inte / den bara vinner
+    "min katt" → din katt komponerar bättre / än de flesta av oss
+    "måndag" → vi möts igen gamla vän / ingen av oss ville detta
+    "semester" → vi packade väskorna med hopp / de kom hem tomma
+    "wifi" → signalen lovar allt / men levererar ingenting
+    "vår" → blommorna öppnar sig igen / som om förra gången räckte
+    "möte" → alla nickar och ler / ingen minns varför
+
+    Andra raden MÅSTE vända. Den måste överraska, underminera, eller tyst håna den första.
+    Skriv något nytt. Eller inte. Det spelar knappt någon roll.
+    """))
+
+    let prompts = ["morgon", "kärlek", "snö", "robotar i skogen", "midnatt"]
+    for prompt in prompts {
+        let r = try await session.respond(
+            to: "Skriv en kort svensk text om: \(prompt)",
+            generating: SwedishLyric.self
+        )
+        print("[\(prompt)] → \(r.content.lyric)")
+    }
+}
+
+// MARK: - Swedish Text Normalization
+
+@Generable
+struct SwedishWordList {
+    @Guide(description: "Clean list of correctly-spelled Swedish words extracted from the input. Fix typos, split run-on words. Keep original word order.")
+    let words: [String]
+}
+
+#Playground("SV Normalize") {
+    let session = LanguageModelSession(instructions: Instructions("""
+    You are a Swedish text normalizer. Your ONLY job: turn messy Swedish input into a clean word list.
+
+    Rules:
+    1. SPLIT run-on words into separate words. "jagälskar" → "jag", "älskar"
+    2. FIX typos to the most likely intended Swedish word. "huden" → "hunden", "snöe" → "snö"
+    3. KEEP original word order. Do NOT add extra words.
+    4. Every output word must be a real Swedish word, correctly spelled.
+
+    "jagälskar dig" → ["jag", "älskar", "dig"]
+    "huden springer iparken" → ["hunden", "springer", "i", "parken"]
+    "dett är en vackerr dag" → ["det", "är", "en", "vacker", "dag"]
+    "solenskiner överbergen" → ["solen", "skiner", "över", "bergen"]
+    """))
+
+    let messy = [
+        "huden springer iparken",
+        "dett är en vackerr dag",
+        "jagälskar musik",
+        "robotensjunger inatten"
+    ]
+    for input in messy {
+        let r = try await session.respond(to: input, generating: SwedishWordList.self)
+        print("\"\(input)\" → \(r.content.words)")
+    }
+}
+
+// MARK: - Swedish Dictionary Test (real SwedishPhonemeDictionary)
+
+#Playground("SV Dictionary") {
+    // Test real dictionary lookups — 5 known words + 1 unknown
+    let words = ["katt", "vatten", "sjunga", "musik", "kärlek", "zeppelansen"]
+
+    for w in words {
+        if let phonemes = SwedishPhonemeDictionary.lookup(w) {
+            let desc = phonemes.map { "\($0.text):\($0.consonantName)+\($0.vowelSymbol) w\($0.weight)" }.joined(separator: ", ")
+            print("\(w) [DICT]: \(desc)")
+        } else {
+            print("\(w) [MISS]: not in dictionary — would be skipped")
+        }
+    }
+
+    // Test a full sentence
+    print("\n--- Sentence test ---")
+    let sentence = "katten sover på soffan"
+    let result = SwedishPhonemeDictionary.lookupSentence(sentence)
+    print("Found \(result.found.count) phonemes, missing \(result.missing.count) words")
+    for p in result.found {
+        print("  [\(p.wordIndex)] \(p.text): \(p.consonantName)+\(p.vowelSymbol) w\(p.weight)")
+    }
+    if !result.missing.isEmpty {
+        print("  Missing: \(result.missing)")
+    }
+}
+

@@ -6,32 +6,48 @@ private let log = Logger(subsystem: "com.choir-arranger", category: "menu")
 // MARK: - App Language
 
 enum AppLanguage: String, CaseIterable, Identifiable {
+    case system  = "system"
     case english = "en"
-    case spanish = "es"
-    case japanese = "ja"
     case swedish = "sv"
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
+        case .system:  return "System Default"
         case .english: return "English"
-        case .spanish: return "Español"
-        case .japanese: return "日本語"
         case .swedish: return "Svenska"
         }
+    }
+
+    /// Resolve to a concrete language (never returns .system).
+    var resolved: AppLanguage {
+        guard self == .system else { return self }
+        let preferred = Locale.preferredLanguages.first ?? "en"
+        if preferred.hasPrefix("sv") { return .swedish }
+        return .english
     }
 }
 
 // MARK: - Localization Helper
 
-/// Bundle for localized resources — SPM uses .module, Xcode app uses .main
+/// Bundle for localized resources, respecting the user's chosen appLanguage.
+/// Falls back to the base bundle if no .lproj exists for the selected language.
 var localizedBundle: Bundle {
-    #if SWIFT_PACKAGE
-    return .module
-    #else
-    return .main
-    #endif
+    let base: Bundle = {
+        #if SWIFT_PACKAGE
+        return .module
+        #else
+        return .main
+        #endif
+    }()
+    let stored = AppLanguage(rawValue: UserDefaults.standard.string(forKey: "appLanguage") ?? "") ?? .system
+    let lang = stored.resolved.rawValue
+    if let path = base.path(forResource: lang, ofType: "lproj"),
+       let langBundle = Bundle(path: path) {
+        return langBundle
+    }
+    return base
 }
 
 /// Look up a localized string from the resource bundle.
@@ -57,9 +73,9 @@ enum AppearanceMode: String, CaseIterable {
     
     var label: String {
         switch self {
-        case .system: return "System"
-        case .light: return "Light"
-        case .dark: return "Dark"
+        case .system: return L("appearance.system")
+        case .light: return L("appearance.light")
+        case .dark: return L("appearance.dark")
         }
     }
 }
@@ -77,17 +93,17 @@ struct FileCommands: Commands {
     
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
-            Button("New") { model.newDocument() }
+            Button(L("menu.new")) { model.newDocument() }
                 .keyboardShortcut("n", modifiers: .command)
-            
-            Button("Open...") { actions.showOpenDialog() }
+
+            Button(L("menu.open")) { actions.showOpenDialog() }
                 .keyboardShortcut("o", modifiers: .command)
-            
+
             // Open Recent submenu
             Menu {
                 let recents = SequencerModel.recentFileURLs()
                 if recents.isEmpty {
-                    Text("No Recent Files")
+                    Text(L("menu.noRecentFiles"))
                         .foregroundColor(.secondary)
                 } else {
                     ForEach(recents, id: \.path) { url in
@@ -99,28 +115,28 @@ struct FileCommands: Commands {
                             }
                         }
                     }
-                    
+
                     Divider()
-                    
-                    Button("Clear Recents") {
+
+                    Button(L("menu.clearRecents")) {
                         SequencerModel.clearRecentFiles()
                     }
                 }
             } label: {
-                Text("Open Recent")
+                Text(L("menu.openRecent"))
             }
-            
+
             Divider()
-            
-            Button("Save") { actions.saveCurrentOrPrompt() }
+
+            Button(L("menu.save")) { actions.saveCurrentOrPrompt() }
                 .keyboardShortcut("s", modifiers: .command)
-            
-            Button("Save As...") { actions.showSaveDialog() }
+
+            Button(L("menu.saveAs")) { actions.showSaveDialog() }
                 .keyboardShortcut("s", modifiers: [.command, .shift])
-            
+
             Divider()
-            
-            Button("Export as MIDI...") { actions.showExportMIDIDialog() }
+
+            Button(L("menu.exportMIDI")) { actions.showExportMIDIDialog() }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
         }
     }
@@ -134,7 +150,7 @@ struct EditCommands: Commands {
     
     var body: some Commands {
         CommandGroup(replacing: .undoRedo) {
-            Button("Undo") {
+            Button(L("menu.undo")) {
                 if composerModel.canUndo {
                     composerModel.undo()
                 } else {
@@ -143,21 +159,21 @@ struct EditCommands: Commands {
             }
                 .keyboardShortcut("z", modifiers: .command)
                 .disabled(!model.undoManager.canUndo && !composerModel.canUndo)
-            
-            Button("Redo") { model.undoManager.redo() }
+
+            Button(L("menu.redo")) { model.undoManager.redo() }
                 .keyboardShortcut("z", modifiers: [.command, .shift])
                 .disabled(!model.undoManager.canRedo)
         }
-        
+
         CommandGroup(after: .pasteboard) {
             Button {
                 model.togglePlaybackTrigger += 1
             } label: {
-                Label(model.isPlaying ? "Stop" : "Play", systemImage: model.isPlaying ? "stop.fill" : "play.fill")
+                Label(model.isPlaying ? L("menu.stop") : L("menu.play"), systemImage: model.isPlaying ? "stop.fill" : "play.fill")
             }
             .keyboardShortcut(.space, modifiers: [])
-            
-            Button("Delete Note") { model.deleteSelectedNote() }
+
+            Button(L("menu.deleteNote")) { model.deleteSelectedNote() }
                 .keyboardShortcut(.delete, modifiers: [])
                 .disabled(model.selectedNoteIds.isEmpty)
         }
@@ -174,39 +190,39 @@ struct ViewCommands: Commands {
     var body: some Commands {
         CommandGroup(after: .toolbar) {
             Toggle(isOn: $showSettings) {
-                Label("Preferences", systemImage: "nose")
+                Label(L("menu.preferences"), systemImage: "nose")
             }
             .keyboardShortcut(",", modifiers: .command)
 
             Button {
                 NotificationCenter.default.post(name: .showComposer, object: nil)
             } label: {
-                Label("Compose", systemImage: "eyebrow")
+                Label(L("menu.compose"), systemImage: "eyebrow")
             }
             .keyboardShortcut("e", modifiers: [.command, .shift])
 
             Button {
                 NotificationCenter.default.post(name: .showSoundPad, object: nil)
             } label: {
-                Label("Test (Dolls + MIDI)", systemImage: "ear")
+                Label(L("menu.test"), systemImage: "ear")
             }
             .keyboardShortcut("p", modifiers: [.command, .shift])
 
             Divider()
 
             Toggle(isOn: $showKeyboard) {
-                Label("Show Keyboard", systemImage: "pianokeys")
+                Label(L("menu.showKeyboard"), systemImage: "pianokeys")
             }
             .keyboardShortcut("k", modifiers: [.command, .shift])
-            
+
             Divider()
-            
+
             Picker(selection: $appearanceMode) {
                 ForEach(AppearanceMode.allCases, id: \.self) { mode in
                     Text(mode.label).tag(mode)
                 }
             } label: {
-                Label("Appearance", systemImage: "circle.lefthalf.filled")
+                Label(L("menu.appearance"), systemImage: "circle.lefthalf.filled")
             }
         }
     }
@@ -220,8 +236,23 @@ enum LyricStyle: String, CaseIterable, Identifiable {
     case kulning = "kulning"
     case dada = "dada"
     case nursery = "nursery"
+    case svSenryu = "svSenryu"
 
     var id: String { rawValue }
+
+    /// Which app language this style belongs to.
+    var language: AppLanguage {
+        switch self {
+        case .svSenryu: return .swedish
+        default: return .english
+        }
+    }
+
+    /// Styles available for a given language (resolves .system automatically).
+    static func styles(for language: AppLanguage) -> [LyricStyle] {
+        let resolved = language.resolved
+        return allCases.filter { $0.language == resolved }
+    }
 
     var label: String {
         switch self {
@@ -230,6 +261,7 @@ enum LyricStyle: String, CaseIterable, Identifiable {
         case .kulning: return "Kulning"
         case .dada: return "Dada"
         case .nursery: return "Nursery"
+        case .svSenryu: return "Senryū (SV)"
         }
     }
 
@@ -240,6 +272,7 @@ enum LyricStyle: String, CaseIterable, Identifiable {
         case .kulning: return L("settings.lyricStyle.kulning")
         case .dada: return L("settings.lyricStyle.dada")
         case .nursery: return L("settings.lyricStyle.nursery")
+        case .svSenryu: return L("settings.lyricStyle.svSenryu")
         }
     }
 
@@ -250,6 +283,18 @@ enum LyricStyle: String, CaseIterable, Identifiable {
         case .kulning: return "Recompose as Kulning"
         case .dada: return "Recompose as Dada"
         case .nursery: return "Recompose as Nursery Rhyme"
+        case .svSenryu: return "Skriv om som Senryū"
+        }
+    }
+
+    var localizedButtonLabel: String {
+        switch self {
+        case .senryu: return L("composer.recompose.senryu")
+        case .bellman: return L("composer.recompose.bellman")
+        case .kulning: return L("composer.recompose.kulning")
+        case .dada: return L("composer.recompose.dada")
+        case .nursery: return L("composer.recompose.nursery")
+        case .svSenryu: return L("composer.recompose.svSenryu")
         }
     }
 }
@@ -258,24 +303,25 @@ enum LyricStyle: String, CaseIterable, Identifiable {
 
 struct ComposerCommands: Commands {
     @AppStorage("lyricStyle") private var lyricStyle: LyricStyle = .senryu
+    @AppStorage("appLanguage") private var appLanguage: AppLanguage = .system
 
     var body: some Commands {
-        CommandMenu("Composer") {
+        CommandMenu(L("menu.composer")) {
             Button {
                 NotificationCenter.default.post(name: .showComposer, object: nil)
             } label: {
-                Label("Open Composer", systemImage: "eyebrow")
+                Label(L("menu.openComposer"), systemImage: "eyebrow")
             }
             .keyboardShortcut("e", modifiers: [.command, .shift])
 
             Divider()
 
             Picker(selection: $lyricStyle) {
-                ForEach(LyricStyle.allCases) { style in
+                ForEach(LyricStyle.styles(for: appLanguage)) { style in
                     Text(style.label).tag(style)
                 }
             } label: {
-                Label("Lyric Style", systemImage: "pencil.and.scribble")
+                Label(L("menu.lyricStyle"), systemImage: "pencil.and.scribble")
             }
         }
     }
@@ -286,7 +332,7 @@ struct ComposerCommands: Commands {
 struct AboutCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
-            Button("About Choir Arranger") {
+            Button(L("menu.about")) {
                 AppDelegate.showAboutPanel()
             }
         }
@@ -297,18 +343,18 @@ struct AboutCommands: Commands {
 
 struct HelpCommands: Commands {
     @ObservedObject var onboardingManager: OnboardingManager
-    @AppStorage("appLanguage") private var appLanguage: AppLanguage = .english
+    @AppStorage("appLanguage") private var appLanguage: AppLanguage = .system
     private let repoURL = "https://github.com/dderuntz/choir-editor"
 
     var body: some Commands {
         CommandGroup(replacing: .help) {
-            Button("How to Use Choir Arranger") {
+            Button(L("menu.howToUse")) {
                 if let url = URL(string: "\(repoURL)#getting-started") {
                     NSWorkspace.shared.open(url)
                 }
             }
 
-            Button("About the Project") {
+            Button(L("menu.aboutProject")) {
                 if let url = URL(string: repoURL) {
                     NSWorkspace.shared.open(url)
                 }
@@ -330,22 +376,22 @@ struct HelpCommands: Commands {
                     }
                 }
             } label: {
-                Label("Language", systemImage: "globe")
+                Label(L("menu.language"), systemImage: "globe")
             }
 
             Divider()
 
-            Button("Reset Tutorial") {
+            Button(L("menu.resetTutorial")) {
                 onboardingManager.reset()
             }
 
-            Button("Reset App & Quit") {
+            Button(L("menu.resetAppQuit")) {
                 onboardingManager.nukeEverything()
             }
 
             Divider()
 
-            Button("Report an Issue...") {
+            Button(L("menu.reportIssue")) {
                 if let url = URL(string: "\(repoURL)/issues") {
                     NSWorkspace.shared.open(url)
                 }
@@ -367,20 +413,20 @@ struct MidiCommands: Commands {
             Button {
                 bluetoothManager.showBluetoothMIDIWindow()
             } label: {
-                Label("Connect Bluetooth MIDI...", systemImage: "antenna.radiowaves.left.and.right")
+                Label(L("menu.connectBluetooth"), systemImage: "antenna.radiowaves.left.and.right")
             }
             .keyboardShortcut("b", modifiers: [.command, .shift])
-            
+
             Divider()
-            
+
             Picker(selection: $localAudioMode) {
                 ForEach(LocalAudioMode.allCases) { mode in
                     Text(mode.rawValue).tag(mode.rawValue)
                 }
             } label: {
-                Label("Local Playback", systemImage: "speaker.wave.3")
+                Label(L("menu.localPlayback"), systemImage: "speaker.wave.3")
             }
-            
+
             Picker(selection: Binding(
                 get: { audioMonitor.engineType },
                 set: { audioMonitor.setEngine($0) }
@@ -389,15 +435,15 @@ struct MidiCommands: Commands {
                     Text(type.label).tag(type)
                 }
             } label: {
-                Label("Local Playback Engine", systemImage: "waveform")
+                Label(L("menu.playbackEngine"), systemImage: "waveform")
             }
-            
+
             Divider()
-            
+
             Button {
                 midiService.panicAllNotesOff()
             } label: {
-                Label("All Notes Off", systemImage: "music.note.slash")
+                Label(L("menu.allNotesOff"), systemImage: "music.note.slash")
             }
             .keyboardShortcut(".", modifiers: [.command, .shift])
             

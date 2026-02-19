@@ -14,6 +14,15 @@ struct ExtractionResult {
     let errorMessage: String?
 }
 
+// MARK: - Phoneme Extractor Protocol
+
+/// Common interface for language-specific phoneme extractors.
+@MainActor
+protocol PhonemeExtracting {
+    func checkAvailability() -> (available: Bool, message: String?)
+    func extract(text: String) async -> ExtractionResult
+}
+
 // MARK: - LLM Structured Output Types
 
 @available(macOS 26, *)
@@ -127,7 +136,7 @@ enum PhonemeExampleStore {
 /// Three-tier extraction pipeline: dictionary → LLM normalize + retry → LLM full extraction.
 /// Stateless — returns an ExtractionResult. ComposerModel manages UI state transitions.
 @MainActor
-class EnglishPhonemeExtractor {
+class EnglishPhonemeExtractor: PhonemeExtracting {
 
     /// Check on-device LLM availability
     func checkAvailability() -> (available: Bool, message: String?) {
@@ -344,6 +353,100 @@ class EnglishPhonemeExtractor {
         } catch {
             log.error("LLM error: \(error)")
             return []
+        }
+    }
+
+    private func logPhonemes(_ list: [ChoirPhoneme]) {
+        for (i, p) in list.enumerated() {
+            log.debug("  [\(i)] \(p.text): \(p.consonantName)·\(p.vowelSymbol) w\(p.weight)")
+        }
+    }
+}
+
+// MARK: - Swedish Phoneme Extractor
+
+/// Dictionary-only extraction for Swedish. No LLM fallback for phonemes —
+/// the on-device model can't reliably extract Swedish phonemes.
+/// Missing words are silently skipped (caller shows a lightweight tip).
+@MainActor
+class SwedishPhonemeExtractor: PhonemeExtracting {
+
+    /// LLM availability — Swedish uses LLM only for text normalization, not phoneme extraction.
+    func checkAvailability() -> (available: Bool, message: String?) {
+        // Swedish doesn't require LLM for phonemes, so always "available"
+        return (true, nil)
+    }
+
+    // MARK: - Dictionary-Only Pipeline
+
+    func extract(text: String) async -> ExtractionResult {
+        // ── Tier 1: Dictionary lookup ──
+        let result = SwedishPhonemeDictionary.lookupSentence(text)
+
+        if result.missing.isEmpty {
+            log.info("SV Dict: \(result.found.count) phonemes from: \(text)")
+            logPhonemes(result.found)
+            return ExtractionResult(phonemes: result.found, normalizedText: nil, errorMessage: nil)
+        }
+
+        log.info("SV Dict missed \(result.missing.count) words: \(result.missing)")
+
+        // ── Tier 2: LLM normalize → retry dict ──
+        if #available(macOS 26, *) {
+            if let cleanWords = await normalizeWithLLM(text: text) {
+                let cleanText = cleanWords.joined(separator: " ")
+                let retry = SwedishPhonemeDictionary.lookupSentence(cleanText)
+
+                if retry.missing.isEmpty {
+                    log.info("SV Dict (after normalize): \(retry.found.count) phonemes")
+                    logPhonemes(retry.found)
+                    return ExtractionResult(phonemes: retry.found, normalizedText: cleanText, errorMessage: nil)
+                }
+
+                // Still missing — skip those words (no LLM phoneme fallback)
+                let skippedNote = retry.missing.isEmpty ? nil : "Skipped: \(retry.missing.joined(separator: ", "))"
+                log.info("SV skipping \(retry.missing.count) unknown words: \(retry.missing)")
+                logPhonemes(retry.found)
+                return ExtractionResult(phonemes: retry.found, normalizedText: cleanText, errorMessage: skippedNote)
+            }
+        }
+
+        // No LLM available or normalize failed — return what the dict found, skip the rest
+        let skippedNote = result.missing.isEmpty ? nil : "Skipped: \(result.missing.joined(separator: ", "))"
+        logPhonemes(result.found)
+        return ExtractionResult(phonemes: result.found, normalizedText: nil, errorMessage: skippedNote)
+    }
+
+    // MARK: - Swedish Text Normalization (LLM)
+
+    @available(macOS 26, *)
+    private func normalizeWithLLM(text: String) async -> [String]? {
+        let instructions = """
+        Du är en textnormaliserare för svenska. Ditt ENDA jobb: gör stökig input till en ren ordlista.
+
+        Regler:
+        1. DELA ihop-skrivna ord till separata ord. "katten sover" → "katten", "sover"
+        2. FIXA stavfel till det mest troliga ordet. "kattn" → "katten"
+        3. BEHÅLL original ordföljd. Lägg INTE till extra ord.
+        4. Varje utdata-ord måste vara ett riktigt svenskt ord, korrekt stavat.
+
+        "kattn sver påsoffan" → ["katten", "sover", "på", "soffan"]
+        "jagälskar dig" → ["jag", "älskar", "dig"]
+        "hunden springer iparken" → ["hunden", "springer", "i", "parken"]
+        """
+
+        do {
+            let session = LanguageModelSession(instructions: Instructions(instructions))
+            let response = try await session.respond(
+                to: text,
+                generating: LLMWordList.self
+            )
+            let words = response.content.words.map { $0.lowercased() }
+            log.info("SV LLM normalized: \"\(text)\" → \(words)")
+            return words
+        } catch {
+            log.error("SV normalize error: \(error)")
+            return nil
         }
     }
 

@@ -19,6 +19,7 @@ struct ComposerView: View {
     var onDismiss: (() -> Void)? = nil
     @AppStorage("showKeyboard") private var showKeyboard = true
     @AppStorage("lyricStyle") private var lyricStyle: LyricStyle = .senryu
+    @AppStorage("appLanguage") private var appLanguage: AppLanguage = .system
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var isTextFocused: Bool
 
@@ -183,8 +184,7 @@ struct ComposerView: View {
                     Button(action: {
                         Task { await composerModel.summonSong() }
                     }) {
-                        Label(composerModel.isProcessing ? "Composing…" : lyricStyle.buttonLabel,
-                              systemImage: composerModel.isProcessing ? "ellipsis" : "eyebrow")
+                        Label { Text(composerModel.isProcessing ? L("composer.composing") : lyricStyle.localizedButtonLabel) } icon: { Image(systemName: composerModel.isProcessing ? "ellipsis" : "eyebrow") }
                             .frame(height: btnHeight)
                     }
                     .buttonStyle(HoverPillStyle(colorScheme: colorScheme))
@@ -245,8 +245,7 @@ struct ComposerView: View {
                         revealHintTimer?.invalidate()
                         Task { await composerModel.extractPhonemes() }
                     }) {
-                        Label(composerModel.isProcessing ? "Thinking…" : "Reveal Phonemes",
-                              systemImage: composerModel.isProcessing ? "ellipsis" : "eye")
+                        Label { Text(composerModel.isProcessing ? L("composer.thinking") : L("composer.revealPhonemes")) } icon: { Image(systemName: composerModel.isProcessing ? "ellipsis" : "eye") }
                             .font(.system(size: 13, weight: .medium))
                             .foregroundColor(revealDisabled ? Theme.field : Theme.dark)
                             .padding(.horizontal, 28)
@@ -288,7 +287,7 @@ struct ComposerView: View {
 
                         Picker("", selection: $sequencerModel.musicalKey) {
                             ForEach(MusicalKey.allCases) { key in
-                                Text("Key of \(key.name)").tag(key)
+                                Text(L("roll.keyOf \(key.name)")).tag(key)
                             }
                         }
                         .labelsHidden()
@@ -316,8 +315,7 @@ struct ComposerView: View {
                         Button(action: {
                             Task { await composerModel.extractPhonemes() }
                         }) {
-                            Label(composerModel.isProcessing ? "Thinking…" : "Sync Phonemes",
-                                  systemImage: composerModel.isProcessing ? "ellipsis" : "arrow.trianglehead.2.clockwise.rotate.90")
+                            Label { Text(composerModel.isProcessing ? L("composer.thinking") : L("composer.syncPhonemes")) } icon: { Image(systemName: composerModel.isProcessing ? "ellipsis" : "arrow.trianglehead.2.clockwise.rotate.90") }
                         }
                         .buttonStyle(HoverPillStyle(colorScheme: colorScheme, textColor: Theme.accent))
                         .disabled(composerModel.isProcessing)
@@ -332,10 +330,10 @@ struct ComposerView: View {
                             composerModel.stop()
                             composerModel.clearPhonemes()
                         }) {
-                            Label("Clear", systemImage: "trash")
+                            Label { Text("composer.clear", bundle: localizedBundle) } icon: { Image(systemName: "trash") }
                         }
                         .buttonStyle(HoverPillStyle(colorScheme: colorScheme))
-                        .help("Clear phonemes")
+                        .help(L("composer.clearPhonemes"))
 
                         Button(action: {
                             showCopyToRollHint = false
@@ -352,7 +350,7 @@ struct ComposerView: View {
                                 }
                             }
                         }) {
-                            Label("Copy to Piano Roll", systemImage: "document.on.document")
+                            Label { Text("composer.copyToRoll", bundle: localizedBundle) } icon: { Image(systemName: "document.on.document") }
                         }
                         .buttonStyle(HoverPillStyle(colorScheme: colorScheme))
                         .popover(isPresented: $showCopyToRollHint) {
@@ -418,8 +416,7 @@ struct ComposerView: View {
                         composerModel.playPhonemes(audioMonitor: audioMonitor, midiService: midiService)
                     }
                 }) {
-                    Label(composerModel.isPlaying ? "Stop" : "Play",
-                          systemImage: composerModel.isPlaying ? "stop.fill" : "play.fill")
+                    Label { Text(composerModel.isPlaying ? L("composer.stop") : L("composer.play")) } icon: { Image(systemName: composerModel.isPlaying ? "stop.fill" : "play.fill") }
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(Theme.dark)
                         .padding(.horizontal, 22)
@@ -451,6 +448,12 @@ struct ComposerView: View {
         }
         .onChange(of: sequencerModel.musicalKey) { composerModel.musicalKey = sequencerModel.musicalKey }
         .onChange(of: sequencerModel.scaleType) { composerModel.scaleType = sequencerModel.scaleType }
+        .onChange(of: appLanguage) {
+            let available = LyricStyle.styles(for: appLanguage)
+            if !available.contains(lyricStyle), let first = available.first {
+                lyricStyle = first
+            }
+        }
         // MARK: Onboarding — Recompose tip + Reveal Phonemes hint timer
         .onChange(of: composerModel.inputText) { _, newText in
             let trimmed = newText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -578,14 +581,14 @@ struct ComposerView: View {
                         composerModel.toggleEnsemble(phoneme)
                     }
                     .contextMenu {
-                        Button("Insert Before") {
+                        Button(L("composer.insertBefore")) {
                             composerModel.insertPhoneme(relativeTo: phoneme, before: true)
                         }
-                        Button("Insert After") {
+                        Button(L("composer.insertAfter")) {
                             composerModel.insertPhoneme(relativeTo: phoneme, before: false)
                         }
                         Divider()
-                        Button("Delete", role: .destructive) {
+                        Button(L("roll.delete"), role: .destructive) {
                             composerModel.deletePhoneme(phoneme)
                         }
                     }
