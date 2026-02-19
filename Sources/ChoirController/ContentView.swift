@@ -39,6 +39,8 @@ struct ContentView: View {
     @EnvironmentObject var composerModel: ComposerModel
     var midiService: MidiService // Passed explicitly, not observed (prevents redraw loop)
     @EnvironmentObject var audioMonitor: AudioMonitorService
+    @AppStorage("appLanguage") private var appLanguage: AppLanguage = .system
+    @AppStorage("lyricStyle") private var lyricStyle: LyricStyle = .senryu
     @AppStorage("showSettings") private var showSettingsStorage = false
     @State private var showSettings = false
     @State private var showSoundPad = false
@@ -83,6 +85,12 @@ struct ContentView: View {
         rootContent
             .frame(minWidth: 650, minHeight: 500)
             .onAppear(perform: handleAppear)
+            .onChange(of: appLanguage) {
+                let available = LyricStyle.styles(for: appLanguage)
+                if !available.contains(lyricStyle), let first = available.first {
+                    lyricStyle = first
+                }
+            }
             .modifier(ContentViewEventHandlers(
                 showKeyboardStorage: $showKeyboardStorage,
                 showKeyboard: $showKeyboard,
@@ -233,20 +241,20 @@ struct ContentView: View {
         target.model = model
         let menu = NSMenu()
         
-        let newItem = NSMenuItem(title: "New", action: #selector(FileMenuActions.newDoc(_:)), keyEquivalent: "")
+        let newItem = NSMenuItem(title: L("menu.new"), action: #selector(FileMenuActions.newDoc(_:)), keyEquivalent: "")
         newItem.target = target
         menu.addItem(newItem)
-        
-        let openItem = NSMenuItem(title: "Open...", action: #selector(FileMenuActions.openDoc(_:)), keyEquivalent: "")
+
+        let openItem = NSMenuItem(title: L("menu.open"), action: #selector(FileMenuActions.openDoc(_:)), keyEquivalent: "")
         openItem.target = target
         menu.addItem(openItem)
-        
+
         menu.addItem(NSMenuItem.separator())
-        
+
         let recentURLs = SequencerModel.recentFileURLs()
         if !recentURLs.isEmpty {
             let recentMenu = NSMenu()
-            let recentItem = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
+            let recentItem = NSMenuItem(title: L("menu.openRecent"), action: nil, keyEquivalent: "")
             recentItem.submenu = recentMenu
             for url in recentURLs {
                 let item = NSMenuItem(title: url.deletingPathExtension().lastPathComponent, action: #selector(FileMenuActions.openRecent(_:)), keyEquivalent: "")
@@ -255,21 +263,21 @@ struct ContentView: View {
                 recentMenu.addItem(item)
             }
             recentMenu.addItem(NSMenuItem.separator())
-            let clearItem = NSMenuItem(title: "Clear Recents", action: #selector(FileMenuActions.clearRecents(_:)), keyEquivalent: "")
+            let clearItem = NSMenuItem(title: L("menu.clearRecents"), action: #selector(FileMenuActions.clearRecents(_:)), keyEquivalent: "")
             clearItem.target = target
             recentMenu.addItem(clearItem)
             menu.addItem(recentItem)
         }
-        
+
         menu.addItem(NSMenuItem.separator())
-        
-        let exportItem = NSMenuItem(title: "Export as MIDI...", action: #selector(FileMenuActions.exportMIDI(_:)), keyEquivalent: "")
+
+        let exportItem = NSMenuItem(title: L("menu.exportMIDI"), action: #selector(FileMenuActions.exportMIDI(_:)), keyEquivalent: "")
         exportItem.target = target
         menu.addItem(exportItem)
-        
+
         if model.currentFileURL != nil {
             menu.addItem(NSMenuItem.separator())
-            let revealItem = NSMenuItem(title: "Reveal in Finder", action: #selector(FileMenuActions.revealInFinder(_:)), keyEquivalent: "")
+            let revealItem = NSMenuItem(title: L("menu.revealInFinder"), action: #selector(FileMenuActions.revealInFinder(_:)), keyEquivalent: "")
             revealItem.target = target
             menu.addItem(revealItem)
         }
@@ -385,7 +393,7 @@ struct ContentView: View {
                     .foregroundColor(Theme.text(colorScheme).opacity(isSaving ? 0.35 : 1))
                 }
                 .buttonStyle(.plain)
-                .help("File")
+                .help(L("tooltip.file"))
 
                 TextField("Untitled", text: $editingTitle, onCommit: { commitTitleEdit(); isTitleFocused = false })
                     .font(.system(size: showComposer ? 24 : 56, weight: showComposer ? .light : .ultraLight))
@@ -407,7 +415,7 @@ struct ContentView: View {
 
                 if isTitleFocused {
                     Button(action: { commitTitleEdit(); isTitleFocused = false }) {
-                        Text("Done")
+                        Text("toolbar.done", bundle: localizedBundle)
                             .font(Theme.buttonFont)
                             .fontWeight(Theme.buttonWeight)
                             .foregroundColor(Theme.text(colorScheme).opacity(0.85))
@@ -446,10 +454,10 @@ struct ContentView: View {
                 }
             }
             .buttonStyle(HoverPillStyle(colorScheme: colorScheme, textColor: Theme.text(colorScheme)))
-            .help("Return to Piano Roll")
+            .help(L("tooltip.returnToRoll"))
 
             Button(action: { showComposerHelp.toggle() }) {
-                Label("Composer Help", systemImage: "questionmark.circle")
+                Label { Text("toolbar.composerHelp", bundle: localizedBundle) } icon: { Image(systemName: "questionmark.circle") }
             }
             .buttonStyle(HoverPillStyle(colorScheme: colorScheme))
             .popover(isPresented: $showComposerHelp) {
@@ -467,7 +475,7 @@ struct ContentView: View {
                 .padding()
                 .frame(width: 260)
             }
-            .help("Composer tips")
+            .help(L("tooltip.composerTips"))
         }
     }
 
@@ -479,7 +487,7 @@ struct ContentView: View {
                     .foregroundColor(showSettings ? Theme.text(colorScheme) : Theme.text(colorScheme).opacity(0.4))
             }
             .buttonStyle(.plain)
-            .help("Prefer")
+            .help(L("tooltip.settings"))
 
             Button(action: {
                 withAnimation(.easeInOut(duration: 0.25)) { showComposer.toggle() }
@@ -497,7 +505,7 @@ struct ContentView: View {
                     }
             }
             .buttonStyle(.plain)
-            .help("Compose")
+            .help(L("tooltip.compose"))
             .popover(isPresented: $showComposerHint) {
                 Text("\(Image(systemName: "eyebrow")) \(Text("onboarding.roll.composerHint", bundle: localizedBundle))")
                     .font(.system(size: 12))
@@ -512,7 +520,7 @@ struct ContentView: View {
                     .foregroundColor(showSoundPad ? Theme.text(colorScheme) : Theme.text(colorScheme).opacity(0.4))
             }
             .buttonStyle(.plain)
-            .help("Test")
+            .help(L("tooltip.test"))
 
             Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showKeyboard.toggle(); showKeyboardStorage = showKeyboard } }) {
                 Image(systemName: "pianokeys")
@@ -525,7 +533,7 @@ struct ContentView: View {
             }
             .buttonStyle(.plain)
             .disabled(!keyboardAvailable)
-            .help(keyboardAvailable ? "Touch" : "Add phonemes to use the keyboard")
+            .help(keyboardAvailable ? L("tooltip.touch") : L("tooltip.addPhonemes"))
             .popover(isPresented: $showKeyboardHint) {
                 Text("\(Image(systemName: "pianokeys")) \(Text("onboarding.roll.keyboardHint", bundle: localizedBundle))")
                     .font(.system(size: 12))
@@ -548,7 +556,7 @@ struct ContentView: View {
             )
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .padding(.leading, 2)
-            .help(midiService.isConnected ? "MIDI Connected" : "Tap to connect Bluetooth MIDI")
+            .help(midiService.isConnected ? L("tooltip.midiConnected") : L("tooltip.midiConnect"))
         }
     }
 
@@ -582,7 +590,7 @@ struct ContentView: View {
     private var settingsPanel: some View {
         HStack(spacing: 0) {
             SettingsPanelView(midiService: midiService, audioMonitor: audioMonitor, showSettings: $showSettings)
-                .frame(width: 280)
+                .frame(width: 320)
                 .background(Theme.bg(colorScheme))
                 .transition(.move(edge: .leading))
 
@@ -605,7 +613,7 @@ struct ContentView: View {
                 isPresented: $showBluetoothSetup,
                 onOpenBluetoothWindow: { bluetoothManager.showBluetoothMIDIWindow() }
             )
-            .frame(width: 300)
+            .frame(width: 320)
             .transition(.move(edge: .trailing))
         }
     }

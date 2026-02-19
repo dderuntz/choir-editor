@@ -107,8 +107,15 @@ enum PhonemeDictionary {
 
     // MARK: - Lookup
 
-    /// Look up a single word → array of ChoirPhoneme, or nil if not found
+    /// Look up a single word → array of ChoirPhoneme, or nil if not found.
+    /// Falls back to Swedish dictionary if not found in English.
     static func lookup(_ word: String) -> [ChoirPhoneme]? {
+        if let result = lookupEnglish(word) { return result }
+        return SwedishPhonemeDictionary.lookupSwedish(word)
+    }
+
+    /// English-only lookup (no cross-language fallback)
+    static func lookupEnglish(_ word: String) -> [ChoirPhoneme]? {
         loadIfNeeded()
         let key = word.lowercased().trimmingCharacters(in: .punctuationCharacters)
 

@@ -14,6 +14,7 @@ struct PhonemeChip: View {
     let isActive: Bool
     var wordPosition: WordPosition = .only
     var onDelete: (() -> Void)? = nil
+    @AppStorage("appLanguage") private var appLanguage: AppLanguage = .system
     @Environment(\.colorScheme) private var colorScheme
     @State private var isHovered = false
     @State private var bump: CGFloat = 0
@@ -104,6 +105,7 @@ struct PhonemeChip: View {
             }
         }
         .onHover { isHovered = $0 }
+        .zIndex(isHovered ? 1 : 0)
         .animation(.easeInOut(duration: 0.15), value: phoneme.isEnsemble)
         .animation(.easeInOut(duration: 0.1), value: isHovered)
     }
@@ -115,6 +117,7 @@ struct PhonemeInspector: View {
     let phoneme: ChoirPhoneme
     var onUpdate: (UInt8?, UInt8?) -> Void
     var onToggleEnsemble: () -> Void
+    @AppStorage("appLanguage") private var appLanguage: AppLanguage = .system
 
     @State private var consonant: UInt8
     @State private var vowel: UInt8
@@ -136,7 +139,7 @@ struct PhonemeInspector: View {
         let cPart = (isNone || isRandomCons) ? "" : (c?.name ?? "")
         let vPart = isRandomVowel ? "" : (v?.symbol ?? "")
         let label = cPart + vPart
-        return label.isEmpty ? "Random" : label
+        return label.isEmpty ? L("inspector.random") : label
     }
 
     var body: some View {
@@ -152,7 +155,7 @@ struct PhonemeInspector: View {
             .frame(maxWidth: .infinity, alignment: .center)
 
             HStack {
-                Text("Consonant")
+                Text("inspector.consonant", bundle: localizedBundle)
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Spacer()
@@ -168,13 +171,13 @@ struct PhonemeInspector: View {
             }
 
             HStack {
-                Text("Vowel")
+                Text("inspector.vowel", bundle: localizedBundle)
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Spacer()
                 Picker("", selection: $vowel) {
                     ForEach(Vowel.all) { v in
-                        Text(v.ccValue == 0 ? "Random" : "\(v.symbol) \(v.example)").tag(v.ccValue)
+                        Text(v.ccValue == 0 ? L("inspector.random") : "\(v.symbol) \(v.example)").tag(v.ccValue)
                     }
                 }
                 .labelsHidden()
@@ -184,7 +187,7 @@ struct PhonemeInspector: View {
             }
 
             HStack {
-                Text("Harmony")
+                Text("composer.harmony", bundle: localizedBundle)
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Spacer()

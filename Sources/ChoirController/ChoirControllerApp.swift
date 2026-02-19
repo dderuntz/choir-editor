@@ -81,6 +81,12 @@ struct ChoirControllerApp: App {
         appDelegate.midiService = midiService
         appDelegate.audioMonitor = audioMonitor
         appDelegate.onboardingManager = onboardingManager
+
+        // Preload phoneme dictionaries on background thread
+        DispatchQueue.global(qos: .utility).async {
+            PhonemeDictionary.loadIfNeeded()
+            SwedishPhonemeDictionary.loadIfNeeded()
+        }
     }
     
     @AppStorage("appearanceMode") private var appearanceMode: AppearanceMode = .system

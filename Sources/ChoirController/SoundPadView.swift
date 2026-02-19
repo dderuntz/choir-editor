@@ -7,8 +7,9 @@ struct SoundPadView: View {
     @ObservedObject var audioMonitor: AudioMonitorService
     @Binding var isPresented: Bool
     @AppStorage("localAudioEnabled") private var localAudioEnabled = false
+    @AppStorage("appLanguage") private var appLanguage: AppLanguage = .system
     @Environment(\.colorScheme) private var colorScheme
-    
+
     @State private var selectedConsonant: UInt8 = 125  // None
     @State private var selectedVowel: UInt8 = 16       // ai (buy)
     @State private var testNote: UInt8 = 60            // Middle C
@@ -29,7 +30,7 @@ struct SoundPadView: View {
     @State private var pitchBendValue: Double = 0
     
     // Packet log
-    @State private var lastPacketLog: String = "READY"
+    @State private var lastPacketLog: String = L("soundpad.ready")
     
     // Musical pattern for sweeps
     let sweepPattern: [UInt8] = [
@@ -50,7 +51,7 @@ struct SoundPadView: View {
         VStack(spacing: 0) {
             // MARK: Header bar
             HStack {
-                Text("Test")
+                Text("soundpad.title", bundle: localizedBundle)
                     .font(.system(size: 56, weight: .ultraLight))
                     .kerning(-1.4)
                     .foregroundColor(txt)
@@ -68,7 +69,7 @@ struct SoundPadView: View {
                         testVelocity = 100
                         lastPacketLog = "Reset to defaults"
                     }) {
-                        Text("Reset")
+                        Text("settings.reset", bundle: localizedBundle)
                     }
                 }
                 Button(action: { isPresented = false }) {
@@ -84,7 +85,7 @@ struct SoundPadView: View {
             
             // MARK: Field area (green-gray)
             VStack(spacing: 0) {
-                Text("Pick a consonant and vowel combo to test phonemes. Your choir uses these phonemes to sing lovely songs.")
+                Text("soundpad.description", bundle: localizedBundle)
                     .font(.system(size: 12))
                     .foregroundColor(txtDim)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -94,7 +95,7 @@ struct SoundPadView: View {
                 HStack(alignment: .top, spacing: 16) {
                     // Consonants
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("Consonants")
+                        Text("soundpad.consonants", bundle: localizedBundle)
                             .font(.caption)
                             .foregroundColor(txtDim)
                             .textCase(.uppercase)
@@ -113,7 +114,7 @@ struct SoundPadView: View {
                     
                     // Vowels + sliders stacked under second column
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("Vowels")
+                        Text("soundpad.vowels", bundle: localizedBundle)
                             .font(.caption)
                             .foregroundColor(txtDim)
                             .textCase(.uppercase)
@@ -131,16 +132,16 @@ struct SoundPadView: View {
                         
                         // Sliders: label+value left, slider right (same as Value row below)
                         VStack(alignment: .leading, spacing: 16) {
-                            explorerSliderRow(label: "Note", display: noteName(testNote), value: Binding(
+                            explorerSliderRow(label: L("soundpad.note"), display: noteName(testNote), value: Binding(
                                 get: { Double(testNote) },
                                 set: { testNote = UInt8($0) }
                             ), range: 40...81)
-                            explorerSliderRow(label: "Hold", display: String(format: "%.1fs", discoveryDuration), value: $discoveryDuration, range: 1.0...10.0)
-                            explorerSliderRow(label: "Velocity", display: "\(testVelocity)", value: Binding(
+                            explorerSliderRow(label: L("soundpad.hold"), display: String(format: "%.1fs", discoveryDuration), value: $discoveryDuration, range: 1.0...10.0)
+                            explorerSliderRow(label: L("soundpad.velocity"), display: "\(testVelocity)", value: Binding(
                                 get: { Double(testVelocity) },
                                 set: { testVelocity = UInt8($0) }
                             ), range: 1...127)
-                            explorerSliderRow(label: "Pitch Bend", display: "\(Int(pitchBendValue))", value: $pitchBendValue, range: -100...100)
+                            explorerSliderRow(label: L("soundpad.pitchBend"), display: "\(Int(pitchBendValue))", value: $pitchBendValue, range: -100...100)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 24)
@@ -155,36 +156,36 @@ struct SoundPadView: View {
                 // CC discovery row (full width, outside vowel column)
                 HStack(spacing: 16) {
                     explorerPickerRow(label: "CC#", selection: $discoveryCC)
-                    explorerSliderRow(label: "Value", display: "\(Int(discoveryCCValue))", value: $discoveryCCValue, range: 0...127)
+                    explorerSliderRow(label: L("soundpad.value"), display: "\(Int(discoveryCCValue))", value: $discoveryCCValue, range: 0...127)
                 }
                 .padding(.vertical, 16)
 
                 VStack(alignment: .leading, spacing: 0) {
                     // Action buttons
                     HStack(spacing: 6) {
-                        pillButton("Test CC\(Int(discoveryCC))", disabled: isDiscoveryPlaying || isSweeping || isSweepingCCs) {
+                        pillButton(L("soundpad.testCC \(Int(discoveryCC))"), disabled: isDiscoveryPlaying || isSweeping || isSweepingCCs) {
                             runDiscoveryTest()
                         }
-                        pillButton(isSweeping ? "Stop Val" : "Sweep Val 0→127", disabled: isSweepingCCs || isDiscoveryPlaying) {
+                        pillButton(isSweeping ? L("soundpad.stopVal") : L("soundpad.sweepVal"), disabled: isSweepingCCs || isDiscoveryPlaying) {
                             if isSweeping { stopSweep() } else { startSweep(step: 16) }
                         }
-                        pillButton("Fine Sweep", disabled: isSweeping || isSweepingCCs || isDiscoveryPlaying) {
+                        pillButton(L("soundpad.fineSweep"), disabled: isSweeping || isSweepingCCs || isDiscoveryPlaying) {
                             startSweep(step: 1)
                         }
-                        
+
                         if isDiscoveryPlaying {
-                            Text("Playing...").font(.caption).foregroundColor(.orange)
+                            Text("soundpad.playing", bundle: localizedBundle).font(.caption).foregroundColor(.orange)
                         }
                         if isSweeping {
                             Text("CC\(Int(discoveryCC)) val=\(sweepValue)").font(.caption).foregroundColor(.purple)
                         }
                         if isSweepingCCs {
-                            Text("Testing CC\(Int(discoveryCC))...").font(.caption).foregroundColor(.orange)
+                            Text(L("soundpad.testingCC \(Int(discoveryCC))")).font(.caption).foregroundColor(.orange)
                         }
-                        
+
                         Spacer()
-                        
-                        pillButton(isSweepingCCs ? "Stop Hunt" : "Hunt CC# 5-119", accent: isSweepingCCs, disabled: isSweeping || isDiscoveryPlaying) {
+
+                        pillButton(isSweepingCCs ? L("soundpad.stopHunt") : L("soundpad.huntCC"), accent: isSweepingCCs, disabled: isSweeping || isDiscoveryPlaying) {
                             if isSweepingCCs { stopSweep() } else {
                                 discoveryDuration = 1.5
                                 startCCSweep()
@@ -201,7 +202,7 @@ struct SoundPadView: View {
             
             // MARK: Console readout (black bar — stays black)
             HStack(spacing: 0) {
-                Text("SEND →")
+                Text(L("soundpad.send"))
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(Theme.field)
                 Text("  C:\(selectedConsonant)  V:\(selectedVowel)")

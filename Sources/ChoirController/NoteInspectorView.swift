@@ -102,6 +102,7 @@ struct NotePopoverInspector: View {
     var onUpdate: (SequencerNote) -> Void
     var onPlay: (SequencerNote) -> Void
     var onDelete: () -> Void
+    @AppStorage("appLanguage") private var appLanguage: AppLanguage = .system
 
     @State private var consonant: UInt8
     @State private var vowel: UInt8
@@ -135,7 +136,7 @@ struct NotePopoverInspector: View {
                 VStack(spacing: 2) {
                     Text(PitchConstants.noteName(for: note.pitch))
                         .font(.system(size: 13, weight: .medium))
-                    Text("Beat \(Int(note.startBeat + 1))")
+                    Text(L("inspector.beat \(Int(note.startBeat + 1))"))
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }
@@ -144,7 +145,7 @@ struct NotePopoverInspector: View {
 
             // Consonant
             HStack {
-                Text("Cons")
+                Text("inspector.cons", bundle: localizedBundle)
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .frame(width: 36, alignment: .leading)
@@ -161,13 +162,13 @@ struct NotePopoverInspector: View {
 
             // Vowel
             HStack {
-                Text("Vowel")
+                Text("inspector.vowel", bundle: localizedBundle)
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .frame(width: 36, alignment: .leading)
                 Picker("", selection: $vowel) {
                     ForEach(Vowel.all) { v in
-                        Text(v.ccValue == 0 ? "Random" : "\(v.symbol) \(v.example)").tag(v.ccValue)
+                        Text(v.ccValue == 0 ? L("inspector.random") : "\(v.symbol) \(v.example)").tag(v.ccValue)
                     }
                 }
                 .labelsHidden()
@@ -177,20 +178,20 @@ struct NotePopoverInspector: View {
             }
 
             // Velocity
-            compactSlider(label: "Vel", value: $velocity, range: 1...127)
+            compactSlider(label: L("inspector.vel"), value: $velocity, range: 1...127)
 
             // Vibrato
-            compactSlider(label: "Vib", value: $vibrato, range: 0...127)
+            compactSlider(label: L("inspector.vib"), value: $vibrato, range: 0...127)
 
             // Reverb
-            compactSlider(label: "Rev", value: $reverb, range: 0...127)
+            compactSlider(label: L("inspector.rev"), value: $reverb, range: 0...127)
 
             Divider()
 
             // Actions
             HStack {
                 Button(action: { onPlay(currentNote()) }) {
-                    Label("Test", systemImage: "ear")
+                    Label { Text("inspector.test", bundle: localizedBundle) } icon: { Image(systemName: "ear") }
                         .font(.caption)
                 }
                 .buttonStyle(.borderless)
@@ -255,6 +256,7 @@ struct NoteInspectorView: View {
     var onPlay: (SequencerNote) -> Void
     var noteDurationSeconds: Double = 1.0
     var onDelete: () -> Void
+    @AppStorage("appLanguage") private var appLanguage: AppLanguage = .system
 
     // Local editing state synced from the note (view is recreated via .id() on selection change)
     @State private var consonant: UInt8 = 125
@@ -278,7 +280,7 @@ struct NoteInspectorView: View {
         let isNoneCons = (c?.name == "None")
         let isRandomVowel = (v?.ccValue == 0)
 
-        if isRandomCons && isRandomVowel { return "Random" }
+        if isRandomCons && isRandomVowel { return L("inspector.random") }
 
         var parts = ""
         if !isRandomCons && !isNoneCons { parts += c?.name ?? "" }
@@ -314,7 +316,7 @@ struct NoteInspectorView: View {
 
             // Consonant picker
             VStack(alignment: .leading, spacing: 4) {
-                Text("Consonant")
+                Text("inspector.consonant", bundle: localizedBundle)
                     .font(.caption2)
                     .foregroundColor(fgDim)
                 Picker("", selection: $consonant) {
@@ -332,12 +334,12 @@ struct NoteInspectorView: View {
 
             // Vowel picker
             VStack(alignment: .leading, spacing: 4) {
-                Text("Vowel")
+                Text("inspector.vowel", bundle: localizedBundle)
                     .font(.caption2)
                     .foregroundColor(fgDim)
                 Picker("", selection: $vowel) {
                     ForEach(Vowel.all) { v in
-                        Text(v.ccValue == 0 ? "Random" : "\(v.symbol) \(v.example)").tag(v.ccValue)
+                        Text(v.ccValue == 0 ? L("inspector.random") : "\(v.symbol) \(v.example)").tag(v.ccValue)
                     }
                 }
                 .labelsHidden()
@@ -349,13 +351,13 @@ struct NoteInspectorView: View {
             }
 
             // Velocity
-            inspectorDial(label: "Velocity", value: $velocity, range: 1...127)
+            inspectorDial(label: L("inspector.velocity"), value: $velocity, range: 1...127)
 
             // Vibrato
-            inspectorDial(label: "Vibrato", value: $vibrato, range: 0...127)
+            inspectorDial(label: L("inspector.vibrato"), value: $vibrato, range: 0...127)
 
             // Reverb
-            inspectorDial(label: "Reverb", value: $reverb, range: 0...127)
+            inspectorDial(label: L("inspector.reverb"), value: $reverb, range: 0...127)
 
             Spacer()
 
@@ -369,7 +371,7 @@ struct NoteInspectorView: View {
             }) {
                 HStack(spacing: 5) {
                     Image(systemName: "ear")
-                    Text("Test")
+                    Text("inspector.test", bundle: localizedBundle)
                 }
                 .font(Theme.toolbarFont)
                 .foregroundColor(Theme.dark)
@@ -430,7 +432,8 @@ struct NoteInspectorView: View {
     private func beatLabel(_ beat: Double) -> String {
         let wholeBeat = Int(beat)
         let sixteenth = Int(round((beat - Double(wholeBeat)) * 4)) + 1
-        return "Beat \(wholeBeat + 1).\(sixteenth)"
+        let pos = "\(wholeBeat + 1).\(sixteenth)"
+        return L("inspector.beatPosition \(pos)")
     }
 
     private func inspectorDial(label: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {

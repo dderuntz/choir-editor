@@ -7,6 +7,7 @@ struct SettingsPanelView: View {
     @Binding var showSettings: Bool
     @AppStorage("localAudioMode") private var localAudioMode = LocalAudioMode.automatic.rawValue
     @AppStorage("lyricStyle") private var lyricStyle: LyricStyle = .senryu
+    @AppStorage("appLanguage") private var appLanguage: AppLanguage = .system
     @AppStorage("ccPreSendWarningShown") private var ccPreSendWarningShown = false
     @State private var showCCPreSendWarning = false
     @Environment(\.colorScheme) private var colorScheme
@@ -170,7 +171,7 @@ struct SettingsPanelView: View {
                                 .font(Theme.toolbarFont)
                             Spacer()
                             Picker("", selection: $lyricStyle) {
-                                ForEach(LyricStyle.allCases) { style in
+                                ForEach(LyricStyle.styles(for: appLanguage)) { style in
                                     Text(style.label).tag(style)
                                 }
                             }
@@ -199,17 +200,30 @@ struct SettingsPanelView: View {
         } message: {
             Text("settings.ccPreSend.warning.message", bundle: localizedBundle)
         }
+        .onAppear {
+            let available = LyricStyle.styles(for: appLanguage)
+            if !available.contains(lyricStyle), let first = available.first {
+                lyricStyle = first
+            }
+        }
+        .onChange(of: appLanguage) {
+            let available = LyricStyle.styles(for: appLanguage)
+            if !available.contains(lyricStyle), let first = available.first {
+                lyricStyle = first
+            }
+        }
     }
 }
 
 private struct ResetButton: View {
     let action: () -> Void
     @State private var isHovered = false
+    @AppStorage("appLanguage") private var appLanguage: AppLanguage = .system
     @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
         Button(action: action) {
-            Text("reset")
+            Text("settings.reset", bundle: localizedBundle)
                 .font(Theme.toolbarFont)
                 .foregroundColor(isHovered ? Theme.text(colorScheme) : Theme.text(colorScheme).opacity(0.3))
         }

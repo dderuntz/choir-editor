@@ -6,6 +6,7 @@ struct SequencerView: View {
     @ObservedObject var audioMonitor: AudioMonitorService
     @EnvironmentObject var model: SequencerModel
     @AppStorage("localAudioEnabled") private var localAudioEnabled = false
+    @AppStorage("appLanguage") private var appLanguage: AppLanguage = .system
     @Environment(\.colorScheme) private var colorScheme
     
     /// Stable identity for the inspector when no note is selected (avoids per-frame recreation)
@@ -133,13 +134,13 @@ struct SequencerView: View {
         .onDeleteCommand {
             model.deleteSelectedNote()
         }
-        .alert("Delete \(model.selectedNoteIds.count) notes?", isPresented: $model.pendingDeleteConfirm) {
-            Button("Delete", role: .destructive) { model.confirmDeleteSelected() }
-            Button("Cancel", role: .cancel) {}
+        .alert(L("roll.deleteConfirm \(model.selectedNoteIds.count)"), isPresented: $model.pendingDeleteConfirm) {
+            Button(L("roll.delete"), role: .destructive) { model.confirmDeleteSelected() }
+            Button(L("roll.cancel"), role: .cancel) {}
         }
-        .alert("Clear all notes?", isPresented: $pendingClearAll) {
-            Button("Clear All", role: .destructive) { clearAll() }
-            Button("Cancel", role: .cancel) {}
+        .alert(L("roll.clearAllConfirm"), isPresented: $pendingClearAll) {
+            Button(L("roll.clearAll"), role: .destructive) { clearAll() }
+            Button(L("roll.cancel"), role: .cancel) {}
         }
         .onDisappear {
             stopPlayback()
@@ -275,9 +276,9 @@ struct SequencerView: View {
                         }
                     }
                 )) {
-                    Text("No Scale").tag(-1)
+                    Text("roll.noScale", bundle: localizedBundle).tag(-1)
                     ForEach(MusicalKey.allCases) { key in
-                        Text("Key of \(key.name)").tag(key.rawValue)
+                        Text(L("roll.keyOf \(key.name)")).tag(key.rawValue)
                     }
                 }
                 .labelsHidden()
@@ -325,7 +326,7 @@ struct SequencerView: View {
                 }
 
                 Button(action: { showSequencerTips.toggle() }) {
-                    Label("Help", systemImage: "questionmark.circle")
+                    Label { Text("roll.help", bundle: localizedBundle) } icon: { Image(systemName: "questionmark.circle") }
                 }
                 .buttonStyle(HoverPillStyle(colorScheme: colorScheme, textColor: Theme.text(colorScheme)))
                 .popover(isPresented: $showSequencerTips) {
@@ -346,7 +347,7 @@ struct SequencerView: View {
                     .padding()
                     .frame(width: 260)
                 }
-                .help("Tips")
+                .help(L("tooltip.tips"))
                 
                 Spacer()
             }
@@ -362,23 +363,24 @@ struct SequencerView: View {
                         model.deleteSelectedNote()
                     }
                 }) {
-                    Label(model.selectedNoteIds.isEmpty
-                        ? "Clear All"
-                        : "Clear Selection (\(model.selectedNoteIds.count))",
-                          systemImage: "eraser.line.dashed")
+                    Label {
+                        Text(model.selectedNoteIds.isEmpty
+                            ? L("roll.clearAll")
+                            : L("roll.clearSelection \(model.selectedNoteIds.count)"))
+                    } icon: { Image(systemName: "eraser.line.dashed") }
                 }
                 .buttonStyle(HoverPillStyle(colorScheme: colorScheme, textColor: Theme.text(colorScheme)))
                 .disabled(model.notes.isEmpty && model.selectedNoteIds.isEmpty)
 
 
                 Button(action: { model.isLooping.toggle() }) {
-                    Label("Loop", systemImage: "repeat.circle.fill")
+                    Label { Text("roll.loop", bundle: localizedBundle) } icon: { Image(systemName: "repeat.circle.fill") }
                         .foregroundColor(model.isLooping ? Theme.text(colorScheme) : Theme.text(colorScheme).opacity(0.25))
                 }
                 .buttonStyle(.borderless)
-                .help(model.isLooping ? "Looping" : "Loop")
+                .help(L("roll.loop"))
                 
-                Stepper("\(model.totalBeats / 4) Bars", value: Binding(
+                Stepper(L("roll.bars \(model.totalBeats / 4)"), value: Binding(
                     get: { model.totalBeats / 4 },
                     set: { model.totalBeats = $0 * 4 }
                 ), in: 1...16)
@@ -408,7 +410,7 @@ struct SequencerView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(model.isPlaying ? "Stop" : "Play")
+            .help(model.isPlaying ? L("tooltip.stop") : L("tooltip.play"))
             .popover(isPresented: $showTransportTip) {
                 Text("onboarding.roll.transportTip", bundle: localizedBundle)
                     .font(.system(size: 12))

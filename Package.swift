@@ -27,6 +27,7 @@ let package = Package(
                 .process("Assets.xcassets"),
                 .copy("AnimaleSounds"),
                 .copy("cmudict.txt"),
+                .copy("swe_lexicon.txt"),
                 .copy("Robots.choir"),
                 .process("Localizable.xcstrings")
             ]

@@ -14,6 +14,13 @@ struct LLMLyric {
     let lyric: String
 }
 
+@available(macOS 26, *)
+@Generable
+struct LLMSwedishLyric {
+    @Guide(description: "En kort svensk text för sång. 2 rader separerade med /. Varje rad 3-8 enkla svenska ord.")
+    let lyric: String
+}
+
 // MARK: - Composer Persistence
 
 private struct StoredPhoneme: Codable {
@@ -128,12 +135,20 @@ class ComposerModel: ObservableObject {
     private var playbackTask: Task<Void, Never>? = nil
     private var activeMidiPitches: Set<UInt8> = []
 
-    // MARK: - Phoneme Extraction (delegates to EnglishPhonemeExtractor)
+    // MARK: - Phoneme Extraction (language-aware)
 
-    private let extractor = EnglishPhonemeExtractor()
+    private let englishExtractor = EnglishPhonemeExtractor()
+    private let swedishExtractor = SwedishPhonemeExtractor()
+
+    /// Current app language from UserDefaults (resolved — never .system)
+    private var currentLanguage: AppLanguage {
+        let stored = AppLanguage(rawValue: UserDefaults.standard.string(forKey: "appLanguage") ?? "") ?? .system
+        return stored.resolved
+    }
 
     /// Check on-device LLM availability (macOS 26+ only)
     var isLLMAvailable: Bool {
+        let extractor: any PhonemeExtracting = currentLanguage == .swedish ? swedishExtractor : englishExtractor
         let (available, message) = extractor.checkAvailability()
         if let msg = message { llmStatusMessage = msg }
         return available
@@ -148,6 +163,7 @@ class ComposerModel: ObservableObject {
         isProcessing = true
         errorMessage = nil
 
+        let extractor: any PhonemeExtracting = currentLanguage == .swedish ? swedishExtractor : englishExtractor
         let result = await extractor.extract(text: text)
 
         if let normalized = result.normalizedText {
@@ -265,21 +281,56 @@ class ComposerModel: ObservableObject {
 
             DO NOT repeat the examples. Write something new and original. It should be about the secret lives of robots.
             """
+        case .svSenryu:
+            lyricInstructions = """
+            Du är en trött robot. Du skriver senryū på svenska för en konsert ingen kommer till.
+
+            Senryū är en japansk form: två rader. Rad 1 observerar något vanligt. Rad 2 vänder på det.
+            Humorn sitter i vändningen. Inte skämt. Inte sorg. Bara glappet mellan vad saker är och vad vi låtsas.
+
+            Två rader separerade med /. Varje rad 3-8 enkla svenska ord.
+            Inga inledningar. Inga titlar. Inget hopp. Bara texten.
+
+            "kaffe" → koppen vet mer än jag / den har sett mig före gryningen
+            "deadlines" → klockan förhandlar inte / den bara vinner
+            "min katt" → din katt komponerar bättre / än de flesta av oss
+            "måndag" → vi möts igen gamla vän / ingen av oss ville detta
+            "semester" → vi packade väskorna med hopp / de kom hem tomma
+            "wifi" → signalen lovar allt / men levererar ingenting
+            "vår" → blommorna öppnar sig igen / som om förra gången räckte
+            "möte" → alla nickar och ler / ingen minns varför
+
+            Andra raden MÅSTE vända. Den måste överraska, underminera, eller tyst håna den första.
+            Skriv något nytt. Eller inte. Det spelar knappt någon roll.
+            """
         }
 
-        let userMessage = style == .kulning
-            ? "Write a short singable robot lyric about: \(userPrompt)"
-            : "Write a short singable lyric about: \(userPrompt)"
+        let isSwedish = currentLanguage == .swedish
+        let userMessage = isSwedish
+            ? "Skriv en kort svensk text om: \(userPrompt)"
+            : style == .kulning
+                ? "Write a short singable robot lyric about: \(userPrompt)"
+                : "Write a short singable lyric about: \(userPrompt)"
 
         do {
             let session = LanguageModelSession(instructions: Instructions(lyricInstructions))
 
-            let response = try await session.respond(
-                to: userMessage,
-                generating: LLMLyric.self
-            )
+            let rawLyric: String
+            if isSwedish {
+                let svResponse = try await session.respond(
+                    to: userMessage,
+                    generating: LLMSwedishLyric.self
+                )
+                rawLyric = svResponse.content.lyric
+            } else {
+                let enResponse = try await session.respond(
+                    to: userMessage,
+                    generating: LLMLyric.self
+                )
+                rawLyric = enResponse.content.lyric
+            }
 
-            let lyric = response.content.lyric
+            let lyric = rawLyric
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .replacingOccurrences(of: " / ", with: " ")
                 .replacingOccurrences(of: "/", with: " ")

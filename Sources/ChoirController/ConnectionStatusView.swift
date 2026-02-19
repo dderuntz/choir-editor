@@ -5,6 +5,7 @@ import MIDIKitIO
 struct ConnectionStatusView: View {
     @ObservedObject var midiService: MidiService
     var colorScheme: ColorScheme = .light
+    @AppStorage("appLanguage") private var appLanguage: AppLanguage = .system
 
     var body: some View {
         if let selected = midiService.selectedInput {
@@ -13,9 +14,10 @@ struct ConnectionStatusView: View {
                 .lineLimit(1)
                 .frame(height: 16)
         } else {
-            Label("Connect", systemImage: "antenna.radiowaves.left.and.right")
+            Label { Text(L("toolbar.connect")) } icon: { Image(systemName: "antenna.radiowaves.left.and.right") }
                 .foregroundColor(Theme.bg(colorScheme))
                 .frame(height: 16)
+                .id(appLanguage)
         }
     }
 }

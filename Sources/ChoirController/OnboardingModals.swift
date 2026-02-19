@@ -3,6 +3,7 @@ import SwiftUI
 /// Welcome modal shown on first composer open — explains the writing flow
 struct ChipsExplanationModal: View {
     @EnvironmentObject var onboarding: OnboardingManager
+    @AppStorage("appLanguage") private var appLanguage: AppLanguage = .system
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -49,6 +50,7 @@ struct ChipsExplanationModal: View {
 /// Modal shown on first play when dolls aren't connected
 struct FirstPlayGuideModal: View {
     @EnvironmentObject var onboarding: OnboardingManager
+    @AppStorage("appLanguage") private var appLanguage: AppLanguage = .system
     @Environment(\.colorScheme) private var colorScheme
     var onConnectDolls: () -> Void
 
@@ -106,6 +108,7 @@ struct FirstPlayGuideModal: View {
 
 /// Modal shown when document is empty to help users get started
 struct EmptyStateHelperModal: View {
+    @AppStorage("appLanguage") private var appLanguage: AppLanguage = .system
     @Environment(\.colorScheme) private var colorScheme
     var onStartWithMelody: () -> Void
     var onStartWithIdeas: () -> Void
@@ -182,6 +185,7 @@ struct EmptyStateHelperModal: View {
 
 /// Modal shown after user picks "Start with melody" — choose blank roll or load demo
 struct PianoRollEntryModal: View {
+    @AppStorage("appLanguage") private var appLanguage: AppLanguage = .system
     @Environment(\.colorScheme) private var colorScheme
     var onStartAdding: () -> Void
     var onLoadDemo: () -> Void
