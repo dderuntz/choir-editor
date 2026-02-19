@@ -135,7 +135,7 @@ struct ComposerView: View {
 
                 Text("composer.prompt", bundle: localizedBundle)
                     .font(.system(size: 18, weight: .regular))
-                    .foregroundColor(hasText ? Theme.field : Theme.text(colorScheme))
+                    .foregroundColor(promptColor(hasText: hasText))
                     .padding(.bottom, 8)
 
                 ZStack {
@@ -368,7 +368,7 @@ struct ComposerView: View {
 
                 Spacer()
 
-                phonemeStrip(leadingPad: 0, containerWidth: geo.size.width)
+                phonemeStrip()
                     .popover(isPresented: $showPhonemeGuide) {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("composer.phonemeGuide.title", bundle: localizedBundle)
@@ -538,9 +538,16 @@ struct ComposerView: View {
         }
     }
 
+    // MARK: - Helpers
+
+    private func promptColor(hasText: Bool) -> Color {
+        let base: Color = colorScheme == .dark ? Theme.ivory : Theme.dark
+        return hasText ? base.opacity(0.4) : base
+    }
+
     // MARK: - Phoneme Strip
 
-    private func phonemeStrip(leadingPad: CGFloat = 0, containerWidth: CGFloat = 0) -> some View {
+    private func phonemeStrip() -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 0) {
                 ForEach(Array(composerModel.phonemes.enumerated()), id: \.element.id) { index, phoneme in
@@ -609,9 +616,8 @@ struct ComposerView: View {
                 }
 
             }
-            .padding(.leading, leadingPad)
             .padding(.top, 40)
-            .frame(minWidth: containerWidth, alignment: .center)
+            .frame(minWidth: nsScrollView?.frame.width ?? 0, alignment: .center)
             .coordinateSpace(name: "phonemeStrip")
             .overlay(alignment: .topLeading) {
                 // Bouncing ball — lives inside scroll content so it scrolls with chips
