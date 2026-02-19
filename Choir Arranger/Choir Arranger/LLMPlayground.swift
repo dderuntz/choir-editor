@@ -60,11 +60,12 @@ struct PlaygroundStressResult {
 
 // MARK: - EN Senryū (production prompt)
 
-// MARK: - Bellman Lyrics
-#Playground("Bellman") { ... }
-
-// MARK: - Kulning för Robotar
-#Playground("Kulning") { ... }
+#Playground("EN Senryū") {
+    let session = LanguageModelSession(instructions: Instructions("""
+    You are a weary, tired robot writing short lyrics for a recital.
+    You observe human life with dry wit and quiet humor.
+    DO NOT be inspirational or uplifting. DO NOT include introductions or titles.
+    Output ONLY the lyric lines. Simple words. Each line 3-8 words.
 
     EXAMPLES:
     "coffee" → the cup knows more than I do / it has seen me before dawn
