@@ -28,12 +28,21 @@ class MidiService: ObservableObject {
     // Global Sequencer Settings
     @Published var tempo: Double = 100
     @Published var minNoteDuration: Double = 0.28
-    
+
+    // CC Pre-Send ("Performance Mode")
+    @Published var ccPreSendEnabled: Bool = (UserDefaults.standard.object(forKey: "ccPreSendEnabled") as? Bool) ?? true {
+        didSet { UserDefaults.standard.set(ccPreSendEnabled, forKey: "ccPreSendEnabled") }
+    }
+    /// Minimum ms to wait after NoteOn before pre-sending next CCs (sequencer only)
+    @Published var ccPreSendDelayMs: Double = UserDefaults.standard.object(forKey: "ccPreSendDelayMs") as? Double ?? 185 {
+        didSet { UserDefaults.standard.set(ccPreSendDelayMs, forKey: "ccPreSendDelayMs") }
+    }
+
     init() {}
     
     func start() {
         midiManager.notificationHandler = { [weak self] notification in
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 self?.updateEndpoints()
             }
         }
@@ -167,20 +176,6 @@ class MidiService: ObservableObject {
         log.info("MIDI Panic: CC reset to defaults (cons=\(ChoirDefaults.consonant) vow=\(ChoirDefaults.vowel) vib=\(ChoirDefaults.vibrato) rev=\(ChoirDefaults.reverb))")
     }
     
-    /// Disconnect and reconnect MIDI
-    func reconnect() {
-        log.info("MIDI Reconnect: dropping connection")
-        midiManager.remove(.outputConnection, .withTag("ChoirOutput"))
-        isConnected = false
-        selectedInput = nil
-        
-        // Re-scan and reconnect after a short delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
-            log.info("MIDI Reconnect: re-scanning endpoints")
-            updateEndpoints()
-        }
-    }
-    
     func sendCC(controller: UInt8, value: UInt8, channel: UInt4 = 0) {
         guard let connection = midiManager.managedOutputConnections["ChoirOutput"] else {
             log.error("CC: No output connection")
@@ -201,6 +196,33 @@ class MidiService: ObservableObject {
         }
     }
     
+    /// Pre-send CC values for the next note (Performance Mode).
+    /// Only sends CCs that differ from the current stored values. Skips entirely if all match.
+    /// Does NOT send a NoteOn — just configures the doll early.
+    func preSendCC(consonant: UInt8, vowel: UInt8, vibrato: UInt8, reverb: UInt8, channel: UInt4 = 0) {
+        let changed = consonant != self.consonant || vowel != self.vowel ||
+                      vibrato != self.vibrato || reverb != self.reverb
+        guard changed else { return }
+
+        if vibrato != self.vibrato {
+            sendCC(controller: ChoirCC.vibrato, value: vibrato, channel: channel)
+            self.vibrato = vibrato
+        }
+        if reverb != self.reverb {
+            sendCC(controller: ChoirCC.reverb, value: reverb, channel: channel)
+            self.reverb = reverb
+        }
+        if consonant != self.consonant {
+            sendCC(controller: ChoirCC.consonant, value: consonant, channel: channel)
+            self.consonant = consonant
+        }
+        if vowel != self.vowel {
+            sendCC(controller: ChoirCC.vowel, value: vowel, channel: channel)
+            self.vowel = vowel
+        }
+        log.debug("Pre-sent CCs: cons=\(consonant) vow=\(vowel) vib=\(vibrato) rev=\(reverb)")
+    }
+
     /// Send pitch bend. Value range: 0-16383, center (no bend) = 8192
     func sendPitchBend(value: UInt16, channel: UInt4 = 0) {
         guard let connection = midiManager.managedOutputConnections["ChoirOutput"] else { return }

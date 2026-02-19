@@ -7,8 +7,9 @@ struct SoundPadView: View {
     @ObservedObject var audioMonitor: AudioMonitorService
     @Binding var isPresented: Bool
     @AppStorage("localAudioEnabled") private var localAudioEnabled = false
+    @AppStorage("appLanguage") private var appLanguage: AppLanguage = .system
     @Environment(\.colorScheme) private var colorScheme
-    
+
     @State private var selectedConsonant: UInt8 = 125  // None
     @State private var selectedVowel: UInt8 = 16       // ai (buy)
     @State private var testNote: UInt8 = 60            // Middle C
@@ -29,7 +30,7 @@ struct SoundPadView: View {
     @State private var pitchBendValue: Double = 0
     
     // Packet log
-    @State private var lastPacketLog: String = "READY"
+    @State private var lastPacketLog: String = L("soundpad.ready")
     
     // Musical pattern for sweeps
     let sweepPattern: [UInt8] = [
@@ -50,13 +51,14 @@ struct SoundPadView: View {
         VStack(spacing: 0) {
             // MARK: Header bar
             HStack {
-                Text("Explorer")
+                Text("soundpad.title", bundle: localizedBundle)
                     .font(.system(size: 56, weight: .ultraLight))
                     .kerning(-1.4)
                     .foregroundColor(txt)
+                    .textSelection(.disabled)
                 Spacer()
                 if hasModifiedDefaults {
-                    pillButton("Reset") {
+                    Button(action: {
                         pitchBendValue = 0
                         discoveryCC = 5
                         discoveryCCValue = 64
@@ -66,17 +68,14 @@ struct SoundPadView: View {
                         testNote = 60
                         testVelocity = 100
                         lastPacketLog = "Reset to defaults"
+                    }) {
+                        Text("settings.reset", bundle: localizedBundle)
                     }
                 }
                 Button(action: { isPresented = false }) {
-                    Text("Done")
-                        .font(Theme.buttonFont)
-                        .fontWeight(Theme.buttonWeight)
-                        .foregroundColor(Theme.bg(colorScheme))
-                        .padding(.horizontal, Theme.buttonPaddingH)
-                        .padding(.vertical, Theme.buttonPaddingV)
-                        .background(txt)
-                        .cornerRadius(Theme.buttonRadius)
+                    Image(systemName: "xmark")
+                        .font(.title2)
+                        .foregroundColor(txt.opacity(0.4))
                 }
                 .buttonStyle(.plain)
             }
@@ -86,18 +85,26 @@ struct SoundPadView: View {
             
             // MARK: Field area (green-gray)
             VStack(spacing: 0) {
-                // Two-column grid: Consonants | Vowels
+                Text("soundpad.description", bundle: localizedBundle)
+                    .font(.system(size: 12))
+                    .foregroundColor(txtDim)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 16)
+                
+                // Two-column grid: Consonants | Vowels + sliders
                 HStack(alignment: .top, spacing: 16) {
                     // Consonants
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("Consonants")
+                        Text("soundpad.consonants", bundle: localizedBundle)
                             .font(.caption)
                             .foregroundColor(txtDim)
+                            .textCase(.uppercase)
                             .padding(.bottom, 12)
                         
                         phonemeGrid(items: Consonant.all.map { PhonemeItem(id: $0.id, label: $0.name, subtitle: "\($0.ccValue)", ccValue: $0.ccValue) },
                                     selected: selectedConsonant,
-                                    columns: 5) { value in
+                                    columns: 5,
+                                    fillPartialRows: false) { value in
                             selectedConsonant = value
                             startSound()
                         } onRelease: {
@@ -105,95 +112,89 @@ struct SoundPadView: View {
                         }
                     }
                     
-                    // Vowels
+                    // Vowels + sliders stacked under second column
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("Vowels")
+                        Text("soundpad.vowels", bundle: localizedBundle)
                             .font(.caption)
                             .foregroundColor(txtDim)
+                            .textCase(.uppercase)
                             .padding(.bottom, 12)
                         
                         phonemeGrid(items: Vowel.all.map { PhonemeItem(id: $0.id, label: $0.symbol, subtitle: String($0.example.prefix(4)), ccValue: $0.ccValue) },
                                     selected: selectedVowel,
-                                    columns: 5) { value in
+                                    columns: 5,
+                                    fillPartialRows: false) { value in
                             selectedVowel = value
                             startSound()
                         } onRelease: {
                             stopSound()
                         }
+                        
+                        // Sliders: label+value left, slider right (same as Value row below)
+                        VStack(alignment: .leading, spacing: 16) {
+                            explorerSliderRow(label: L("soundpad.note"), display: noteName(testNote), value: Binding(
+                                get: { Double(testNote) },
+                                set: { testNote = UInt8($0) }
+                            ), range: 40...81)
+                            explorerSliderRow(label: L("soundpad.hold"), display: String(format: "%.1fs", discoveryDuration), value: $discoveryDuration, range: 1.0...10.0)
+                            explorerSliderRow(label: L("soundpad.velocity"), display: "\(testVelocity)", value: Binding(
+                                get: { Double(testVelocity) },
+                                set: { testVelocity = UInt8($0) }
+                            ), range: 1...127)
+                            explorerSliderRow(label: L("soundpad.pitchBend"), display: "\(Int(pitchBendValue))", value: $pitchBendValue, range: -100...100)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 24)
                     }
                 }
                 .padding(.top, 20)
-                
-                // Note + Hold row
+
+                Divider()
+                    .background(Theme.explorerGridBorder(colorScheme))
+                    .padding(.top, 16)
+
+                // CC discovery row (full width, outside vowel column)
                 HStack(spacing: 16) {
-                    explorerSliderRow(label: "Note", display: noteName(testNote), value: Binding(
-                        get: { Double(testNote) },
-                        set: { testNote = UInt8($0) }
-                    ), range: 40...81)
-                    
-                    explorerSliderRow(label: "Hold", display: String(format: "%.1fs", discoveryDuration), value: $discoveryDuration, range: 1.0...10.0)
+                    explorerPickerRow(label: "CC#", selection: $discoveryCC)
+                    explorerSliderRow(label: L("soundpad.value"), display: "\(Int(discoveryCCValue))", value: $discoveryCCValue, range: 0...127)
                 }
-                .padding(.vertical, 20)
-                
-                Divider().background(Theme.explorerGridBorder)
-                
-                // CC Discovery
+                .padding(.vertical, 16)
+
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("CC Discovery")
-                        .font(.caption)
-                        .foregroundColor(txtDim)
-                        .textCase(.uppercase)
-                        .padding(.bottom, 12)
-                    
-                    // Velocity + Pitch Bend
-                    HStack(spacing: 16) {
-                        explorerSliderRow(label: "Velocity", display: "\(testVelocity)", value: Binding(
-                            get: { Double(testVelocity) },
-                            set: { testVelocity = UInt8($0) }
-                        ), range: 1...127)
-                        
-                        explorerSliderRow(label: "Pitch Bend", display: "\(Int(pitchBendValue))", value: $pitchBendValue, range: -100...100)
-                    }
-                    .padding(.bottom, 12)
-                    
-                    // CC# + Value (two-column matching rows above)
-                    HStack(spacing: 16) {
-                        explorerPickerRow(label: "CC#", selection: $discoveryCC)
-                        
-                        explorerSliderRow(label: "Value", display: "\(Int(discoveryCCValue))", value: $discoveryCCValue, range: 0...127)
-                    }
-                    .padding(.bottom, 16)
-                    
                     // Action buttons
-                    HStack(spacing: 8) {
-                        pillButton("Test CC\(Int(discoveryCC))", disabled: isDiscoveryPlaying || isSweeping || isSweepingCCs) {
+                    HStack(spacing: 6) {
+                        pillButton(L("soundpad.testCC \(Int(discoveryCC))"), disabled: isDiscoveryPlaying || isSweeping || isSweepingCCs) {
                             runDiscoveryTest()
                         }
-                        pillButton(isSweepingCCs ? "Stop Hunt" : "Hunt CC# 5-119", accent: isSweepingCCs, disabled: isSweeping || isDiscoveryPlaying) {
-                            if isSweepingCCs { stopSweep() } else {
-                                discoveryDuration = 1.5
-                                startCCSweep()
-                            }
-                        }
-                        pillButton(isSweeping ? "Stop Val" : "Sweep Val 0→127", disabled: isSweepingCCs || isDiscoveryPlaying) {
+                        pillButton(isSweeping ? L("soundpad.stopVal") : L("soundpad.sweepVal"), disabled: isSweepingCCs || isDiscoveryPlaying) {
                             if isSweeping { stopSweep() } else { startSweep(step: 16) }
                         }
-                        pillButton("Fine", disabled: isSweeping || isSweepingCCs || isDiscoveryPlaying) {
+                        pillButton(L("soundpad.fineSweep"), disabled: isSweeping || isSweepingCCs || isDiscoveryPlaying) {
                             startSweep(step: 1)
                         }
-                        
+
                         if isDiscoveryPlaying {
-                            Text("Playing...").font(.caption).foregroundColor(.orange)
+                            Text("soundpad.playing", bundle: localizedBundle).font(.caption).foregroundColor(.orange)
                         }
                         if isSweeping {
                             Text("CC\(Int(discoveryCC)) val=\(sweepValue)").font(.caption).foregroundColor(.purple)
                         }
                         if isSweepingCCs {
-                            Text("Testing CC\(Int(discoveryCC))...").font(.caption).foregroundColor(.orange)
+                            Text(L("soundpad.testingCC \(Int(discoveryCC))")).font(.caption).foregroundColor(.orange)
+                        }
+
+                        Spacer()
+
+                        pillButton(isSweepingCCs ? L("soundpad.stopHunt") : L("soundpad.huntCC"), accent: isSweepingCCs, disabled: isSweeping || isDiscoveryPlaying) {
+                            if isSweepingCCs { stopSweep() } else {
+                                discoveryDuration = 1.5
+                                startCCSweep()
+                            }
                         }
                     }
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(.vertical, 20)
+                .padding(.top, 10)
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 20)
@@ -201,7 +202,7 @@ struct SoundPadView: View {
             
             // MARK: Console readout (black bar — stays black)
             HStack(spacing: 0) {
-                Text("SEND →")
+                Text(L("soundpad.send"))
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(Theme.field)
                 Text("  C:\(selectedConsonant)  V:\(selectedVowel)")
@@ -233,32 +234,48 @@ struct SoundPadView: View {
         let ccValue: UInt8
     }
     
-    private func phonemeGrid(items: [PhonemeItem], selected: UInt8, columns: Int, onSelect: @escaping (UInt8) -> Void, onRelease: @escaping () -> Void) -> some View {
+    private func borderEdges(col: Int, row: Int, totalCols: Int, totalRows: Int) -> [Edge] {
+        var edges: [Edge] = []
+        if col < totalCols - 1 { edges.append(.trailing) }
+        if row < totalRows - 1 { edges.append(.bottom) }
+        return edges
+    }
+    
+    private func phonemeGrid(items: [PhonemeItem], selected: UInt8, columns: Int, fillPartialRows: Bool = true, onSelect: @escaping (UInt8) -> Void, onRelease: @escaping () -> Void) -> some View {
         let rows = stride(from: 0, to: items.count, by: columns).map { start in
             Array(items[start..<min(start + columns, items.count)])
         }
+        let rowCount = rows.count
         
         return VStack(spacing: 0) {
-            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+            ForEach(Array(rows.enumerated()), id: \.offset) { rowIndex, row in
+                let effectiveCols = fillPartialRows ? columns : row.count
                 HStack(spacing: 0) {
-                    ForEach(row, id: \.id) { item in
-                        phonemeCell(item: item, isSelected: selected == item.ccValue, onSelect: onSelect, onRelease: onRelease)
+                    ForEach(Array(row.enumerated()), id: \.element.id) { colIndex, item in
+                        phonemeCell(
+                            item: item,
+                            isSelected: selected == item.ccValue,
+                            onSelect: onSelect,
+                            onRelease: onRelease,
+                            borderEdges: borderEdges(col: colIndex, row: rowIndex, totalCols: effectiveCols, totalRows: rowCount)
+                        )
                     }
-                    // Fill remaining cells in last row
-                    if row.count < columns {
-                        ForEach(0..<(columns - row.count), id: \.self) { _ in
+                    if fillPartialRows, row.count < columns {
+                        ForEach(0..<(columns - row.count), id: \.self) { i in
                             Color.clear
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 40)
-                                .border(width: [.trailing, .bottom], color: Theme.explorerGridBorder)
+                                .border(width: borderEdges(col: row.count + i, row: rowIndex, totalCols: columns, totalRows: rowCount), color: Theme.explorerGridBorder(colorScheme))
                         }
                     }
                 }
             }
         }
+        .background(Theme.dark.opacity(0.15))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
     
-    private func phonemeCell(item: PhonemeItem, isSelected: Bool, onSelect: @escaping (UInt8) -> Void, onRelease: @escaping () -> Void) -> some View {
+    private func phonemeCell(item: PhonemeItem, isSelected: Bool, onSelect: @escaping (UInt8) -> Void, onRelease: @escaping () -> Void, borderEdges: [Edge] = [.trailing, .bottom]) -> some View {
         VStack(spacing: 1) {
             Group {
                 if item.label == "?" || item.label == "Random" {
@@ -278,7 +295,7 @@ struct SoundPadView: View {
         .frame(maxWidth: .infinity)
         .frame(height: 40)
         .background(isSelected ? Theme.accent : Color.clear)
-        .border(width: [.trailing, .bottom], color: Theme.explorerGridBorder)
+        .border(width: borderEdges, color: Theme.explorerGridBorder(colorScheme))
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 0)
@@ -313,26 +330,16 @@ struct SoundPadView: View {
                 .tint(Theme.bg(colorScheme))
                 .accentColor(Theme.bg(colorScheme))
         }
+        .frame(maxWidth: .infinity)
     }
     
     // MARK: - Pill Button
-    
+
     private func pillButton(_ label: String, accent: Bool = false, disabled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
-                .font(Theme.buttonFont)
-                .fontWeight(Theme.buttonWeight)
-                .foregroundColor(accent ? Theme.dark : txt.opacity(0.85))
-                .padding(.horizontal, Theme.buttonPaddingH)
-                .padding(.vertical, Theme.buttonPaddingV)
-                .background(accent ? Theme.accent : Color.clear)
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.buttonRadius)
-                        .stroke(accent ? Color.clear : txt.opacity(0.85), lineWidth: Theme.buttonStroke)
-                )
-                .cornerRadius(Theme.buttonRadius)
         }
-        .buttonStyle(.plain)
+        .tint(accent ? Theme.accent : nil)
         .disabled(disabled)
         .opacity(disabled ? 0.4 : 1)
     }
@@ -341,10 +348,12 @@ struct SoundPadView: View {
     
     private func explorerPickerRow(label: String, selection: Binding<Double>) -> some View {
         HStack(spacing: 4) {
-            Text(label)
-                .font(.caption)
-                .foregroundColor(txtDim)
-                .frame(minWidth: 80, alignment: .leading)
+            HStack(spacing: 4) {
+                Text(label)
+                    .font(.caption)
+                    .foregroundColor(txtDim)
+            }
+            .frame(minWidth: 80, alignment: .leading)
             
             Picker("", selection: selection) {
                 Text("5 - Portamento Time").tag(Double(5))
@@ -387,9 +396,12 @@ struct SoundPadView: View {
                 }
             }
             .labelsHidden()
+            .buttonStyle(.borderless)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .tint(txt)
-            .accentColor(txt)
+            .foregroundStyle(txt)
         }
+        .frame(maxWidth: .infinity)
     }
     
     // MARK: - Sound Playback
@@ -510,9 +522,9 @@ struct SoundPadView: View {
 // MARK: - Edge Border Helper
 
 private extension View {
-    func border(width edges: [Edge], color: Color) -> some View {
+    func border(width edges: [Edge], color: Color, cornerRadius: CGFloat = 0) -> some View {
         overlay(
-            EdgeBorder(edges: edges)
+            EdgeBorder(edges: edges, cornerRadius: cornerRadius)
                 .foregroundColor(color)
         )
     }
@@ -520,9 +532,14 @@ private extension View {
 
 private struct EdgeBorder: Shape {
     let edges: [Edge]
+    var cornerRadius: CGFloat = 0
     
     func path(in rect: CGRect) -> Path {
         var path = Path()
+        let hasBottom = edges.contains(.bottom)
+        let hasTrailing = edges.contains(.trailing)
+        let r = (hasBottom && hasTrailing) ? cornerRadius : 0
+        
         for edge in edges {
             switch edge {
             case .top:
@@ -530,13 +547,23 @@ private struct EdgeBorder: Shape {
                 path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
             case .bottom:
                 path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
-                path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+                if r > 0 {
+                    path.addLine(to: CGPoint(x: rect.maxX - r, y: rect.maxY))
+                    path.addArc(center: CGPoint(x: rect.maxX - r, y: rect.maxY - r), radius: r, startAngle: .degrees(90), endAngle: .degrees(0), clockwise: true)
+                } else {
+                    path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+                }
             case .leading:
                 path.move(to: CGPoint(x: rect.minX, y: rect.minY))
                 path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
             case .trailing:
                 path.move(to: CGPoint(x: rect.maxX, y: rect.minY))
-                path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+                if r > 0 {
+                    path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r))
+                    path.addArc(center: CGPoint(x: rect.maxX - r, y: rect.maxY - r), radius: r, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+                } else {
+                    path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+                }
             }
         }
         return path.strokedPath(StrokeStyle(lineWidth: 1))

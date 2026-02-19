@@ -25,7 +25,7 @@ struct VoiceControlsView: View {
             vibratoValue = Double(midiService.vibrato)
             reverbValue = Double(midiService.reverb)
         }
-        .onChange(of: midiService.vibrato) { val in vibratoValue = Double(val) }
-        .onChange(of: midiService.reverb) { val in reverbValue = Double(val) }
+        .onChange(of: midiService.vibrato) { _, val in vibratoValue = Double(val) }
+        .onChange(of: midiService.reverb) { _, val in reverbValue = Double(val) }
     }
 }

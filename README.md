@@ -67,6 +67,23 @@ A built-in synthesizer lets you hear playback without a connected doll. It plays
 
 In Logic Pro, open the Piano Roll, show **Automation/MIDI → Region**, and select the CC lane from the dropdown to view and edit these values. GarageBand plays the notes but does not surface CC data.
 
+### Composer Mode
+
+The Composer is a text-first creative space for generating sung lyrics. Toggle it from the toolbar or View menu.
+
+| Action | How |
+|---|---|
+| Enter a theme | Type a word or phrase in the text field |
+| Generate lyrics | Click **Summon Song** — the on-device LLM writes a short lyric from your theme |
+| Extract phonemes | Click **Reveal Phonemes** — the LLM decomposes text into singable syllable chips |
+| Play back | Click **Play** — hear phonemes sung with pitch and timing based on the selected scale |
+| Edit a chip | Click a chip to open the inspector (consonant, vowel, choir toggle) |
+| Add choir harmony | Shift-click or long-press a chip to enable 4-part barbershop ensemble |
+| Send to sequencer | Click **Add to Sequencer** — copies phonemes as notes into the Arranger grid |
+| Clear | Click the trash icon next to the phoneme strip |
+
+Composer requires **macOS 26 (Tahoe)** with Apple Intelligence enabled for LLM features. The rest of the app works on macOS 13+.
+
 ### Keyboard
 
 The bottom keyboard lets you play notes live. Clicking a key scrolls the grid to that pitch. Middle C is highlighted.

@@ -1,0 +1,1 @@
+../../Sources/ChoirController/swe_lexicon.txt

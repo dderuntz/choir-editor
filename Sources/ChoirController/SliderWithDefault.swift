@@ -19,7 +19,7 @@ struct SliderWithDefault: View {
             Slider(value: $value, in: range)
                 .tint(Theme.text(colorScheme))
                 .accentColor(Theme.text(colorScheme))
-                .onChange(of: value) { val in
+                .onChange(of: value) { _, val in
                     if let snap = snap { value = snap(val) }
                 }
                 .background(defaultDot)

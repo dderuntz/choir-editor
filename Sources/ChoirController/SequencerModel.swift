@@ -30,6 +30,10 @@ struct ChoirDocument: Codable {
     var tempo: Double = 100
     var totalBeats: Int = 16
     var notes: [SequencerNote] = []
+    var scaleEnabled: Bool?
+    var scaleKey: Int?
+    var scaleType: String?
+    var isLooping: Bool?
 }
 
 // MARK: - Pitch Constants (non-actor-isolated for use in layout/shapes)
@@ -143,7 +147,7 @@ class SequencerModel: ObservableObject {
     // Scale helper
     @Published var showScaleHelper: Bool = false
     @Published var musicalKey: MusicalKey = .C
-    @Published var scaleType: ScaleType = .major
+    @Published var scaleType: ScaleType = .pentatonicMajor
     
     func isInScale(_ pitch: UInt8) -> Bool {
         let interval = (Int(pitch) - musicalKey.rawValue + 120) % 12  // +120 to keep positive
@@ -477,7 +481,11 @@ class SequencerModel: ObservableObject {
             version: 1,
             tempo: tempo,
             totalBeats: totalBeats,
-            notes: notes
+            notes: notes,
+            scaleEnabled: showScaleHelper,
+            scaleKey: musicalKey.rawValue,
+            scaleType: scaleType.rawValue,
+            isLooping: isLooping
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -496,6 +504,10 @@ class SequencerModel: ObservableObject {
         notes = doc.notes
         totalBeats = doc.totalBeats
         tempo = doc.tempo
+        showScaleHelper = doc.scaleEnabled ?? false
+        if let key = doc.scaleKey, let mk = MusicalKey(rawValue: key) { musicalKey = mk }
+        if let st = doc.scaleType, let s = ScaleType(rawValue: st) { scaleType = s }
+        isLooping = doc.isLooping ?? false
         clearSelection()
         currentFileURL = url
         hasUnsavedChanges = false
@@ -519,6 +531,22 @@ class SequencerModel: ObservableObject {
         log.info("Renamed to \(newURL.lastPathComponent)")
     }
     
+    /// Load the bundled demo file (Robots.choir) from Documents
+    func loadDemoFile() {
+        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+        guard let demoURL = documentsURL?.appendingPathComponent("Robots.choir"),
+              FileManager.default.fileExists(atPath: demoURL.path) else {
+            log.warning("Demo file not found in Documents")
+            return
+        }
+        do {
+            try load(from: demoURL)
+            log.info("Loaded demo file")
+        } catch {
+            log.error("Failed to load demo file: \(error)")
+        }
+    }
+
     /// Auto-open the last file on launch
     func loadLastFileIfAvailable() {
         guard let path = UserDefaults.standard.string(forKey: "lastOpenedFile") else { return }

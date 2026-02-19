@@ -98,14 +98,14 @@ struct ScrollSyncHelper: NSViewRepresentable {
 // MARK: - Layout Constants
 
 enum PianoRollLayout {
-    static let rowHeight: CGFloat = 20
+    static let rowHeight: CGFloat = 24
     static let beatWidth: CGFloat = 80        // pixels per beat
     static let sixteenthWidth: CGFloat = 20   // beatWidth / 4
-    static let pianoKeyWidth: CGFloat = 48
+    static let pianoKeyWidth: CGFloat = 56
     static let resizeHandleWidth: CGFloat = 8
     
     static var totalRows: Int { PitchConstants.pitchCount }
-    static func gridHeight() -> CGFloat { CGFloat(totalRows) * rowHeight }
+    static func gridHeight() -> CGFloat { CGFloat(totalRows + 1) * rowHeight }
     static func gridWidth(beats: Int) -> CGFloat { CGFloat(beats) * beatWidth }
     
     // Convert between model and view coordinates
@@ -128,6 +128,8 @@ enum PianoRollLayout {
 struct PianoRollView: View {
     @ObservedObject var model: SequencerModel
     var onNotePreview: ((SequencerNote) -> Void)?
+    var onNoteUpdate: ((SequencerNote) -> Void)?
+    var onNoteDelete: (() -> Void)?
     var scrollSync: ScrollSyncManager? = nil
     @Environment(\.colorScheme) private var colorScheme
     
@@ -139,6 +141,7 @@ struct PianoRollView: View {
     @State private var marqueeRect: CGRect? = nil
     
     var body: some View {
+        // TODO: Replace nested ScrollViews with a single NSScrollView wrapper for proper 2D scrolling with both scrollbars visible
         // Vertical scroll wraps both piano keys and grid together
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
@@ -147,7 +150,7 @@ struct PianoRollView: View {
                     pianoKeys
                         .frame(width: PianoRollLayout.pianoKeyWidth)
                     
-                    Theme.structuralDivider.frame(width: 1)
+                    Theme.structuralDivider.opacity(0.4).frame(width: 1)
                     
                     // Grid area: horizontal scroll only
                     ScrollView(.horizontal) {
@@ -166,10 +169,19 @@ struct PianoRollView: View {
                 }
             }
             .background(Theme.fieldColor(colorScheme))
-            .onChange(of: model.highlightedPitch) { pitch in
+            .onChange(of: model.highlightedPitch) { _, pitch in
                 if let pitch = pitch {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         proxy.scrollTo(Int(pitch), anchor: .center)
+                    }
+                }
+            }
+            .onChange(of: model.selectedNoteId) { _, _ in
+                if let note = model.selectedNote {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            proxy.scrollTo(Int(note.pitch), anchor: .bottom)
+                        }
                     }
                 }
             }
@@ -205,6 +217,8 @@ struct PianoRollView: View {
             
             // 4. Notes on top
             notesLayer
+                .compositingGroup()
+                .shadow(color: Theme.dark.opacity(0.15), radius: 10, x: 0, y: 1)
             
             // 5. Scale hatch overlay (sits above notes, passes through clicks)
             if model.showScaleHelper {
@@ -250,6 +264,7 @@ struct PianoRollView: View {
                             }
                         }
             }
+            Color.clear.frame(height: PianoRollLayout.rowHeight)
         }
     }
     
@@ -293,6 +308,7 @@ struct PianoRollView: View {
                 )
                 .id(pitch)
             }
+            Color.clear.frame(height: PianoRollLayout.rowHeight)
         }
         .background(Theme.fieldColor(colorScheme))
     }
@@ -389,14 +405,19 @@ struct PianoRollView: View {
                             marqueeRect = nil
                             marqueeOrigin = nil
                         } else {
-                            // Regular click to add a note
+                            // Regular click: deselect first if anything is selected
                             let dist = abs(value.translation.width) + abs(value.translation.height)
                             guard dist < 4 else { return }
-                            let beat = PianoRollLayout.beatForX(value.location.x)
-                            let pitch = PianoRollLayout.pitchForY(value.location.y)
-                            if model.noteAt(beat: beat, pitch: pitch) == nil {
-                                let note = model.addNote(atBeat: beat, pitch: pitch, duration: 1.0)
-                                onNotePreview?(note)
+                            if !model.selectedNoteIds.isEmpty {
+                                model.clearSelection()
+                            } else {
+                                // Add a note only when nothing was selected
+                                let beat = PianoRollLayout.beatForX(value.location.x)
+                                let pitch = PianoRollLayout.pitchForY(value.location.y)
+                                if model.noteAt(beat: beat, pitch: pitch) == nil {
+                                    let note = model.addNote(atBeat: beat, pitch: pitch, duration: 1.0)
+                                    onNotePreview?(note)
+                                }
                             }
                         }
                     }
@@ -458,6 +479,7 @@ struct PianoRollGridBackground: View {
                             }
                         }
                 }
+                Color.clear.frame(height: PianoRollLayout.rowHeight)
             }
             
             // 16th note subdivision lines (light)
@@ -577,14 +599,14 @@ struct NoteActions {
 
 // MARK: - Note Rectangle View
 
-struct NoteRectView: View, @preconcurrency Equatable {
+struct NoteRectView: View, Equatable {
     let note: SequencerNote
     let isSelected: Bool
     let isInMultiSelect: Bool
     let groupDragOffset: CGSize
     var actions: NoteActions
     
-    static func == (lhs: NoteRectView, rhs: NoteRectView) -> Bool {
+    nonisolated static func == (lhs: NoteRectView, rhs: NoteRectView) -> Bool {
         lhs.note == rhs.note &&
         lhs.isSelected == rhs.isSelected &&
         lhs.isInMultiSelect == rhs.isInMultiSelect &&
@@ -616,14 +638,14 @@ struct NoteRectView: View, @preconcurrency Equatable {
     private var noteWidth: CGFloat { CGFloat(note.duration) * PianoRollLayout.beatWidth }
     private var noteHeight: CGFloat { PianoRollLayout.rowHeight }
     
-    // Visual width includes resize offset
-    private var visualWidth: CGFloat { max(noteWidth + resizeOffset, 6) }
+    // Visual width includes resize offset, inset 0.5px each side
+    private var visualWidth: CGFloat { max(noteWidth + resizeOffset - 1, 6) }
     
     var body: some View {
         noteBody
             .frame(width: visualWidth, height: noteHeight - 2)
             .offset(
-                x: x + effectiveOffset.width,
+                x: x + 0.5 + effectiveOffset.width,
                 y: y + 1 + effectiveOffset.height
             )
             .zIndex(isSelected ? 10 : (isDragging ? 5 : 1))
@@ -633,13 +655,13 @@ struct NoteRectView: View, @preconcurrency Equatable {
         ZStack(alignment: .trailing) {
             // Main note rectangle
             RoundedRectangle(cornerRadius: 3)
-                .fill(noteColor.opacity(isDragging ? 0.6 : 0.8))
+                .fill(noteColor.opacity(isDragging ? 0.6 : 1))
                 .overlay(
                     RoundedRectangle(cornerRadius: 3)
                         .stroke(
                             (isSelected || isInMultiSelect)
                                 ? Theme.accent
-                                : (PitchConstants.isBlackKey(note.pitch) ? noteColor.opacity(0.5) : Theme.dark.opacity(0.5)),
+                                : (PitchConstants.isBlackKey(note.pitch) ? noteColor.opacity(0.5) : Theme.dark.opacity(0.15)),
                             lineWidth: (isSelected || isInMultiSelect) ? 2 : 0.5
                         )
                 )
@@ -656,6 +678,13 @@ struct NoteRectView: View, @preconcurrency Equatable {
                 .highPriorityGesture(resizeGesture)
         }
         .contentShape(Rectangle())
+        .onHover { hovering in
+            if hovering {
+                NSCursor.openHand.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
         .gesture(moveGesture)
     }
     
@@ -714,6 +743,8 @@ struct NoteRectView: View, @preconcurrency Equatable {
                 let dist = sqrt(value.translation.width * value.translation.width + value.translation.height * value.translation.height)
                 guard dist > 4 else { return }
                 
+                if !isDragging { NSCursor.closedHand.push() }
+                
                 // Alt-drag: duplicate note on first real drag movement
                 if !didDuplicate && NSEvent.modifierFlags.contains(.option) {
                     didDuplicate = true
@@ -728,6 +759,7 @@ struct NoteRectView: View, @preconcurrency Equatable {
                 }
             }
             .onEnded { value in
+                NSCursor.pop()
                 let dist = sqrt(value.translation.width * value.translation.width + value.translation.height * value.translation.height)
                 
                 let beatDelta = PianoRollLayout.beatForX(value.translation.width)
