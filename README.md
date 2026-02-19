@@ -2,7 +2,7 @@
 
 A native macOS app for arranging and performing with [Teenage Engineering's Choir dolls](https://teenage.engineering/products/choir) via Bluetooth MIDI.
 
-![Choir Arranger](docs/screenshot.png)
+![Choir Arranger](docs/appMain.png)
 
 ## Download
 
@@ -39,6 +39,8 @@ The app detects the doll automatically once paired and closes the setup panel.
 
 ### Piano Roll
 
+![Piano Roll](docs/pianoroll.gif)
+
 | Action | How |
 |---|---|
 | Add a note | Click on the grid |
@@ -56,6 +58,8 @@ The app detects the doll automatically once paired and closes the setup panel.
 
 ### Note Inspector
 
+![Sound Test](docs/tester.gif)
+
 Each note carries five parameters that control the doll's voice:
 
 - **Consonant** — the attack sound (None, B, D, G, H, L, M, N, R, S, T, W, Y, Random)
@@ -65,6 +69,8 @@ Each note carries five parameters that control the doll's voice:
 - **Reverb** — room effect (0-127)
 
 ### Composer Mode
+
+![Composer](docs/composer.gif)
 
 Type words, generate lyrics, and hear them sung. Toggle from the toolbar or View menu.
 
