@@ -11,7 +11,7 @@ A native macOS app for arranging and performing with [Teenage Engineering's Choi
 Unzip and drag to Applications. No Xcode or build tools needed.
 
 ### Requirements
-- macOS 13+ (Composer features require macOS 26+)
+- macOS 26+
 - Apple Silicon or Intel Mac
 
 ## Features
@@ -89,7 +89,7 @@ Switch between English and Swedish via Help > Language. The UI updates instantly
 
 ### MIDI Export
 
-**File > Export as MIDI...** (Cmd+Shift+E) saves your arrangement as a standard `.mid` file.
+**File > Export as MIDI...** (Cmd+Shift+E) saves your arrangement as a standard `.mid` file with notes and phoneme CC data. Open in Logic, Ableton, or any DAW — phoneme controls show up as MIDI automations.
 
 | CC | Parameter |
 |---|---|
@@ -100,7 +100,7 @@ Switch between English and Swedish via Help > Language. The UI updates instantly
 
 ## How AI Is Used
 
-Choir Arranger uses **Apple Foundation Models** (on-device, macOS 26+) for two optional features in the Composer:
+Choir Arranger uses **Apple Foundation Models** (on-device) for two features in the Composer:
 
 1. **Lyric generation** — when you click a Recompose button, the on-device model writes a short lyric from your theme words. The model runs entirely on your Mac. No text is sent to any server.
 
@@ -109,13 +109,12 @@ Choir Arranger uses **Apple Foundation Models** (on-device, macOS 26+) for two o
 **What AI does NOT do:**
 - Phoneme extraction uses offline dictionaries (CMU Pronouncing Dictionary for English, OpenSLR #29 for Swedish) — no AI involved
 - Playback, synthesis, MIDI, and all audio processing are deterministic code — no AI involved
-- The app works fully without AI features (macOS 13+). AI features require macOS 26+ with Apple Intelligence enabled
 
 **Privacy:** All AI processing happens on-device via Apple's framework. No data leaves your Mac. No accounts, no telnet, no analytics.
 
 ## Building from Source
 
-Requires macOS 13+ and Xcode 15+.
+Requires macOS 26+ and Xcode 26+.
 
 ```bash
 swift run
