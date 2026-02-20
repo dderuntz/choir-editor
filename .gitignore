@@ -16,3 +16,4 @@ export/
 *.xcarchive/
 ExportOptions.plist
 .release/
+research/
