@@ -17,3 +17,4 @@ export/
 ExportOptions.plist
 .release/
 research/
+*.code-workspace
