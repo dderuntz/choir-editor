@@ -99,6 +99,35 @@ class FileMenuActions: NSObject {
     }
     
     @objc func exportMIDI(_ sender: Any?) { showExportMIDIDialog() }
+
+    /// Export as OP-XY project file.
+    @discardableResult
+    func showExportXYDialog() -> Bool {
+        guard let model else { return false }
+        let panel = NSSavePanel()
+        panel.title = "Export as OP-XY"
+        let baseName = model.documentName == "Untitled" ? "Untitled" : model.documentName
+        panel.nameFieldStringValue = "\(baseName).xy"
+        panel.allowedContentTypes = [.init(filenameExtension: "xy") ?? .data]
+        panel.allowsOtherFileTypes = false
+        panel.isExtensionHidden = false
+
+        guard panel.runModal() == .OK, var url = panel.url else { return false }
+
+        if url.pathExtension != "xy" {
+            url = url.appendingPathExtension("xy")
+        }
+
+        do {
+            try model.exportXY(to: url)
+            return true
+        } catch {
+            log.error("Error exporting OP-XY: \(error)")
+            return false
+        }
+    }
+
+    @objc func exportXY(_ sender: Any?) { showExportXYDialog() }
     
     /// Show NSOpenPanel and load. Returns true if loaded.
     @discardableResult

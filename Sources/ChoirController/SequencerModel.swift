@@ -14,7 +14,7 @@ struct SequencerNote: Identifiable, Equatable, Codable {
     var startBeat: Double     // Position in beats
     var duration: Double      // Length in beats (min 0.25 for 16th)
     var velocity: UInt8 = 100
-    var consonant: UInt8 = 125  // CC2 (None default)
+    var consonant: UInt8 = 127  // CC2 (user-requested default)
     var vowel: UInt8 = 0        // CC3 (Random default)
     var vibrato: UInt8 = 64     // CC1
     var reverb: UInt8 = 32      // CC4
@@ -125,6 +125,22 @@ enum MusicalKey: Int, CaseIterable, Identifiable {
 
 @MainActor
 class SequencerModel: ObservableObject {
+    private enum XYExportError: LocalizedError {
+        case missingTemplate(URL)
+        case emptyArrangement
+        case exportFailed(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .missingTemplate(let url):
+                return "Missing OP-XY template at \(url.path). Set CHOIR_XY_TEMPLATE to a valid .xy file."
+            case .emptyArrangement:
+                return "No notes to export."
+            case .exportFailed(let message):
+                return "OP-XY export failed: \(message)"
+            }
+        }
+    }
     
     @Published var notes: [SequencerNote] = []
     @Published var selectedNoteId: UUID? = nil
@@ -472,6 +488,139 @@ class SequencerModel: ObservableObject {
     
     private static func uint16BE(_ value: UInt16) -> [UInt8] {
         [UInt8((value >> 8) & 0xFF), UInt8(value & 0xFF)]
+    }
+
+    // MARK: - OP-XY Export
+
+    /// Export the arrangement as an OP-XY project file.
+    ///
+    /// Current MVP scope:
+    /// - Writes notes to Track 11 (MIDI track) using event type 0x36.
+    /// - Applies tempo and groove type in header.
+    /// - Preserves unknown metadata/lock regions from the template file.
+    func exportXY(to url: URL) throws {
+        guard !notes.isEmpty else {
+            throw XYExportError.emptyArrangement
+        }
+
+        let root = Self.repoRootURL()
+        let templateURL: URL = {
+            if let env = ProcessInfo.processInfo.environment["CHOIR_XY_TEMPLATE"], !env.isEmpty {
+                return URL(fileURLWithPath: env)
+            }
+            return root
+                .appendingPathComponent(".release/research/dderuntz-saves2/04f b-check.xy")
+        }()
+        if !FileManager.default.fileExists(atPath: templateURL.path) {
+            throw XYExportError.missingTemplate(templateURL)
+        }
+
+        let sortedNotes = notes
+            .sorted { ($0.startBeat, $0.pitch, $0.id.uuidString) < ($1.startBeat, $1.pitch, $1.id.uuidString) }
+
+        typealias StepLockAccumulator = (cc1: Int?, cc2: Int?, cc3: Int?, cc4: Int?)
+        func mergeLockLane(
+            current: Int?,
+            incoming: Int,
+            defaultValue: Int,
+            step: Int,
+            laneName: String
+        ) throws -> Int? {
+            guard incoming != defaultValue else { return current }
+            if let current, current != incoming {
+                throw XYExportError.exportFailed(
+                    "conflicting \(laneName) lock values on step \(step) are not yet supported"
+                )
+            }
+            return incoming
+        }
+
+        var lockByStep: [Int: StepLockAccumulator] = [:]
+        let xyNotes = try sortedNotes.map { note in
+            let step = Int((note.startBeat * 4.0).rounded(.toNearestOrAwayFromZero)) + 1
+            let gateTicks = max(0, Int((note.duration * 4.0 * 480.0).rounded(.toNearestOrAwayFromZero)))
+
+            var lock = lockByStep[step] ?? (nil, nil, nil, nil)
+            lock.cc1 = try mergeLockLane(
+                current: lock.cc1,
+                incoming: Int(note.vibrato),
+                defaultValue: 64,
+                step: step,
+                laneName: "CC1"
+            )
+            lock.cc2 = try mergeLockLane(
+                current: lock.cc2,
+                incoming: Int(note.consonant),
+                defaultValue: 127,
+                step: step,
+                laneName: "CC2"
+            )
+            lock.cc3 = try mergeLockLane(
+                current: lock.cc3,
+                incoming: Int(note.vowel),
+                defaultValue: 0,
+                step: step,
+                laneName: "CC3"
+            )
+            lock.cc4 = try mergeLockLane(
+                current: lock.cc4,
+                incoming: Int(note.reverb),
+                defaultValue: 32,
+                step: step,
+                laneName: "CC4"
+            )
+            lockByStep[step] = lock
+
+            return XYExportNoteData(
+                step: step,
+                note: Int(note.pitch),
+                velocity: Int(note.velocity),
+                gateTicks: gateTicks,
+                tickOffset: 0
+            )
+        }
+        let xyStepLocks = lockByStep
+            .keys
+            .sorted()
+            .compactMap { step -> XYExportStepLockData? in
+                guard let lock = lockByStep[step] else { return nil }
+                guard lock.cc1 != nil || lock.cc2 != nil || lock.cc3 != nil || lock.cc4 != nil else {
+                    return nil
+                }
+                return XYExportStepLockData(
+                    step: step,
+                    cc1: lock.cc1,
+                    cc2: lock.cc2,
+                    cc3: lock.cc3,
+                    cc4: lock.cc4
+                )
+            }
+
+        do {
+            try XYExporter.export(
+                templateURL: templateURL,
+                outputURL: url,
+                trackIndex: 11,
+                notes: xyNotes,
+                stepLocks: xyStepLocks,
+                tempoTenths: Int((tempo * 10.0).rounded(.toNearestOrAwayFromZero)),
+                grooveType: 0 // OP-XY shuffle default
+            )
+        } catch let error as XYExporterError {
+            throw XYExportError.exportFailed(error.localizedDescription)
+        } catch {
+            throw XYExportError.exportFailed(error.localizedDescription)
+        }
+
+        log.info("Exported \(self.notes.count) notes as OP-XY to \(url.lastPathComponent)")
+    }
+
+    private static func repoRootURL() -> URL {
+        // Sources/ChoirController/SequencerModel.swift -> repo root
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
     }
     
     // MARK: - Save / Load
