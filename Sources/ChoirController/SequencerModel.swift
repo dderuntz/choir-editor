@@ -595,6 +595,8 @@ class SequencerModel: ObservableObject {
                     cc4: lock.cc4
                 )
             }
+        let locksDisabled = ProcessInfo.processInfo.environment["CHOIR_XY_DISABLE_LOCKS"] == "1"
+        let effectiveStepLocks = locksDisabled ? [] : xyStepLocks
 
         do {
             try XYExporter.export(
@@ -602,7 +604,7 @@ class SequencerModel: ObservableObject {
                 outputURL: url,
                 trackIndex: 11,
                 notes: xyNotes,
-                stepLocks: xyStepLocks,
+                stepLocks: effectiveStepLocks,
                 tempoTenths: Int((tempo * 10.0).rounded(.toNearestOrAwayFromZero)),
                 grooveType: 0 // OP-XY shuffle default
             )
@@ -610,6 +612,60 @@ class SequencerModel: ObservableObject {
             throw XYExportError.exportFailed(error.localizedDescription)
         } catch {
             throw XYExportError.exportFailed(error.localizedDescription)
+        }
+
+        // Temporary diagnostics for lock export debugging.
+        do {
+            let outputData = try Data(contentsOf: url)
+            let outputBytes = [UInt8](outputData)
+            var exportedLockEntries: [XYExporter.Track11LockEntry] = []
+            if let body = XYExporter.inspectTrackBody(in: outputBytes, trackIndex: 11),
+               let table = XYExporter.inspectTrack11LockTable(in: body) {
+                exportedLockEntries = table.entries
+            }
+
+            if !effectiveStepLocks.isEmpty && exportedLockEntries.isEmpty {
+                log.error("OP-XY export wrote no lock entries; requested \(effectiveStepLocks.count) step lock(s).")
+            }
+
+            if ProcessInfo.processInfo.environment["CHOIR_XY_EXPORT_DEBUG"] == "1" {
+                func laneMask(for lock: XYExportStepLockData) -> UInt8 {
+                    var mask: UInt8 = 0
+                    if lock.cc1 != nil { mask |= 0x01 }
+                    if lock.cc2 != nil { mask |= 0x02 }
+                    if lock.cc3 != nil { mask |= 0x04 }
+                    if lock.cc4 != nil { mask |= 0x08 }
+                    return mask
+                }
+                func hex(_ bytes: [UInt8]) -> String {
+                    bytes.map { String(format: "%02x", $0) }.joined(separator: " ")
+                }
+
+                let requestedTopology = effectiveStepLocks
+                    .sorted { $0.step < $1.step }
+                    .map { "\($0.step):\(laneMask(for: $0))" }
+                    .joined(separator: "|")
+
+                var lines: [String] = []
+                lines.append("OP-XY Export Debug")
+                lines.append("file=\(url.path)")
+                lines.append("notes=\(xyNotes.count)")
+                lines.append("requested_step_locks=\(effectiveStepLocks.count)")
+                lines.append("locks_disabled=\(locksDisabled ? 1 : 0)")
+                lines.append("requested_topology=\(requestedTopology)")
+                lines.append("exported_lock_entries=\(exportedLockEntries.count)")
+                let exportedSlots = exportedLockEntries.map(\.slot).map(String.init).joined(separator: ",")
+                lines.append("exported_slots=\(exportedSlots)")
+                for entry in exportedLockEntries {
+                    lines.append("slot \(entry.slot): \(hex(entry.bytes))")
+                }
+
+                let debugURL = url.deletingPathExtension().appendingPathExtension("export-debug.txt")
+                try lines.joined(separator: "\n").write(to: debugURL, atomically: true, encoding: .utf8)
+                log.info("Wrote OP-XY export debug log to \(debugURL.path)")
+            }
+        } catch {
+            log.error("OP-XY export debug inspection failed: \(error.localizedDescription)")
         }
 
         log.info("Exported \(self.notes.count) notes as OP-XY to \(url.lastPathComponent)")

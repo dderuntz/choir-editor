@@ -147,6 +147,7 @@ enum XYExporter {
 
         var output = project.serialize()
         try applyHeaderPatch(bytes: &output, tempoTenths: tempoTenths, grooveType: grooveType)
+        output = try canonicalizedRLEProject(output)
         try Data(output).write(to: outputURL, options: .atomic)
     }
 
@@ -186,32 +187,64 @@ enum XYExporter {
     private enum Track11LockLane {
         case cc1
         case cc2
+        case cc3
+        case cc4
     }
 
-    private struct Track11SingleLockTemplate {
+    private struct Track11LaneBindingTemplate {
         let step: Int
         let lane: Track11LockLane
-        let lockSlot: Int
-        let headerByte: UInt8
+        let markerOffset: Int
+        let valueOffset: Int
         let nonZeroMarker: UInt8
         let zeroMarker: UInt8?
-        let metadata44: UInt16
-        let metadata48: UInt16
+        let zeroOmitsValueByte: Bool
+
+        init(
+            step: Int,
+            lane: Track11LockLane,
+            markerOffset: Int,
+            valueOffset: Int,
+            nonZeroMarker: UInt8,
+            zeroMarker: UInt8?,
+            zeroOmitsValueByte: Bool = false
+        ) {
+            self.step = step
+            self.lane = lane
+            self.markerOffset = markerOffset
+            self.valueOffset = valueOffset
+            self.nonZeroMarker = nonZeroMarker
+            self.zeroMarker = zeroMarker
+            self.zeroOmitsValueByte = zeroOmitsValueByte
+        }
     }
 
-    private struct Track11StepRecordTemplate {
-        let step: Int
-        let lane: Track11LockLane
-        let lockSlot: Int
-        let headerByte: UInt8
-        let nonZeroMarker: UInt8
-        let zeroMarker: UInt8?
+    private struct Track11LockEntryTemplate {
+        let slot: Int
+        let bytes: [UInt8]
+        let bindings: [Track11LaneBindingTemplate]
     }
 
-    private struct Track11MultiLockTemplate {
-        let steps: [Int]
-        let records: [Track11StepRecordTemplate]
+    private struct Track11LockTopologyTemplate {
+        let entries: [Track11LockEntryTemplate]
         let metadata: [Int: UInt16]
+        let zeroMetadataAdjustments: [Int: Int]
+        let lockRegionSuffix: [UInt8]?
+        let applyMask6ValueMarkerOverrides: Bool
+
+        init(
+            entries: [Track11LockEntryTemplate],
+            metadata: [Int: UInt16],
+            zeroMetadataAdjustments: [Int: Int] = [:],
+            lockRegionSuffix: [UInt8]? = nil,
+            applyMask6ValueMarkerOverrides: Bool = true
+        ) {
+            self.entries = entries
+            self.metadata = metadata
+            self.zeroMetadataAdjustments = zeroMetadataAdjustments
+            self.lockRegionSuffix = lockRegionSuffix
+            self.applyMask6ValueMarkerOverrides = applyMask6ValueMarkerOverrides
+        }
     }
 
     private struct TrackBlock {
@@ -231,6 +264,11 @@ enum XYExporter {
         let startOffset: Int
         let endOffset: Int
         let entries: [Track11LockEntry]
+    }
+
+    private struct Track11LockSynthesisResult {
+        let tableBytes: [UInt8]
+        let compactPrefixBytes: [UInt8]
     }
 
     private struct Project {
@@ -362,7 +400,7 @@ enum XYExporter {
         var body = try activateBody(track.body)
         if trackIndex == midiTrackIndex {
             body = applyTrack11DefaultProfile(to: body)
-            body = applyTrack11StepLocks(to: body, stepLocks: stepLocks)
+            body = try applyTrack11StepLocks(to: body, stepLocks: stepLocks)
         }
         body += try buildEvent(notes: notes, eventType: 0x36)
 
@@ -415,217 +453,1235 @@ enum XYExporter {
         return out
     }
 
-    private static func applyTrack11StepLocks(to body: [UInt8], stepLocks: [Track11StepLock]) -> [UInt8] {
+    private static func applyTrack11StepLocks(to body: [UInt8], stepLocks: [Track11StepLock]) throws -> [UInt8] {
         guard !stepLocks.isEmpty else { return body }
-        guard let table = parseTrack11LockTable(in: body) else { return body }
+        guard let table = parseTrack11LockTable(in: body) else {
+            throw XYExporterError.invalidTemplate("Track 11 lock table marker was not found")
+        }
 
-        guard let synthesizedTable = synthesizeTrack11LockTable(
+        guard let synthesis = synthesizeTrack11LockTable(
             existing: table,
             stepLocks: stepLocks
         ) else {
-            return body
+            let topology = track11TopologyKey(for: stepLocks)
+            throw XYExporterError.unsupported("Track 11 step-lock topology is not capture-backed: \(topology)")
         }
 
         var out = body
-        out.replaceSubrange(table.startOffset..<table.endOffset, with: synthesizedTable)
+        if let defaultsOffset = findSubsequence(
+            in: out,
+            needle: midiDefaultsPrefixMarker,
+            start: table.endOffset,
+            endExclusive: out.count
+        ) {
+            let replacement = synthesis.tableBytes + synthesis.compactPrefixBytes
+            out.replaceSubrange(table.startOffset..<defaultsOffset, with: replacement)
+        } else {
+            out.replaceSubrange(table.startOffset..<table.endOffset, with: synthesis.tableBytes)
+        }
         return out
     }
 
     private static func synthesizeTrack11LockTable(
         existing table: Track11LockTable,
         stepLocks: [Track11StepLock]
-    ) -> [UInt8]? {
+    ) -> Track11LockSynthesisResult? {
         // Safety gate: only synthesize from clean defaults templates
         // and only for capture-backed lock topologies.
         guard table.entries.isEmpty else { return nil }
-        if let multi = synthesizeTrack11MultiLockTable(stepLocks: stepLocks) {
-            return multi
-        }
+        guard let template = track11LockTopologyTemplate(for: stepLocks) else { return nil }
 
-        guard stepLocks.count == 1 else { return nil }
-        guard let lock = stepLocks.first else { return nil }
-        guard lock.laneMask == 0x01 || lock.laneMask == 0x02 else { return nil }
-        let lane: Track11LockLane = lock.laneMask == 0x01 ? .cc1 : .cc2
-        let value: Int = lane == .cc1 ? (lock.cc1 ?? 0) : (lock.cc2 ?? 0)
-
-        guard let template = track11SingleLockTemplate(step: lock.step, lane: lane) else {
-            return nil
-        }
-        guard let pair = encodeTrack11SingleLaneValue(
-            value: value,
-            nonZeroMarker: template.nonZeroMarker,
-            zeroMarker: template.zeroMarker
-        ) else {
-            return nil
-        }
-
-        let lockEntry: [UInt8] = [template.headerByte, pair.marker, pair.value, 0x00, 0x00]
-        return buildTrack11LockTableBytes(
-            entries: [
-                template.lockSlot: lockEntry,
-                44: track11MetadataEntry(word: template.metadata44),
-                48: track11MetadataEntry(word: template.metadata48)
-            ]
-        )
-    }
-
-    private static func synthesizeTrack11MultiLockTable(stepLocks: [Track11StepLock]) -> [UInt8]? {
-        // Current capture-backed multi-step synthesis scope:
-        // CC1-only prefix chains from 06a 1..7.
-        guard stepLocks.count >= 2 else { return nil }
-        guard stepLocks.allSatisfy({ $0.laneMask == 0x01 && $0.cc1 != nil }) else { return nil }
-        let requestedSteps = stepLocks.map(\.step).sorted()
-        guard let template = track11CC1PrefixTemplate(for: requestedSteps) else { return nil }
-
-        let lockByStep = Dictionary(uniqueKeysWithValues: stepLocks.map { ($0.step, $0) })
+        var metadataWords = template.metadata
         var entries: [Int: [UInt8]] = [:]
-        for (metaSlot, metaWord) in template.metadata {
+        var didEncodeZeroValue = false
+        let lockByStep = Dictionary(uniqueKeysWithValues: stepLocks.map { ($0.step, $0) })
+
+        for entryTemplate in template.entries {
+            var lockEntry = entryTemplate.bytes
+            for binding in entryTemplate.bindings {
+                guard binding.markerOffset < lockEntry.count,
+                      binding.valueOffset < lockEntry.count,
+                      let lock = lockByStep[binding.step],
+                      let value = track11LockValue(lock: lock, lane: binding.lane),
+                      let pair = encodeTrack11SingleLaneValue(
+                        value: value,
+                        nonZeroMarker: binding.nonZeroMarker,
+                        zeroMarker: binding.zeroMarker
+                      ) else {
+                    return nil
+                }
+                if pair.value == 0 {
+                    didEncodeZeroValue = true
+                }
+                var marker = pair.marker
+                if template.applyMask6ValueMarkerOverrides,
+                   (binding.lane == .cc2 || binding.lane == .cc3),
+                   let cc2 = lock.cc2,
+                   let cc3 = lock.cc3,
+                   let override = track11Mask6MarkerOverride(cc2: cc2, cc3: cc3) {
+                    marker = binding.lane == .cc2 ? override.cc2 : override.cc3
+                }
+                lockEntry[binding.markerOffset] = marker
+                if pair.value == 0,
+                   binding.zeroOmitsValueByte {
+                    lockEntry.remove(at: binding.valueOffset)
+                } else {
+                    lockEntry[binding.valueOffset] = pair.value
+                }
+            }
+            entries[entryTemplate.slot] = lockEntry
+        }
+
+        if didEncodeZeroValue {
+            for (slot, delta) in template.zeroMetadataAdjustments {
+                guard let current = metadataWords[slot] else { continue }
+                let next = Int(current) + delta
+                guard (0...0xFFFF).contains(next) else { return nil }
+                metadataWords[slot] = UInt16(next)
+            }
+        }
+        for (metaSlot, metaWord) in metadataWords {
             entries[metaSlot] = track11MetadataEntry(word: metaWord)
         }
-
-        for record in template.records {
-            guard let lock = lockByStep[record.step], let value = lock.cc1 else { return nil }
-            guard let pair = encodeTrack11SingleLaneValue(
-                value: value,
-                nonZeroMarker: record.nonZeroMarker,
-                zeroMarker: record.zeroMarker
-            ) else {
-                return nil
-            }
-            entries[record.lockSlot] = [record.headerByte, pair.marker, pair.value, 0x00, 0x00]
-        }
-
-        return buildTrack11LockTableBytes(entries: entries)
+        let compactPrefixBytes = track11CompactLockPrefix(maxUsedSlot: entries.keys.max())
+        let suffixBytes = template.lockRegionSuffix ?? compactPrefixBytes
+        return Track11LockSynthesisResult(
+            tableBytes: buildTrack11LockTableBytes(entries: entries),
+            compactPrefixBytes: suffixBytes
+        )
     }
 
     private static func track11MetadataEntry(word: UInt16) -> [UInt8] {
         [UInt8(word & 0x00FF), UInt8((word >> 8) & 0x00FF), 0x00, 0x00]
     }
 
-    private static func track11SingleLockTemplate(step: Int, lane: Track11LockLane) -> Track11SingleLockTemplate? {
-        // Capture-backed templates from clean single-lock fixtures:
-        // - 06a 1.xy (step1 cc1)
-        // - 04f b-s3-cc2v9.xy (step3 cc2)
-        // - 07a 1/2/3.xy (step5/8/12 cc1)
+    private static func track11LockTopologyTemplate(for stepLocks: [Track11StepLock]) -> Track11LockTopologyTemplate? {
+        let canonical = stepLocks.sorted { lhs, rhs in
+            if lhs.step == rhs.step { return lhs.laneMask < rhs.laneMask }
+            return lhs.step < rhs.step
+        }
+
+        if canonical.count == 1,
+           let lock = canonical.first,
+           lock.laneMask == 0x01 || lock.laneMask == 0x02 {
+            let lane: Track11LockLane = lock.laneMask == 0x01 ? .cc1 : .cc2
+            return track11SingleLaneTemplate(step: lock.step, lane: lane)
+        }
+
+        let key = track11TopologyKey(for: canonical)
+        if let exact = track11CapturedTopologyTemplate(key: key) {
+            return exact
+        }
+
+        // Transplant is explicitly opt-in because it can encode only a captured
+        // subset of the requested mask-6 topology.
+        let lockStrategy = (ProcessInfo.processInfo.environment["CHOIR_XY_LOCK_STRATEGY"] ?? "").lowercased()
+        let shouldApplyMask6SubsetFallback: Bool = {
+            switch lockStrategy {
+            case "transplant":
+                return true
+            case "", "strict":
+                return false
+            default:
+                return false
+            }
+        }()
+        if shouldApplyMask6SubsetFallback,
+           canonical.allSatisfy({ $0.laneMask == 0x06 }) {
+            let requestedSteps = Set(canonical.map(\.step))
+            if let subsetKey = bestCapturedMask6SubsetTopologyKey(for: requestedSteps) {
+                return track11CapturedTopologyTemplate(key: subsetKey)
+            }
+        }
+
+        return nil
+    }
+
+    // Captured mask-6 keys used for fallback subset matching.
+    private static let track11CapturedMask6FallbackKeys: [String] = [
+        "3:6",
+        "1:6",
+        "4:6",
+        "8:6",
+        "16:6",
+        "17:6",
+        "20:6",
+        "24:6",
+        "29:6",
+        "30:6",
+        "33:6",
+        "36:6",
+        "40:6",
+        "46:6",
+        "49:6",
+        "51:6",
+        "52:6",
+        "55:6",
+        "63:6",
+        "64:6",
+        "1:6|4:6",
+        "1:6|8:6|16:6",
+        "17:6|20:6|24:6",
+        "29:6|30:6|33:6|36:6",
+        "46:6|49:6|51:6|52:6|55:6",
+        "63:6|64:6",
+        "1:6|4:6|8:6|16:6|17:6|20:6|24:6|29:6|30:6|33:6|36:6|40:6|46:6|49:6|51:6|52:6|55:6|63:6|64:6",
+        "1:6|2:6|4:6|8:6|16:6|17:6|20:6|24:6|29:6|30:6|33:6|36:6|40:6|46:6|49:6|51:6|52:6|55:6|63:6|64:6",
+        "1:6|2:6|4:6|6:6|8:6|16:6|17:6|20:6|24:6|29:6|30:6|33:6|36:6|40:6|46:6|49:6|51:6|52:6|55:6|63:6|64:6",
+        "1:6|2:6|4:6|6:6|7:6|8:6|16:6|17:6|20:6|24:6|29:6|30:6|33:6|36:6|40:6|46:6|49:6|51:6|52:6|55:6|63:6|64:6",
+        "1:6|4:6|7:6|8:6|16:6|17:6|20:6|24:6|29:6|30:6|33:6|36:6|40:6|46:6|49:6|51:6|52:6|55:6|63:6|64:6",
+        "1:6|4:6|7:6|8:6|11:6|16:6|17:6|20:6|24:6|29:6|30:6|33:6|36:6|40:6|46:6|49:6|51:6|52:6|55:6|63:6|64:6",
+        "1:6|2:6|4:6|7:6|8:6|11:6|16:6|17:6|20:6|24:6|29:6|30:6|33:6|36:6|40:6|46:6|49:6|51:6|52:6|55:6|63:6|64:6",
+        "1:6|2:6|4:6|6:6|7:6|8:6|11:6|16:6|17:6|20:6|24:6|29:6|30:6|33:6|36:6|40:6|46:6|49:6|51:6|52:6|55:6|63:6|64:6",
+        "1:6|2:6|4:6|6:6|7:6|8:6|11:6|14:6|16:6|17:6|20:6|24:6|29:6|30:6|33:6|36:6|40:6|46:6|49:6|51:6|52:6|55:6|63:6|64:6"
+    ]
+
+    private static func bestCapturedMask6SubsetTopologyKey(for requestedSteps: Set<Int>) -> String? {
+        var bestKey: String?
+        var bestCount: Int = -1
+        for key in track11CapturedMask6FallbackKeys {
+            guard let candidateSteps = track11Mask6Steps(fromTopologyKey: key) else { continue }
+            guard candidateSteps.isSubset(of: requestedSteps) else { continue }
+            let count = candidateSteps.count
+            if count > bestCount {
+                bestCount = count
+                bestKey = key
+                continue
+            }
+            if count == bestCount, let current = bestKey, key < current {
+                bestKey = key
+            }
+        }
+        return bestKey
+    }
+
+    private static func track11Mask6Steps(fromTopologyKey key: String) -> Set<Int>? {
+        let pairs = key.split(separator: "|")
+        guard !pairs.isEmpty else { return nil }
+        var steps: Set<Int> = []
+        for pair in pairs {
+            let parts = pair.split(separator: ":")
+            guard parts.count == 2,
+                  let step = Int(parts[0]),
+                  let laneMask = Int(parts[1]),
+                  laneMask == 0x06 else {
+                return nil
+            }
+            steps.insert(step)
+        }
+        return steps
+    }
+
+    private static func track11TopologyKey(for stepLocks: [Track11StepLock]) -> String {
+        stepLocks
+            .sorted { lhs, rhs in
+                if lhs.step == rhs.step { return lhs.laneMask < rhs.laneMask }
+                return lhs.step < rhs.step
+            }
+            .map { "\($0.step):\($0.laneMask)" }
+            .joined(separator: "|")
+    }
+
+    private static func makeTrack11SingleLaneTopologyTemplate(
+        step: Int,
+        lane: Track11LockLane,
+        slot: Int,
+        bytes: [UInt8],
+        markerOffset: Int,
+        valueOffset: Int,
+        nonZeroMarker: UInt8,
+        zeroMarker: UInt8?,
+        zeroOmitsValueByte: Bool = false,
+        metadata: [Int: UInt16],
+        zeroMetadataAdjustments: [Int: Int] = [:]
+    ) -> Track11LockTopologyTemplate {
+        Track11LockTopologyTemplate(
+            entries: [
+                Track11LockEntryTemplate(
+                    slot: slot,
+                    bytes: bytes,
+                    bindings: [
+                        Track11LaneBindingTemplate(
+                            step: step,
+                            lane: lane,
+                            markerOffset: markerOffset,
+                            valueOffset: valueOffset,
+                            nonZeroMarker: nonZeroMarker,
+                            zeroMarker: zeroMarker,
+                            zeroOmitsValueByte: zeroOmitsValueByte
+                        )
+                    ]
+                )
+            ],
+            metadata: metadata,
+            zeroMetadataAdjustments: zeroMetadataAdjustments
+        )
+    }
+
+    private static func makeTrack11Mask6TopologyTemplate(
+        entries: [(step: Int, slot: Int, bytes: [UInt8])],
+        metadata: [Int: UInt16],
+        lockRegionSuffix: [UInt8]? = nil,
+        applyMask6ValueMarkerOverrides: Bool = true
+    ) -> Track11LockTopologyTemplate {
+        Track11LockTopologyTemplate(
+            entries: entries.map { entry in
+                Track11LockEntryTemplate(
+                    slot: entry.slot,
+                    bytes: entry.bytes,
+                    bindings: [
+                        Track11LaneBindingTemplate(
+                            step: entry.step,
+                            lane: .cc2,
+                            markerOffset: 1,
+                            valueOffset: 2,
+                            nonZeroMarker: entry.bytes[1],
+                            zeroMarker: nil
+                        ),
+                        Track11LaneBindingTemplate(
+                            step: entry.step,
+                            lane: .cc3,
+                            markerOffset: 3,
+                            valueOffset: 4,
+                            nonZeroMarker: entry.bytes[3],
+                            zeroMarker: nil
+                        )
+                    ]
+                )
+            },
+            metadata: metadata,
+            lockRegionSuffix: lockRegionSuffix,
+            applyMask6ValueMarkerOverrides: applyMask6ValueMarkerOverrides
+        )
+    }
+
+    private static func track11SingleLaneTemplate(step: Int, lane: Track11LockLane) -> Track11LockTopologyTemplate? {
+        // Capture-backed single-lane templates from `dderuntz-saves3/08a`.
         switch (step, lane) {
         case (1, .cc1):
-            return Track11SingleLockTemplate(
-                step: 1,
-                lane: .cc1,
-                lockSlot: 2,
-                headerByte: 0x18,
-                nonZeroMarker: 0x29,
-                zeroMarker: 0xD1,
-                metadata44: 0x01C4,
-                metadata48: 0x01FA
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 1, lane: .cc1, slot: 2, bytes: [0x18, 0xD4, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD4, zeroMarker: 0x7F, zeroOmitsValueByte: true,
+                metadata: [44: 0x01C4, 48: 0x01FA], zeroMetadataAdjustments: [44: 1]
             )
-        case (3, .cc2):
-            return Track11SingleLockTemplate(
-                step: 3,
-                lane: .cc2,
-                lockSlot: 2,
-                headerByte: 0xC2,
-                nonZeroMarker: 0x29,
-                zeroMarker: 0x84,
-                metadata44: 0x022A,
-                metadata48: 0x02EA
+        case (2, .cc1):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 2, lane: .cc1, slot: 2, bytes: [0x6C, 0xD4, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD4, zeroMarker: nil,
+                metadata: [44: 0x0178, 48: 0x01F2]
+            )
+        case (3, .cc1):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 3, lane: .cc1, slot: 2, bytes: [0xC0, 0x29, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil,
+                metadata: [44: 0x012C, 48: 0x01EA]
+            )
+        case (4, .cc1):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 4, lane: .cc1, slot: 3, bytes: [0x13, 0x29, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil,
+                metadata: [44: 0x01E1, 48: 0x01E2]
             )
         case (5, .cc1):
-            return Track11SingleLockTemplate(
-                step: 5,
-                lane: .cc1,
-                lockSlot: 3,
-                headerByte: 0x67,
-                nonZeroMarker: 0x29,
-                zeroMarker: nil,
-                metadata44: 0x0195,
-                metadata48: 0x01DA
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 5, lane: .cc1, slot: 3, bytes: [0x67, 0x29, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: 0x7F, zeroOmitsValueByte: true,
+                metadata: [44: 0x0195, 48: 0x01DA], zeroMetadataAdjustments: [44: 1]
+            )
+        case (6, .cc1):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 6, lane: .cc1, slot: 3, bytes: [0xBB, 0x29, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil,
+                metadata: [44: 0x0149, 48: 0x01D2]
+            )
+        case (7, .cc1):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 7, lane: .cc1, slot: 4, bytes: [0x0E, 0xD4, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD4, zeroMarker: nil,
+                metadata: [44: 0x01FE, 48: 0x01CA]
             )
         case (8, .cc1):
-            return Track11SingleLockTemplate(
-                step: 8,
-                lane: .cc1,
-                lockSlot: 4,
-                headerByte: 0x62,
-                nonZeroMarker: 0xD4,
-                zeroMarker: nil,
-                metadata44: 0x01B2,
-                metadata48: 0x01C2
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 8, lane: .cc1, slot: 4, bytes: [0x62, 0x29, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: 0x84, zeroOmitsValueByte: true,
+                metadata: [44: 0x01B2, 48: 0x01C2], zeroMetadataAdjustments: [44: 1]
+            )
+        case (9, .cc1):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 9, lane: .cc1, slot: 4, bytes: [0xB6, 0x29, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil,
+                metadata: [44: 0x0166, 48: 0x01BA]
+            )
+        case (10, .cc1):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 10, lane: .cc1, slot: 5, bytes: [0x09, 0xD4, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD4, zeroMarker: nil,
+                metadata: [45: 0x011A, 49: 0x01B2]
+            )
+        case (11, .cc1):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 11, lane: .cc1, slot: 5, bytes: [0x5D, 0xD4, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD4, zeroMarker: nil,
+                metadata: [44: 0x01CF, 48: 0x01AA]
             )
         case (12, .cc1):
-            return Track11SingleLockTemplate(
-                step: 12,
-                lane: .cc1,
-                lockSlot: 5,
-                headerByte: 0xB1,
-                nonZeroMarker: 0xD4,
-                zeroMarker: nil,
-                metadata44: 0x0183,
-                metadata48: 0x01A2
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 12, lane: .cc1, slot: 5, bytes: [0xB1, 0xD4, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD4, zeroMarker: 0x7F, zeroOmitsValueByte: true,
+                metadata: [44: 0x0183, 48: 0x01A2], zeroMetadataAdjustments: [44: 1]
+            )
+        case (13, .cc1):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 13, lane: .cc1, slot: 6, bytes: [0x04, 0x29, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil,
+                metadata: [45: 0x0137, 49: 0x019A]
+            )
+        case (14, .cc1):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 14, lane: .cc1, slot: 6, bytes: [0x58, 0x29, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil,
+                metadata: [44: 0x01EC, 48: 0x0192]
+            )
+        case (15, .cc1):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 15, lane: .cc1, slot: 6, bytes: [0xAC, 0xD4, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD4, zeroMarker: nil,
+                metadata: [44: 0x01A0, 48: 0x018A]
+            )
+        case (16, .cc1):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 16, lane: .cc1, slot: 6, bytes: [0xFF, 0x00, 0x29, 0x10, 0x00, 0x00],
+                markerOffset: 2, valueOffset: 3, nonZeroMarker: 0x29, zeroMarker: nil,
+                metadata: [44: 0x0154, 48: 0x0182]
+            )
+        case (1, .cc2):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 1, lane: .cc2, slot: 2, bytes: [0x1A, 0xD4, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD4, zeroMarker: nil,
+                metadata: [44: 0x02C2, 48: 0x02FA]
+            )
+        case (2, .cc2):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 2, lane: .cc2, slot: 2, bytes: [0x6E, 0xD4, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD4, zeroMarker: nil,
+                metadata: [44: 0x0276, 48: 0x02F2]
+            )
+        case (3, .cc2):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 3, lane: .cc2, slot: 2, bytes: [0xC2, 0x29, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: 0x7F, zeroOmitsValueByte: true,
+                metadata: [44: 0x022A, 48: 0x02EA], zeroMetadataAdjustments: [44: 1]
+            )
+        case (4, .cc2):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 4, lane: .cc2, slot: 3, bytes: [0x15, 0x29, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil,
+                metadata: [44: 0x02DF, 48: 0x02E2]
+            )
+        case (5, .cc2):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 5, lane: .cc2, slot: 3, bytes: [0x69, 0x29, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: 0x7F, zeroOmitsValueByte: true,
+                metadata: [44: 0x0293, 48: 0x02DA], zeroMetadataAdjustments: [44: 1]
+            )
+        case (6, .cc2):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 6, lane: .cc2, slot: 3, bytes: [0xBD, 0xD4, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD4, zeroMarker: nil,
+                metadata: [44: 0x0247, 48: 0x02D2]
+            )
+        case (7, .cc2):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 7, lane: .cc2, slot: 4, bytes: [0x10, 0x29, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil,
+                metadata: [44: 0x02FC, 48: 0x02CA]
+            )
+        case (8, .cc2):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 8, lane: .cc2, slot: 4, bytes: [0x64, 0xD4, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD4, zeroMarker: nil,
+                metadata: [44: 0x02B0, 48: 0x02C2]
+            )
+        case (9, .cc2):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 9, lane: .cc2, slot: 4, bytes: [0xB8, 0x29, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil,
+                metadata: [44: 0x0264, 48: 0x02BA]
+            )
+        case (10, .cc2):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 10, lane: .cc2, slot: 5, bytes: [0x0B, 0xD4, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD4, zeroMarker: nil,
+                metadata: [45: 0x0218, 49: 0x02B2]
+            )
+        case (11, .cc2):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 11, lane: .cc2, slot: 5, bytes: [0x5F, 0x29, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil,
+                metadata: [44: 0x02CD, 48: 0x02AA]
+            )
+        case (12, .cc2):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 12, lane: .cc2, slot: 5, bytes: [0xB3, 0x29, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil,
+                metadata: [44: 0x0281, 48: 0x02A2]
+            )
+        case (13, .cc2):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 13, lane: .cc2, slot: 6, bytes: [0x06, 0xD4, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD4, zeroMarker: nil,
+                metadata: [45: 0x0235, 49: 0x029A]
+            )
+        case (14, .cc2):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 14, lane: .cc2, slot: 6, bytes: [0x5A, 0xD4, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD4, zeroMarker: nil,
+                metadata: [44: 0x02EA, 48: 0x0292]
+            )
+        case (15, .cc2):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 15, lane: .cc2, slot: 6, bytes: [0xAE, 0x29, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil,
+                metadata: [44: 0x029E, 48: 0x028A]
+            )
+        case (16, .cc2):
+            return makeTrack11SingleLaneTopologyTemplate(
+                step: 16, lane: .cc2, slot: 7, bytes: [0x01, 0x29, 0x10, 0x00, 0x00],
+                markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil,
+                metadata: [45: 0x0252, 49: 0x0282]
             )
         default:
             return nil
         }
     }
 
-    private static func track11CC1PrefixTemplate(for steps: [Int]) -> Track11MultiLockTemplate? {
-        let canonical = steps.sorted()
-
-        let recordsPrefix: [Track11StepRecordTemplate] = [
-            Track11StepRecordTemplate(step: 1, lane: .cc1, lockSlot: 2, headerByte: 0x18, nonZeroMarker: 0x29, zeroMarker: 0xD1),
-            Track11StepRecordTemplate(step: 2, lane: .cc1, lockSlot: 3, headerByte: 0x50, nonZeroMarker: 0xD4, zeroMarker: nil),
-            Track11StepRecordTemplate(step: 3, lane: .cc1, lockSlot: 4, headerByte: 0x50, nonZeroMarker: 0x29, zeroMarker: nil),
-            Track11StepRecordTemplate(step: 4, lane: .cc1, lockSlot: 5, headerByte: 0x50, nonZeroMarker: 0x29, zeroMarker: nil),
-            Track11StepRecordTemplate(step: 9, lane: .cc1, lockSlot: 7, headerByte: 0x9F, nonZeroMarker: 0x29, zeroMarker: nil),
-            Track11StepRecordTemplate(step: 13, lane: .cc1, lockSlot: 9, headerByte: 0x4B, nonZeroMarker: 0x29, zeroMarker: nil),
-            Track11StepRecordTemplate(step: 16, lane: .cc1, lockSlot: 10, headerByte: 0xF8, nonZeroMarker: 0x29, zeroMarker: nil)
-        ]
-
-        switch canonical {
-        case [1]:
-            return Track11MultiLockTemplate(
-                steps: canonical,
-                records: Array(recordsPrefix.prefix(1)),
-                metadata: [44: 0x01C4, 48: 0x01FA]
+    private static func track11CapturedTopologyTemplate(key: String) -> Track11LockTopologyTemplate? {
+        // Capture-backed topologies from `dderuntz-saves3/08a`:
+        // - A4 multi-lane step-3 masks
+        // - A5 non-prefix multi-step CC1 sets
+        // Capture-backed mask-6 (CC2+CC3) matrix from `dderuntz-saves08b`:
+        // - B1 isolated single-step set
+        // - B2 cumulative multi-step sets (including full Robots-like topology)
+        switch key {
+        case "3:3":
+            return Track11LockTopologyTemplate(
+                entries: [
+                    Track11LockEntryTemplate(
+                        slot: 2,
+                        bytes: [0xC0, 0xD4, 0x40, 0x29, 0x20, 0x00, 0x00],
+                        bindings: [
+                            Track11LaneBindingTemplate(step: 3, lane: .cc1, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD4, zeroMarker: nil),
+                            Track11LaneBindingTemplate(step: 3, lane: .cc2, markerOffset: 3, valueOffset: 4, nonZeroMarker: 0x29, zeroMarker: nil)
+                        ]
+                    )
+                ],
+                metadata: [44: 0x032A, 48: 0x03EA]
             )
-        case [1, 2]:
-            return Track11MultiLockTemplate(
-                steps: canonical,
-                records: Array(recordsPrefix.prefix(2)),
-                metadata: [45: 0x0170, 46: 0x0105, 50: 0x01F2]
+        case "3:7":
+            return Track11LockTopologyTemplate(
+                entries: [
+                    Track11LockEntryTemplate(
+                        slot: 2,
+                        bytes: [0xC0, 0x2A, 0x40, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00],
+                        bindings: [
+                            Track11LaneBindingTemplate(step: 3, lane: .cc1, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x2A, zeroMarker: nil),
+                            Track11LaneBindingTemplate(step: 3, lane: .cc2, markerOffset: 3, valueOffset: 4, nonZeroMarker: 0xD4, zeroMarker: nil),
+                            Track11LaneBindingTemplate(step: 3, lane: .cc3, markerOffset: 5, valueOffset: 6, nonZeroMarker: 0x29, zeroMarker: nil)
+                        ]
+                    )
+                ],
+                metadata: [44: 0x0728, 48: 0x07EA]
             )
-        case [1, 2, 3]:
-            return Track11MultiLockTemplate(
-                steps: canonical,
-                records: Array(recordsPrefix.prefix(3)),
-                metadata: [46: 0x011C, 47: 0x0105, 48: 0x0105, 52: 0x01EA]
+        case "3:15":
+            return Track11LockTopologyTemplate(
+                entries: [
+                    Track11LockEntryTemplate(
+                        slot: 2,
+                        bytes: [0xC0, 0xD5, 0x40, 0x29, 0x20, 0xD4, 0x10, 0xD4, 0x08, 0x00, 0x00],
+                        bindings: [
+                            Track11LaneBindingTemplate(step: 3, lane: .cc1, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD5, zeroMarker: nil),
+                            Track11LaneBindingTemplate(step: 3, lane: .cc2, markerOffset: 3, valueOffset: 4, nonZeroMarker: 0x29, zeroMarker: nil),
+                            Track11LaneBindingTemplate(step: 3, lane: .cc3, markerOffset: 5, valueOffset: 6, nonZeroMarker: 0xD4, zeroMarker: nil),
+                            Track11LaneBindingTemplate(step: 3, lane: .cc4, markerOffset: 7, valueOffset: 8, nonZeroMarker: 0xD4, zeroMarker: nil)
+                        ]
+                    )
+                ],
+                metadata: [44: 0x0F26, 48: 0x0FEA]
             )
-        case [1, 2, 3, 4]:
-            return Track11MultiLockTemplate(
-                steps: canonical,
-                records: Array(recordsPrefix.prefix(4)),
-                metadata: [46: 0x01C9, 47: 0x0105, 48: 0x0105, 49: 0x0105, 53: 0x01E2]
+        case "3:6":
+            return Track11LockTopologyTemplate(
+                entries: [
+                    Track11LockEntryTemplate(
+                        slot: 2,
+                        bytes: [0xC2, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00],
+                        bindings: [
+                            Track11LaneBindingTemplate(step: 3, lane: .cc2, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD4, zeroMarker: nil),
+                            Track11LaneBindingTemplate(step: 3, lane: .cc3, markerOffset: 3, valueOffset: 4, nonZeroMarker: 0x29, zeroMarker: nil)
+                        ]
+                    )
+                ],
+                metadata: [44: 0x0628, 48: 0x06EA]
             )
-        case [1, 2, 3, 4, 9]:
-            return Track11MultiLockTemplate(
-                steps: canonical,
-                records: Array(recordsPrefix.prefix(5)),
-                metadata: [47: 0x0126, 48: 0x0105, 49: 0x0105, 50: 0x0105, 51: 0x0125]
+        case "3:10":
+            return Track11LockTopologyTemplate(
+                entries: [
+                    Track11LockEntryTemplate(
+                        slot: 2,
+                        bytes: [0xC2, 0xD4, 0x20, 0x00, 0x00],
+                        bindings: [
+                            Track11LaneBindingTemplate(step: 3, lane: .cc2, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD4, zeroMarker: nil)
+                        ]
+                    ),
+                    Track11LockEntryTemplate(
+                        slot: 3,
+                        bytes: [0x00, 0x29, 0x08, 0x00, 0x00],
+                        bindings: [
+                            Track11LaneBindingTemplate(step: 3, lane: .cc4, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil)
+                        ]
+                    )
+                ],
+                metadata: [45: 0x0A26, 49: 0x0AEA]
             )
-        case [1, 2, 3, 4, 9, 13]:
-            return Track11MultiLockTemplate(
-                steps: canonical,
-                records: Array(recordsPrefix.prefix(6)),
-                metadata: [47: 0x01D8, 48: 0x0105, 49: 0x0105, 50: 0x0105, 51: 0x0125, 52: 0x011D]
+        case "1:1|3:1":
+            return Track11LockTopologyTemplate(
+                entries: [
+                    Track11LockEntryTemplate(
+                        slot: 2,
+                        bytes: [0x18, 0x29, 0x10, 0x00, 0x00],
+                        bindings: [Track11LaneBindingTemplate(step: 1, lane: .cc1, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil)]
+                    ),
+                    Track11LockEntryTemplate(
+                        slot: 3,
+                        bytes: [0xA4, 0x29, 0x10, 0x00, 0x00],
+                        bindings: [Track11LaneBindingTemplate(step: 3, lane: .cc1, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil)]
+                    )
+                ],
+                metadata: [45: 0x011C, 46: 0x010D, 50: 0x01EA]
             )
-        case [1, 2, 3, 4, 9, 13, 16]:
-            return Track11MultiLockTemplate(
-                steps: canonical,
-                records: Array(recordsPrefix.prefix(7)),
-                metadata: [47: 0x01DD, 48: 0x0105, 49: 0x0105, 50: 0x0105, 51: 0x0125, 52: 0x011D, 53: 0x0115]
+        case "1:1|5:1":
+            return Track11LockTopologyTemplate(
+                entries: [
+                    Track11LockEntryTemplate(
+                        slot: 2,
+                        bytes: [0x18, 0x29, 0x10, 0x00, 0x00],
+                        bindings: [Track11LaneBindingTemplate(step: 1, lane: .cc1, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil)]
+                    ),
+                    Track11LockEntryTemplate(
+                        slot: 4,
+                        bytes: [0x4B, 0x29, 0x10, 0x00, 0x00],
+                        bindings: [Track11LaneBindingTemplate(step: 5, lane: .cc1, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil)]
+                    )
+                ],
+                metadata: [45: 0x0175, 46: 0x011D, 50: 0x01DA]
+            )
+        case "1:1|8:1":
+            return Track11LockTopologyTemplate(
+                entries: [
+                    Track11LockEntryTemplate(
+                        slot: 2,
+                        bytes: [0x18, 0xD4, 0x10, 0x00, 0x00],
+                        bindings: [Track11LaneBindingTemplate(step: 1, lane: .cc1, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD4, zeroMarker: nil)]
+                    ),
+                    Track11LockEntryTemplate(
+                        slot: 5,
+                        bytes: [0x46, 0x29, 0x10, 0x00, 0x00],
+                        bindings: [Track11LaneBindingTemplate(step: 8, lane: .cc1, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil)]
+                    )
+                ],
+                metadata: [45: 0x017A, 46: 0x0135, 50: 0x01C2]
+            )
+        case "1:1|12:1":
+            return Track11LockTopologyTemplate(
+                entries: [
+                    Track11LockEntryTemplate(
+                        slot: 2,
+                        bytes: [0x18, 0xD4, 0x10, 0x00, 0x00],
+                        bindings: [Track11LaneBindingTemplate(step: 1, lane: .cc1, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD4, zeroMarker: nil)]
+                    ),
+                    Track11LockEntryTemplate(
+                        slot: 6,
+                        bytes: [0x95, 0x29, 0x10, 0x00, 0x00],
+                        bindings: [Track11LaneBindingTemplate(step: 12, lane: .cc1, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil)]
+                    )
+                ],
+                metadata: [45: 0x012B, 46: 0x0155, 50: 0x01A2]
+            )
+        case "3:1|8:1":
+            return Track11LockTopologyTemplate(
+                entries: [
+                    Track11LockEntryTemplate(
+                        slot: 2,
+                        bytes: [0xC0, 0x29, 0x10, 0x00, 0x00],
+                        bindings: [Track11LaneBindingTemplate(step: 3, lane: .cc1, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil)]
+                    ),
+                    Track11LockEntryTemplate(
+                        slot: 4,
+                        bytes: [0x9F, 0xD4, 0x10, 0x00, 0x00],
+                        bindings: [Track11LaneBindingTemplate(step: 8, lane: .cc1, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD4, zeroMarker: nil)]
+                    )
+                ],
+                metadata: [44: 0x018A, 45: 0x0125, 49: 0x01C2]
+            )
+        case "5:1|12:1":
+            return Track11LockTopologyTemplate(
+                entries: [
+                    Track11LockEntryTemplate(
+                        slot: 3,
+                        bytes: [0x67, 0xD4, 0x10, 0x00, 0x00],
+                        bindings: [Track11LaneBindingTemplate(step: 5, lane: .cc1, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD4, zeroMarker: nil)]
+                    ),
+                    Track11LockEntryTemplate(
+                        slot: 6,
+                        bytes: [0x46, 0x29, 0x10, 0x00, 0x00],
+                        bindings: [Track11LaneBindingTemplate(step: 12, lane: .cc1, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil)]
+                    )
+                ],
+                metadata: [45: 0x014B, 46: 0x0135, 50: 0x01A2]
+            )
+        case "1:1|3:1|5:1":
+            return Track11LockTopologyTemplate(
+                entries: [
+                    Track11LockEntryTemplate(
+                        slot: 2,
+                        bytes: [0x18, 0x29, 0x10, 0x00, 0x00],
+                        bindings: [Track11LaneBindingTemplate(step: 1, lane: .cc1, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil)]
+                    ),
+                    Track11LockEntryTemplate(
+                        slot: 3,
+                        bytes: [0xA4, 0x29, 0x10, 0x00, 0x00],
+                        bindings: [Track11LaneBindingTemplate(step: 3, lane: .cc1, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil)]
+                    ),
+                    Track11LockEntryTemplate(
+                        slot: 4,
+                        bytes: [0xA4, 0xD4, 0x10, 0x00, 0x00],
+                        bindings: [Track11LaneBindingTemplate(step: 5, lane: .cc1, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD4, zeroMarker: nil)]
+                    )
+                ],
+                metadata: [45: 0x0175, 46: 0x010D, 47: 0x010D, 51: 0x01DA]
+            )
+        case "1:1|5:1|9:1|13:1":
+            return Track11LockTopologyTemplate(
+                entries: [
+                    Track11LockEntryTemplate(
+                        slot: 2,
+                        bytes: [0x18, 0x29, 0x10, 0x00, 0x00],
+                        bindings: [Track11LaneBindingTemplate(step: 1, lane: .cc1, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil)]
+                    ),
+                    Track11LockEntryTemplate(
+                        slot: 4,
+                        bytes: [0x4B, 0x29, 0x10, 0x00, 0x00],
+                        bindings: [Track11LaneBindingTemplate(step: 5, lane: .cc1, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil)]
+                    ),
+                    Track11LockEntryTemplate(
+                        slot: 6,
+                        bytes: [0x4B, 0x29, 0x10, 0x00, 0x00],
+                        bindings: [Track11LaneBindingTemplate(step: 9, lane: .cc1, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0x29, zeroMarker: nil)]
+                    ),
+                    Track11LockEntryTemplate(
+                        slot: 8,
+                        bytes: [0x4B, 0xD4, 0x10, 0x00, 0x00],
+                        bindings: [Track11LaneBindingTemplate(step: 13, lane: .cc1, markerOffset: 1, valueOffset: 2, nonZeroMarker: 0xD4, zeroMarker: nil)]
+                    )
+                ],
+                metadata: [46: 0x01D8, 47: 0x011D, 48: 0x011D, 49: 0x011D, 53: 0x019A]
+            )
+        case "1:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [(step: 1, slot: 2, bytes: [0x1A, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00])],
+                metadata: [44: 0x06C0, 48: 0x06FA]
+            )
+        case "4:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [(step: 4, slot: 3, bytes: [0x15, 0x29, 0x20, 0xD4, 0x10, 0x00, 0x00])],
+                metadata: [44: 0x06DD, 48: 0x06E2]
+            )
+        case "8:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [(step: 8, slot: 4, bytes: [0x64, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00])],
+                metadata: [44: 0x06AE, 48: 0x06C2]
+            )
+        case "16:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [(step: 16, slot: 7, bytes: [0x01, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00])],
+                metadata: [45: 0x0650, 49: 0x0682]
+            )
+        case "17:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [(step: 17, slot: 7, bytes: [0x55, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00])],
+                metadata: [45: 0x0604, 49: 0x067A]
+            )
+        case "20:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [(step: 20, slot: 8, bytes: [0x50, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00])],
+                metadata: [45: 0x0621, 49: 0x0662]
+            )
+        case "24:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [(step: 24, slot: 9, bytes: [0x9F, 0x29, 0x20, 0x29, 0x10, 0x00, 0x00])],
+                metadata: [44: 0x06F3, 48: 0x0642]
+            )
+        case "29:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [(step: 29, slot: 11, bytes: [0x41, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00])],
+                metadata: [45: 0x0678, 49: 0x061A]
+            )
+        case "30:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [(step: 30, slot: 11, bytes: [0x95, 0x29, 0x20, 0xD4, 0x10, 0x00, 0x00])],
+                metadata: [45: 0x062C, 49: 0x0612]
+            )
+        case "33:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [(step: 33, slot: 12, bytes: [0x90, 0x29, 0x20, 0x29, 0x10, 0x00, 0x00])],
+                metadata: [45: 0x0649, 48: 0x06FB]
+            )
+        case "36:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [(step: 36, slot: 13, bytes: [0x8B, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00])],
+                metadata: [45: 0x0666, 48: 0x06E3]
+            )
+        case "40:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [(step: 40, slot: 14, bytes: [0xDA, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00])],
+                metadata: [45: 0x0637, 48: 0x06C3]
+            )
+        case "46:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [(step: 46, slot: 16, bytes: [0xD0, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00])],
+                metadata: [45: 0x0671, 48: 0x0693]
+            )
+        case "49:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [(step: 49, slot: 17, bytes: [0xCB, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00])],
+                metadata: [45: 0x068E, 48: 0x067B]
+            )
+        case "51:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [(step: 51, slot: 18, bytes: [0x72, 0x29, 0x20, 0xD4, 0x10, 0x00, 0x00])],
+                metadata: [45: 0x06F7, 48: 0x066B]
+            )
+        case "52:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [(step: 52, slot: 18, bytes: [0xC6, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00])],
+                metadata: [45: 0x06AB, 48: 0x0663]
+            )
+        case "55:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [(step: 55, slot: 20, bytes: [0x68, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00])],
+                metadata: [46: 0x0630, 49: 0x063B]
+            )
+        case "63:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [(step: 63, slot: 22, bytes: [0x5E, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00])],
+                metadata: [46: 0x066A, 49: 0x060B]
+            )
+        case "64:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [(step: 64, slot: 22, bytes: [0xB2, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00])],
+                metadata: [46: 0x061E, 49: 0x0603]
+            )
+        case "1:6|4:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [
+                    (step: 1, slot: 2, bytes: [0x1A, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 4, slot: 3, bytes: [0xF6, 0x29, 0x20, 0x29, 0x10, 0x00, 0x00])
+                ],
+                metadata: [44: 0x06C5, 45: 0x0615, 49: 0x06E2]
+            )
+        case "1:6|8:6|16:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [
+                    (step: 1, slot: 2, bytes: [0x1A, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00]),
+                    (step: 8, slot: 5, bytes: [0x44, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00]),
+                    (step: 16, slot: 8, bytes: [0x98, 0x29, 0x20, 0x29, 0x10, 0x00, 0x00])
+                ],
+                metadata: [45: 0x06D9, 46: 0x0635, 47: 0x063D, 51: 0x0682]
+            )
+        case "17:6|20:6|24:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [
+                    (step: 17, slot: 7, bytes: [0x55, 0x29, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 20, slot: 8, bytes: [0xF6, 0x29, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 24, slot: 10, bytes: [0x49, 0x29, 0x20, 0xD4, 0x10, 0x00, 0x00])
+                ],
+                metadata: [45: 0x06BB, 46: 0x0615, 47: 0x061D, 51: 0x0642]
+            )
+        case "29:6|30:6|33:6|36:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [
+                    (step: 29, slot: 11, bytes: [0x41, 0x29, 0x20, 0xD4, 0x10, 0x00, 0x00]),
+                    (step: 30, slot: 12, bytes: [0x4E, 0x29, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 33, slot: 13, bytes: [0xF6, 0x29, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 36, slot: 14, bytes: [0xF6, 0x29, 0x20, 0x29, 0x10, 0x00, 0x00])
+                ],
+                metadata: [46: 0x062E, 47: 0x0605, 48: 0x0615, 49: 0x0615, 52: 0x06E3]
+            )
+        case "46:6|49:6|51:6|52:6|55:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [
+                    (step: 46, slot: 16, bytes: [0xD0, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 49, slot: 17, bytes: [0xF6, 0x29, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 51, slot: 18, bytes: [0xA2, 0x29, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 52, slot: 19, bytes: [0x4E, 0x29, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 55, slot: 20, bytes: [0xF6, 0x29, 0x20, 0xD4, 0x10, 0x00, 0x00])
+                ],
+                metadata: [46: 0x0680, 47: 0x0615, 48: 0x060D, 49: 0x0605, 50: 0x0615, 53: 0x064B]
+            )
+        case "63:6|64:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [
+                    (step: 63, slot: 22, bytes: [0x5E, 0x29, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 64, slot: 23, bytes: [0x4E, 0x29, 0x20, 0x29, 0x10, 0x00, 0x00])
+                ],
+                metadata: [47: 0x0616, 48: 0x0605, 51: 0x0603]
+            )
+        case "1:6|2:6|4:6|8:6|16:6|17:6|20:6|24:6|29:6|30:6|33:6|36:6|40:6|46:6|49:6|51:6|52:6|55:6|63:6|64:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [
+                    (step: 1, slot: 2, bytes: [0x1A, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 2, slot: 3, bytes: [0x4E, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 4, slot: 4, bytes: [0xA2, 0x2A, 0x04, 0xD4, 0x08, 0x00, 0x00]),
+                    (step: 8, slot: 6, bytes: [0x49, 0x29, 0x5C, 0x29, 0x79, 0x00, 0x00]),
+                    (step: 16, slot: 9, bytes: [0x98, 0x29, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 17, slot: 10, bytes: [0x4E, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 20, slot: 11, bytes: [0xF6, 0x29, 0x04, 0xD4, 0x08, 0x00, 0x00]),
+                    (step: 24, slot: 13, bytes: [0x49, 0x29, 0x5C, 0xD4, 0x79, 0x00, 0x00]),
+                    (step: 29, slot: 15, bytes: [0x9D, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 30, slot: 16, bytes: [0x4E, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 33, slot: 17, bytes: [0xF6, 0x29, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 36, slot: 18, bytes: [0xF6, 0xD4, 0x04, 0x29, 0x08, 0x00, 0x00]),
+                    (step: 40, slot: 20, bytes: [0x49, 0x29, 0x5C, 0xD4, 0x79, 0x00, 0x00]),
+                    (step: 46, slot: 22, bytes: [0xF1, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 49, slot: 23, bytes: [0xF6, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 51, slot: 24, bytes: [0xA2, 0x29, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 52, slot: 25, bytes: [0x4E, 0xD4, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 55, slot: 26, bytes: [0xF6, 0x29, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 63, slot: 29, bytes: [0x98, 0x29, 0x5C, 0x29, 0x79, 0x00, 0x00]),
+                    (step: 64, slot: 30, bytes: [0x4E, 0x29, 0x59, 0xD4, 0x26, 0x00, 0x00])
+                ],
+                metadata: [52: 0x0628, 53: 0x0605, 54: 0x060D],
+                lockRegionSuffix: [
+                    0x1D, 0x06, 0x00, 0x00, 0x3D, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00,
+                    0x1D, 0x06, 0x00, 0x00, 0x25, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00,
+                    0x15, 0x06, 0x00, 0x00, 0x1D, 0x06, 0x00, 0x00, 0x2D, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00,
+                    0x0D, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00, 0x3D, 0x06, 0x00, 0x00,
+                    0x05, 0x06, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x03, 0x06, 0x00, 0x00, 0xFF, 0x00,
+                    0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00,
+                    0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x09
+                ],
+                applyMask6ValueMarkerOverrides: false
+            )
+        case "1:6|2:6|4:6|6:6|8:6|16:6|17:6|20:6|24:6|29:6|30:6|33:6|36:6|40:6|46:6|49:6|51:6|52:6|55:6|63:6|64:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [
+                    (step: 1, slot: 2, bytes: [0x1A, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 2, slot: 3, bytes: [0x4E, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 4, slot: 4, bytes: [0xA2, 0x2A, 0x04, 0xD4, 0x08, 0x00, 0x00]),
+                    (step: 6, slot: 5, bytes: [0xA2, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 8, slot: 6, bytes: [0xA2, 0x29, 0x5C, 0x29, 0x79, 0x00, 0x00]),
+                    (step: 16, slot: 9, bytes: [0x98, 0x29, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 17, slot: 10, bytes: [0x4E, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 20, slot: 11, bytes: [0xF6, 0x29, 0x04, 0xD4, 0x08, 0x00, 0x00]),
+                    (step: 24, slot: 13, bytes: [0x49, 0x29, 0x5C, 0xD4, 0x79, 0x00, 0x00]),
+                    (step: 29, slot: 15, bytes: [0x9D, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 30, slot: 16, bytes: [0x4E, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 33, slot: 17, bytes: [0xF6, 0x29, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 36, slot: 18, bytes: [0xF6, 0xD4, 0x04, 0x29, 0x08, 0x00, 0x00]),
+                    (step: 40, slot: 20, bytes: [0x49, 0x29, 0x5C, 0xD4, 0x79, 0x00, 0x00]),
+                    (step: 46, slot: 22, bytes: [0xF1, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 49, slot: 23, bytes: [0xF6, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 51, slot: 24, bytes: [0xA2, 0x29, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 52, slot: 25, bytes: [0x4E, 0xD4, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 55, slot: 26, bytes: [0xF6, 0x29, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 63, slot: 29, bytes: [0x98, 0x29, 0x5C, 0x29, 0x79, 0x00, 0x00]),
+                    (step: 64, slot: 30, bytes: [0x4E, 0x29, 0x59, 0xD4, 0x26, 0x00, 0x00])
+                ],
+                metadata: [52: 0x0628, 53: 0x0605, 54: 0x060D],
+                lockRegionSuffix: [
+                    0x0D, 0x06, 0x00, 0x00, 0x0D, 0x06, 0x00, 0x00, 0x3D, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00,
+                    0x15, 0x06, 0x00, 0x00, 0x1D, 0x06, 0x00, 0x00, 0x25, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00,
+                    0x15, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00, 0x1D, 0x06, 0x00, 0x00, 0x2D, 0x06, 0x00, 0x00,
+                    0x15, 0x06, 0x00, 0x00, 0x0D, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00,
+                    0x3D, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x03, 0x06,
+                    0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00,
+                    0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x09
+                ],
+                applyMask6ValueMarkerOverrides: false
+            )
+        case "1:6|2:6|4:6|6:6|7:6|8:6|16:6|17:6|20:6|24:6|29:6|30:6|33:6|36:6|40:6|46:6|49:6|51:6|52:6|55:6|63:6|64:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [
+                    (step: 1, slot: 2, bytes: [0x1A, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 2, slot: 3, bytes: [0x4E, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 4, slot: 4, bytes: [0xA2, 0x2A, 0x04, 0xD4, 0x08, 0x00, 0x00]),
+                    (step: 6, slot: 5, bytes: [0xA2, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 7, slot: 6, bytes: [0x4E, 0x29, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 8, slot: 7, bytes: [0x4E, 0x29, 0x5C, 0x29, 0x79, 0x00, 0x00]),
+                    (step: 16, slot: 10, bytes: [0x98, 0x29, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 17, slot: 11, bytes: [0x4E, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 20, slot: 12, bytes: [0xF6, 0x29, 0x04, 0xD4, 0x08, 0x00, 0x00]),
+                    (step: 24, slot: 14, bytes: [0x49, 0x29, 0x5C, 0xD4, 0x79, 0x00, 0x00]),
+                    (step: 29, slot: 16, bytes: [0x9D, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 30, slot: 17, bytes: [0x4E, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 33, slot: 18, bytes: [0xF6, 0x29, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 36, slot: 19, bytes: [0xF6, 0xD4, 0x04, 0x29, 0x08, 0x00, 0x00]),
+                    (step: 40, slot: 21, bytes: [0x49, 0x29, 0x5C, 0xD4, 0x79, 0x00, 0x00]),
+                    (step: 46, slot: 23, bytes: [0xF1, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 49, slot: 24, bytes: [0xF6, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 51, slot: 25, bytes: [0xA2, 0x29, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 52, slot: 26, bytes: [0x4E, 0xD4, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 55, slot: 27, bytes: [0xF6, 0x29, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 63, slot: 30, bytes: [0x98, 0x29, 0x5C, 0x29, 0x79, 0x00, 0x00]),
+                    (step: 64, slot: 31, bytes: [0x4E, 0x29, 0x59, 0xD4, 0x26, 0x00, 0x00])
+                ],
+                metadata: [53: 0x0630, 54: 0x060D],
+                lockRegionSuffix: [
+                    0x0D, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x3D, 0x06, 0x00, 0x00,
+                    0x05, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00, 0x1D, 0x06, 0x00, 0x00, 0x25, 0x06, 0x00, 0x00,
+                    0x05, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00, 0x1D, 0x06, 0x00, 0x00,
+                    0x2D, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00, 0x0D, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00,
+                    0x15, 0x06, 0x00, 0x00, 0x3D, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF,
+                    0x00, 0x00, 0x03, 0x06, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF,
+                    0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x09
+                ],
+                applyMask6ValueMarkerOverrides: false
+            )
+        case "1:6|4:6|7:6|8:6|16:6|17:6|20:6|24:6|29:6|30:6|33:6|36:6|40:6|46:6|49:6|51:6|52:6|55:6|63:6|64:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [
+                    (step: 1, slot: 2, bytes: [0x1A, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 4, slot: 3, bytes: [0xF6, 0x2A, 0x04, 0xD4, 0x08, 0x00, 0x00]),
+                    (step: 7, slot: 4, bytes: [0xF6, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 8, slot: 5, bytes: [0x4E, 0x29, 0x5C, 0x29, 0x79, 0x00, 0x00]),
+                    (step: 16, slot: 8, bytes: [0x98, 0x29, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 17, slot: 9, bytes: [0x4E, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 20, slot: 10, bytes: [0xF6, 0x29, 0x04, 0xD4, 0x08, 0x00, 0x00]),
+                    (step: 24, slot: 12, bytes: [0x49, 0x29, 0x5C, 0xD4, 0x79, 0x00, 0x00]),
+                    (step: 29, slot: 14, bytes: [0x9D, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 30, slot: 15, bytes: [0x4E, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 33, slot: 16, bytes: [0xF6, 0x29, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 36, slot: 17, bytes: [0xF6, 0xD4, 0x04, 0x29, 0x08, 0x00, 0x00]),
+                    (step: 40, slot: 19, bytes: [0x49, 0x29, 0x5C, 0xD4, 0x79, 0x00, 0x00]),
+                    (step: 46, slot: 21, bytes: [0xF1, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 49, slot: 22, bytes: [0xF6, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 51, slot: 23, bytes: [0xA2, 0x29, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 52, slot: 24, bytes: [0x4E, 0xD4, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 55, slot: 25, bytes: [0xF6, 0x29, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 63, slot: 28, bytes: [0x98, 0x29, 0x5C, 0x29, 0x79, 0x00, 0x00]),
+                    (step: 64, slot: 29, bytes: [0x4E, 0x29, 0x59, 0xD4, 0x26, 0x00, 0x00])
+                ],
+                metadata: [51: 0x0628, 52: 0x0615, 53: 0x0615, 54: 0x0605],
+                lockRegionSuffix: [
+                    0x3D, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00, 0x1D, 0x06, 0x00, 0x00,
+                    0x25, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00,
+                    0x1D, 0x06, 0x00, 0x00, 0x2D, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00, 0x0D, 0x06, 0x00, 0x00,
+                    0x05, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00, 0x3D, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00,
+                    0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x03, 0x06, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00,
+                    0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF,
+                    0x00, 0x00, 0x09
+                ],
+                applyMask6ValueMarkerOverrides: false
+            )
+        case "1:6|4:6|7:6|8:6|11:6|16:6|17:6|20:6|24:6|29:6|30:6|33:6|36:6|40:6|46:6|49:6|51:6|52:6|55:6|63:6|64:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [
+                    (step: 1, slot: 2, bytes: [0x1A, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 4, slot: 3, bytes: [0xF6, 0x2A, 0x04, 0xD4, 0x08, 0x00, 0x00]),
+                    (step: 7, slot: 4, bytes: [0xF6, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 8, slot: 5, bytes: [0x4E, 0x29, 0x5C, 0x29, 0x79, 0x00, 0x00]),
+                    (step: 11, slot: 6, bytes: [0xF6, 0x29, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 16, slot: 8, bytes: [0x9D, 0x29, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 17, slot: 9, bytes: [0x4E, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 20, slot: 10, bytes: [0xF6, 0x29, 0x04, 0xD4, 0x08, 0x00, 0x00]),
+                    (step: 24, slot: 12, bytes: [0x49, 0x29, 0x5C, 0xD4, 0x79, 0x00, 0x00]),
+                    (step: 29, slot: 14, bytes: [0x9D, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 30, slot: 15, bytes: [0x4E, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 33, slot: 16, bytes: [0xF6, 0x29, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 36, slot: 17, bytes: [0xF6, 0xD4, 0x04, 0x29, 0x08, 0x00, 0x00]),
+                    (step: 40, slot: 19, bytes: [0x49, 0x29, 0x5C, 0xD4, 0x79, 0x00, 0x00]),
+                    (step: 46, slot: 21, bytes: [0xF1, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 49, slot: 22, bytes: [0xF6, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 51, slot: 23, bytes: [0xA2, 0x29, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 52, slot: 24, bytes: [0x4E, 0xD4, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 55, slot: 25, bytes: [0xF6, 0x29, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 63, slot: 28, bytes: [0x98, 0x29, 0x5C, 0x29, 0x79, 0x00, 0x00]),
+                    (step: 64, slot: 29, bytes: [0x4E, 0x29, 0x59, 0xD4, 0x26, 0x00, 0x00])
+                ],
+                metadata: [51: 0x0628, 52: 0x0615, 53: 0x0615, 54: 0x0605],
+                lockRegionSuffix: [
+                    0x15, 0x06, 0x00, 0x00, 0x25, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00,
+                    0x1D, 0x06, 0x00, 0x00, 0x25, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00,
+                    0x15, 0x06, 0x00, 0x00, 0x1D, 0x06, 0x00, 0x00, 0x2D, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00,
+                    0x0D, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00, 0x3D, 0x06, 0x00, 0x00,
+                    0x05, 0x06, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x03, 0x06, 0x00, 0x00, 0xFF, 0x00,
+                    0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00,
+                    0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x09
+                ],
+                applyMask6ValueMarkerOverrides: false
+            )
+        case "1:6|2:6|4:6|7:6|8:6|11:6|16:6|17:6|20:6|24:6|29:6|30:6|33:6|36:6|40:6|46:6|49:6|51:6|52:6|55:6|63:6|64:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [
+                    (step: 1, slot: 2, bytes: [0x1A, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 2, slot: 3, bytes: [0x4E, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00]),
+                    (step: 4, slot: 4, bytes: [0xA2, 0x2A, 0x04, 0xD4, 0x08, 0x00, 0x00]),
+                    (step: 7, slot: 5, bytes: [0xF6, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 8, slot: 6, bytes: [0x4E, 0x29, 0x5C, 0x29, 0x79, 0x00, 0x00]),
+                    (step: 11, slot: 7, bytes: [0xF6, 0x29, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 16, slot: 9, bytes: [0x9D, 0x29, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 17, slot: 10, bytes: [0x4E, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 20, slot: 11, bytes: [0xF6, 0x29, 0x04, 0xD4, 0x08, 0x00, 0x00]),
+                    (step: 24, slot: 13, bytes: [0x49, 0x29, 0x5C, 0xD4, 0x79, 0x00, 0x00]),
+                    (step: 29, slot: 15, bytes: [0x9D, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 30, slot: 16, bytes: [0x4E, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 33, slot: 17, bytes: [0xF6, 0x29, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 36, slot: 18, bytes: [0xF6, 0xD4, 0x04, 0x29, 0x08, 0x00, 0x00]),
+                    (step: 40, slot: 20, bytes: [0x49, 0x29, 0x5C, 0xD4, 0x79, 0x00, 0x00]),
+                    (step: 46, slot: 22, bytes: [0xF1, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 49, slot: 23, bytes: [0xF6, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 51, slot: 24, bytes: [0xA2, 0x29, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 52, slot: 25, bytes: [0x4E, 0xD4, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 55, slot: 26, bytes: [0xF6, 0x29, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 63, slot: 29, bytes: [0x98, 0x29, 0x5C, 0x29, 0x79, 0x00, 0x00]),
+                    (step: 64, slot: 30, bytes: [0x4E, 0x29, 0x59, 0xD4, 0x26, 0x00, 0x00])
+                ],
+                metadata: [52: 0x0628, 53: 0x0605, 54: 0x060D],
+                lockRegionSuffix: [
+                    0x15, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00, 0x25, 0x06, 0x00, 0x00,
+                    0x05, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00, 0x1D, 0x06, 0x00, 0x00, 0x25, 0x06, 0x00, 0x00,
+                    0x05, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00, 0x1D, 0x06, 0x00, 0x00,
+                    0x2D, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00, 0x0D, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00,
+                    0x15, 0x06, 0x00, 0x00, 0x3D, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF,
+                    0x00, 0x00, 0x03, 0x06, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF,
+                    0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x09
+                ],
+                applyMask6ValueMarkerOverrides: false
+            )
+        case "1:6|2:6|4:6|6:6|7:6|8:6|11:6|16:6|17:6|20:6|24:6|29:6|30:6|33:6|36:6|40:6|46:6|49:6|51:6|52:6|55:6|63:6|64:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [
+                    (step: 1, slot: 2, bytes: [0x1A, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 2, slot: 3, bytes: [0x4E, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00]),
+                    (step: 4, slot: 4, bytes: [0xA2, 0x2A, 0x04, 0xD4, 0x08, 0x00, 0x00]),
+                    (step: 6, slot: 5, bytes: [0xA2, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00]),
+                    (step: 7, slot: 6, bytes: [0x4E, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 8, slot: 7, bytes: [0x4E, 0x29, 0x5C, 0x29, 0x79, 0x00, 0x00]),
+                    (step: 11, slot: 8, bytes: [0xF6, 0x29, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 16, slot: 10, bytes: [0x9D, 0x29, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 17, slot: 11, bytes: [0x4E, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 20, slot: 12, bytes: [0xF6, 0x29, 0x04, 0xD4, 0x08, 0x00, 0x00]),
+                    (step: 24, slot: 14, bytes: [0x49, 0x29, 0x5C, 0xD4, 0x79, 0x00, 0x00]),
+                    (step: 29, slot: 16, bytes: [0x9D, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 30, slot: 17, bytes: [0x4E, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 33, slot: 18, bytes: [0xF6, 0x29, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 36, slot: 19, bytes: [0xF6, 0xD4, 0x04, 0x29, 0x08, 0x00, 0x00]),
+                    (step: 40, slot: 21, bytes: [0x49, 0x29, 0x5C, 0xD4, 0x79, 0x00, 0x00]),
+                    (step: 46, slot: 23, bytes: [0xF1, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 49, slot: 24, bytes: [0xF6, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 51, slot: 25, bytes: [0xA2, 0x29, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 52, slot: 26, bytes: [0x4E, 0xD4, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 55, slot: 27, bytes: [0xF6, 0x29, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 63, slot: 30, bytes: [0x98, 0x29, 0x5C, 0x29, 0x79, 0x00, 0x00]),
+                    (step: 64, slot: 31, bytes: [0x4E, 0x29, 0x59, 0xD4, 0x26, 0x00, 0x00])
+                ],
+                metadata: [53: 0x0628, 54: 0x0605],
+                lockRegionSuffix: [
+                    0x0D, 0x06, 0x00, 0x00, 0x0D, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00,
+                    0x15, 0x06, 0x00, 0x00, 0x25, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00,
+                    0x1D, 0x06, 0x00, 0x00, 0x25, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00,
+                    0x15, 0x06, 0x00, 0x00, 0x1D, 0x06, 0x00, 0x00, 0x2D, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00,
+                    0x0D, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00, 0x3D, 0x06, 0x00, 0x00,
+                    0x05, 0x06, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x03, 0x06, 0x00, 0x00, 0xFF, 0x00,
+                    0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00,
+                    0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x09
+                ],
+                applyMask6ValueMarkerOverrides: false
+            )
+        case "1:6|2:6|4:6|6:6|7:6|8:6|11:6|14:6|16:6|17:6|20:6|24:6|29:6|30:6|33:6|36:6|40:6|46:6|49:6|51:6|52:6|55:6|63:6|64:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [
+                    (step: 1, slot: 2, bytes: [0x1A, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 2, slot: 3, bytes: [0x4E, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00]),
+                    (step: 4, slot: 4, bytes: [0xA2, 0x2A, 0x04, 0xD4, 0x08, 0x00, 0x00]),
+                    (step: 6, slot: 5, bytes: [0xA2, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00]),
+                    (step: 7, slot: 6, bytes: [0x4E, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 8, slot: 7, bytes: [0x4E, 0x29, 0x5C, 0x29, 0x79, 0x00, 0x00]),
+                    (step: 11, slot: 8, bytes: [0xF6, 0x29, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 14, slot: 9, bytes: [0xF6, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 16, slot: 10, bytes: [0xA2, 0x29, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 17, slot: 11, bytes: [0x4E, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 20, slot: 12, bytes: [0xF6, 0x29, 0x04, 0xD4, 0x08, 0x00, 0x00]),
+                    (step: 24, slot: 14, bytes: [0x49, 0x29, 0x5C, 0xD4, 0x79, 0x00, 0x00]),
+                    (step: 29, slot: 16, bytes: [0x9D, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 30, slot: 17, bytes: [0x4E, 0xD4, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 33, slot: 18, bytes: [0xF6, 0x29, 0x59, 0x29, 0x26, 0x00, 0x00]),
+                    (step: 36, slot: 19, bytes: [0xF6, 0xD4, 0x04, 0x29, 0x08, 0x00, 0x00]),
+                    (step: 40, slot: 21, bytes: [0x49, 0x29, 0x5C, 0xD4, 0x79, 0x00, 0x00]),
+                    (step: 46, slot: 23, bytes: [0xF1, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 49, slot: 24, bytes: [0xF6, 0xD4, 0x59, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 51, slot: 25, bytes: [0xA2, 0x29, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 52, slot: 26, bytes: [0x4E, 0xD4, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 55, slot: 27, bytes: [0xF6, 0x29, 0x04, 0xD4, 0x26, 0x00, 0x00]),
+                    (step: 63, slot: 30, bytes: [0x98, 0x29, 0x5C, 0x29, 0x79, 0x00, 0x00]),
+                    (step: 64, slot: 31, bytes: [0x4E, 0x29, 0x59, 0xD4, 0x26, 0x00, 0x00])
+                ],
+                metadata: [53: 0x0628, 54: 0x0605],
+                lockRegionSuffix: [
+                    0x0D, 0x06, 0x00, 0x00, 0x0D, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00,
+                    0x15, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00, 0x0D, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00,
+                    0x15, 0x06, 0x00, 0x00, 0x1D, 0x06, 0x00, 0x00, 0x25, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00,
+                    0x15, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00, 0x1D, 0x06, 0x00, 0x00, 0x2D, 0x06, 0x00, 0x00,
+                    0x15, 0x06, 0x00, 0x00, 0x0D, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00,
+                    0x3D, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x03, 0x06,
+                    0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00,
+                    0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x09
+                ],
+                applyMask6ValueMarkerOverrides: false
+            )
+        case "1:6|4:6|8:6|16:6|17:6|20:6|24:6|29:6|30:6|33:6|36:6|40:6|46:6|49:6|51:6|52:6|55:6|63:6|64:6":
+            return makeTrack11Mask6TopologyTemplate(
+                entries: [
+                    (step: 1, slot: 2, bytes: [0x1A, 0x29, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 4, slot: 3, bytes: [0xF6, 0x29, 0x20, 0xD4, 0x10, 0x00, 0x00]),
+                    (step: 8, slot: 5, bytes: [0x49, 0x29, 0x20, 0xD4, 0x10, 0x00, 0x00]),
+                    (step: 16, slot: 8, bytes: [0x98, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00]),
+                    (step: 17, slot: 9, bytes: [0x4E, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00]),
+                    (step: 20, slot: 10, bytes: [0xF6, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00]),
+                    (step: 24, slot: 12, bytes: [0x49, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00]),
+                    (step: 29, slot: 14, bytes: [0x9D, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00]),
+                    (step: 30, slot: 15, bytes: [0x4E, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00]),
+                    (step: 33, slot: 16, bytes: [0xF6, 0x29, 0x20, 0xD4, 0x10, 0x00, 0x00]),
+                    (step: 36, slot: 17, bytes: [0xF6, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00]),
+                    (step: 40, slot: 19, bytes: [0x49, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00]),
+                    (step: 46, slot: 21, bytes: [0xF1, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 49, slot: 22, bytes: [0xF6, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 51, slot: 23, bytes: [0xA2, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 52, slot: 24, bytes: [0x4E, 0x29, 0x20, 0xD4, 0x10, 0x00, 0x00]),
+                    (step: 55, slot: 25, bytes: [0xF6, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00]),
+                    (step: 63, slot: 28, bytes: [0x98, 0xD4, 0x20, 0xD4, 0x10, 0x00, 0x00]),
+                    (step: 64, slot: 29, bytes: [0x4E, 0xD4, 0x20, 0x29, 0x10, 0x00, 0x00])
+                ],
+                metadata: [51: 0x0628, 52: 0x0615, 53: 0x061D, 54: 0x063D],
+                lockRegionSuffix: [
+                0x05, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00, 0x1D, 0x06, 0x00, 0x00, 0x25, 0x06, 0x00, 0x00,
+                0x05, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00, 0x1D, 0x06, 0x00, 0x00,
+                0x2D, 0x06, 0x00, 0x00, 0x15, 0x06, 0x00, 0x00, 0x0D, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00,
+                0x15, 0x06, 0x00, 0x00, 0x3D, 0x06, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF,
+                0x00, 0x00, 0x03, 0x06, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF,
+                0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x09
+                ]
             )
         default:
             return nil
+        }
+    }
+
+    private static func track11LockValue(lock: Track11StepLock, lane: Track11LockLane) -> Int? {
+        switch lane {
+        case .cc1: return lock.cc1
+        case .cc2: return lock.cc2
+        case .cc3: return lock.cc3
+        case .cc4: return lock.cc4
         }
     }
 
@@ -643,6 +1699,19 @@ enum XYExporter {
         return out
     }
 
+    private static func track11CompactLockPrefix(maxUsedSlot: Int?) -> [UInt8] {
+        guard let maxUsedSlot else { return [] }
+        guard maxUsedSlot >= 48 else { return [] }
+        let emptyCount = max(0, maxUsedSlot - 46)
+        var out: [UInt8] = []
+        out.reserveCapacity((emptyCount * midiLockTableEmptyEntry.count) + 1)
+        for _ in 0..<emptyCount {
+            out += midiLockTableEmptyEntry
+        }
+        out.append(0x09)
+        return out
+    }
+
     private static func encodeTrack11SingleLaneValue(
         value: Int,
         nonZeroMarker: UInt8,
@@ -657,6 +1726,20 @@ enum XYExporter {
             return (0x7E, 0x7F)
         }
         return (nonZeroMarker, clamped)
+    }
+
+    private static func track11Mask6MarkerOverride(
+        cc2: Int,
+        cc3: Int
+    ) -> (cc2: UInt8, cc3: UInt8)? {
+        // Capture-backed overrides from `dderuntz-saves08b` value variants:
+        // 08b 27 (89,38), 08b 28 (92,121), 08b 29 (4,8).
+        switch (cc2, cc3) {
+        case (89, 38): return (0x29, 0xD4)
+        case (92, 121): return (0xD4, 0xD4)
+        case (4, 8): return (0x2A, 0x29)
+        default: return nil
+        }
     }
 
     private static func buildTrack11StepLocks(from stepLocks: [XYExportStepLockData]) throws -> [Track11StepLock] {
@@ -758,10 +1841,10 @@ enum XYExporter {
         cc4: Int?,
         where source: String
     ) throws -> Track11StepLock {
-        let nCC1 = try normalizedTrack11LaneValueValidated(cc1, defaultValue: track11DefaultCC1, where: "\(source).cc1")
-        let nCC2 = try normalizedTrack11LaneValueValidated(cc2, defaultValue: track11DefaultCC2, where: "\(source).cc2")
-        let nCC3 = try normalizedTrack11LaneValueValidated(cc3, defaultValue: track11DefaultCC3, where: "\(source).cc3")
-        let nCC4 = try normalizedTrack11LaneValueValidated(cc4, defaultValue: track11DefaultCC4, where: "\(source).cc4")
+        let nCC1 = try normalizedTrack11LaneValueValidated(cc1, where: "\(source).cc1")
+        let nCC2 = try normalizedTrack11LaneValueValidated(cc2, where: "\(source).cc2")
+        let nCC3 = try normalizedTrack11LaneValueValidated(cc3, where: "\(source).cc3")
+        let nCC4 = try normalizedTrack11LaneValueValidated(cc4, where: "\(source).cc4")
         return Track11StepLock(step: step, cc1: nCC1, cc2: nCC2, cc3: nCC3, cc4: nCC4)
     }
 
@@ -772,14 +1855,13 @@ enum XYExporter {
 
     private static func normalizedTrack11LaneValueValidated(
         _ value: Int?,
-        defaultValue: Int,
         where source: String
     ) throws -> Int? {
         guard let value else { return nil }
         guard (0...127).contains(value) else {
             throw XYExporterError.invalidNote("\(source) must be in [0,127]")
         }
-        return value == defaultValue ? nil : value
+        return value
     }
 
     private static func buildMultiPatternProject(
@@ -1352,6 +2434,15 @@ enum XYExporter {
             | (grooveFlags << 16)
             | (UInt32(grooveType & 0xFF) << 24)
         writeUInt32LE(value: tempoWord, into: &bytes, at: 8)
+    }
+
+    private static func canonicalizedRLEProject(_ bytes: [UInt8]) throws -> [UInt8] {
+        do {
+            let project = try XYRLECodec.decodeProject(bytes)
+            return try XYRLECodec.encodeProject(header: project.header, image: project.image)
+        } catch {
+            throw XYExporterError.invalidTemplate("exported bytes are not a valid RLE .xy project: \(error.localizedDescription)")
+        }
     }
 
     private static func trackArrayIndex(_ trackIndex: Int) throws -> Int {

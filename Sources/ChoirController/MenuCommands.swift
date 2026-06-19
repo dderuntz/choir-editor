@@ -139,8 +139,10 @@ struct FileCommands: Commands {
             Button(L("menu.exportMIDI")) { actions.showExportMIDIDialog() }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
 
-            Button("Export as OP-XY…") { actions.showExportXYDialog() }
-                .keyboardShortcut("e", modifiers: [.command, .option, .shift])
+            if FileMenuActions.isXYExportEnabled {
+                Button("Export as OP-XY…") { actions.showExportXYDialog() }
+                    .keyboardShortcut("e", modifiers: [.command, .option, .shift])
+            }
         }
     }
 }
