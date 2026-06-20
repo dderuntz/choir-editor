@@ -275,9 +275,11 @@ struct ContentView: View {
         exportItem.target = target
         menu.addItem(exportItem)
 
-        let exportXYItem = NSMenuItem(title: "Export as OP-XY…", action: #selector(FileMenuActions.exportXY(_:)), keyEquivalent: "")
-        exportXYItem.target = target
-        menu.addItem(exportXYItem)
+        if FileMenuActions.isXYExportEnabled {
+            let exportXYItem = NSMenuItem(title: "Export as OP-XY…", action: #selector(FileMenuActions.exportXY(_:)), keyEquivalent: "")
+            exportXYItem.target = target
+            menu.addItem(exportXYItem)
+        }
 
         if model.currentFileURL != nil {
             menu.addItem(NSMenuItem.separator())

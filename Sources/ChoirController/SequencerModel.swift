@@ -126,14 +126,11 @@ enum MusicalKey: Int, CaseIterable, Identifiable {
 @MainActor
 class SequencerModel: ObservableObject {
     private enum XYExportError: LocalizedError {
-        case missingTemplate(URL)
         case emptyArrangement
         case exportFailed(String)
 
         var errorDescription: String? {
             switch self {
-            case .missingTemplate(let url):
-                return "Missing OP-XY template at \(url.path). Set CHOIR_XY_TEMPLATE to a valid .xy file."
             case .emptyArrangement:
                 return "No notes to export."
             case .exportFailed(let message):
@@ -494,39 +491,40 @@ class SequencerModel: ObservableObject {
 
     /// Export the arrangement as an OP-XY project file.
     ///
-    /// Current MVP scope:
-    /// - Writes notes to Track 11 (MIDI track) using event type 0x36.
-    /// - Applies tempo and groove type in header.
-    /// - Preserves unknown metadata/lock regions from the template file.
+    /// Current scope:
+    /// - Builds from an internal minimal OP-XY project seed and re-encodes canonical RLE.
+    /// - Writes notes and CC locks to Track 11 (MIDI track).
+    /// - Applies tempo and OP-XY shuffle default.
+    /// - `CHOIR_XY_TEMPLATE` can override the seed for local format research.
     func exportXY(to url: URL) throws {
         guard !notes.isEmpty else {
             throw XYExportError.emptyArrangement
         }
 
-        let root = Self.repoRootURL()
-        let templateURL: URL = {
+        let templateData: [UInt8]
+        do {
             if let env = ProcessInfo.processInfo.environment["CHOIR_XY_TEMPLATE"], !env.isEmpty {
-                return URL(fileURLWithPath: env)
+                templateData = [UInt8](try Data(contentsOf: URL(fileURLWithPath: env)))
+            } else {
+                templateData = try XYProjectSeed.data()
             }
-            return root
-                .appendingPathComponent(".release/research/dderuntz-saves2/04f b-check.xy")
-        }()
-        if !FileManager.default.fileExists(atPath: templateURL.path) {
-            throw XYExportError.missingTemplate(templateURL)
+        } catch {
+            throw XYExportError.exportFailed(error.localizedDescription)
         }
 
         let sortedNotes = notes
             .sorted { ($0.startBeat, $0.pitch, $0.id.uuidString) < ($1.startBeat, $1.pitch, $1.id.uuidString) }
 
         typealias StepLockAccumulator = (cc1: Int?, cc2: Int?, cc3: Int?, cc4: Int?)
+        typealias CCState = (cc1: Int, cc2: Int, cc3: Int, cc4: Int)
+        var lockByStep: [Int: StepLockAccumulator] = [:]
+
         func mergeLockLane(
             current: Int?,
             incoming: Int,
-            defaultValue: Int,
             step: Int,
             laneName: String
         ) throws -> Int? {
-            guard incoming != defaultValue else { return current }
             if let current, current != incoming {
                 throw XYExportError.exportFailed(
                     "conflicting \(laneName) lock values on step \(step) are not yet supported"
@@ -534,42 +532,78 @@ class SequencerModel: ObservableObject {
             }
             return incoming
         }
+        func mergeLock(
+            step: Int,
+            cc1: Int? = nil,
+            cc2: Int? = nil,
+            cc3: Int? = nil,
+            cc4: Int? = nil
+        ) throws {
+            var lock = lockByStep[step] ?? (nil, nil, nil, nil)
+            if let cc1 {
+                lock.cc1 = try mergeLockLane(current: lock.cc1, incoming: cc1, step: step, laneName: "CC1")
+            }
+            if let cc2 {
+                lock.cc2 = try mergeLockLane(current: lock.cc2, incoming: cc2, step: step, laneName: "CC2")
+            }
+            if let cc3 {
+                lock.cc3 = try mergeLockLane(current: lock.cc3, incoming: cc3, step: step, laneName: "CC3")
+            }
+            if let cc4 {
+                lock.cc4 = try mergeLockLane(current: lock.cc4, incoming: cc4, step: step, laneName: "CC4")
+            }
+            lockByStep[step] = lock
+        }
+        func changedLockValues(from current: CCState, to next: CCState) -> StepLockAccumulator {
+            (
+                cc1: next.cc1 == current.cc1 ? nil : next.cc1,
+                cc2: next.cc2 == current.cc2 ? nil : next.cc2,
+                cc3: next.cc3 == current.cc3 ? nil : next.cc3,
+                cc4: next.cc4 == current.cc4 ? nil : next.cc4
+            )
+        }
+        func noteOnLockValues(from changed: StepLockAccumulator, to next: CCState) -> StepLockAccumulator {
+            (
+                cc1: next.cc1 != 64 || changed.cc1 != nil ? next.cc1 : nil,
+                cc2: next.cc2 != 127 || changed.cc2 != nil ? next.cc2 : nil,
+                cc3: next.cc3 != 0 || changed.cc3 != nil ? next.cc3 : nil,
+                cc4: next.cc4 != 32 || changed.cc4 != nil ? next.cc4 : nil
+            )
+        }
+        func hasLockValue(_ lock: StepLockAccumulator) -> Bool {
+            lock.cc1 != nil || lock.cc2 != nil || lock.cc3 != nil || lock.cc4 != nil
+        }
+        func ccState(for notes: [SequencerNote], step: Int) throws -> CCState {
+            guard let first = notes.first else {
+                return (64, 127, 0, 32)
+            }
+            for note in notes.dropFirst() {
+                if note.vibrato != first.vibrato {
+                    throw XYExportError.exportFailed("conflicting CC1 lock values on step \(step) are not yet supported")
+                }
+                if note.consonant != first.consonant {
+                    throw XYExportError.exportFailed("conflicting CC2 lock values on step \(step) are not yet supported")
+                }
+                if note.vowel != first.vowel {
+                    throw XYExportError.exportFailed("conflicting CC3 lock values on step \(step) are not yet supported")
+                }
+                if note.reverb != first.reverb {
+                    throw XYExportError.exportFailed("conflicting CC4 lock values on step \(step) are not yet supported")
+                }
+            }
+            return (
+                Int(first.vibrato),
+                Int(first.consonant),
+                Int(first.vowel),
+                Int(first.reverb)
+            )
+        }
 
-        var lockByStep: [Int: StepLockAccumulator] = [:]
-        let xyNotes = try sortedNotes.map { note in
+        var noteStartSteps: Set<Int> = []
+        let xyNotes = sortedNotes.map { note in
             let step = Int((note.startBeat * 4.0).rounded(.toNearestOrAwayFromZero)) + 1
             let gateTicks = max(0, Int((note.duration * 4.0 * 480.0).rounded(.toNearestOrAwayFromZero)))
-
-            var lock = lockByStep[step] ?? (nil, nil, nil, nil)
-            lock.cc1 = try mergeLockLane(
-                current: lock.cc1,
-                incoming: Int(note.vibrato),
-                defaultValue: 64,
-                step: step,
-                laneName: "CC1"
-            )
-            lock.cc2 = try mergeLockLane(
-                current: lock.cc2,
-                incoming: Int(note.consonant),
-                defaultValue: 127,
-                step: step,
-                laneName: "CC2"
-            )
-            lock.cc3 = try mergeLockLane(
-                current: lock.cc3,
-                incoming: Int(note.vowel),
-                defaultValue: 0,
-                step: step,
-                laneName: "CC3"
-            )
-            lock.cc4 = try mergeLockLane(
-                current: lock.cc4,
-                incoming: Int(note.reverb),
-                defaultValue: 32,
-                step: step,
-                laneName: "CC4"
-            )
-            lockByStep[step] = lock
+            noteStartSteps.insert(step)
 
             return XYExportNoteData(
                 step: step,
@@ -579,6 +613,61 @@ class SequencerModel: ObservableObject {
                 tickOffset: 0
             )
         }
+
+        let notesByStep = Dictionary(grouping: sortedNotes) {
+            Int(($0.startBeat * 4.0).rounded(.toNearestOrAwayFromZero)) + 1
+        }
+        let ccPreSendEnabled = (UserDefaults.standard.object(forKey: "ccPreSendEnabled") as? Bool) ?? true
+        let ccPreSendDelayMs = UserDefaults.standard.object(forKey: "ccPreSendDelayMs") as? Double ?? 185
+        let beatsPerSecond = tempo / 60.0
+        var currentCC: CCState = (64, 127, 0, 32)
+        var previousStep: Int?
+        var previousBeat: Double?
+
+        for step in notesByStep.keys.sorted() {
+            let stepNotes = notesByStep[step] ?? []
+            let nextCC = try ccState(for: stepNotes, step: step)
+            let changed = changedLockValues(from: currentCC, to: nextCC)
+            let noteOnLock = noteOnLockValues(from: changed, to: nextCC)
+
+            if hasLockValue(changed) {
+                if ccPreSendEnabled,
+                   let previousStep,
+                   let previousBeat,
+                   previousStep + 1 < step {
+                    let targetBeat = stepNotes.map(\.startBeat).min() ?? Double(step - 1) / 4.0
+                    let timeToNextNoteOn = max(0.0, (targetBeat - previousBeat) / beatsPerSecond)
+                    let requestedDelay = ccPreSendDelayMs / 1000.0
+                    let delaySeconds = min(requestedDelay, max(0.001, timeToNextNoteOn / 2.0))
+                    let preSendBeat = previousBeat + delaySeconds * beatsPerSecond
+                    let preferredStep = max(previousStep + 1, Int((preSendBeat * 4.0).rounded(.down)) + 1)
+                    if let preSendStep = (preferredStep..<step).first(where: { !noteStartSteps.contains($0) }) {
+                        try mergeLock(
+                            step: preSendStep,
+                            cc1: changed.cc1,
+                            cc2: changed.cc2,
+                            cc3: changed.cc3,
+                            cc4: changed.cc4
+                        )
+                    }
+                }
+            }
+
+            if hasLockValue(noteOnLock) {
+                try mergeLock(
+                    step: step,
+                    cc1: noteOnLock.cc1,
+                    cc2: noteOnLock.cc2,
+                    cc3: noteOnLock.cc3,
+                    cc4: noteOnLock.cc4
+                )
+            }
+
+            currentCC = nextCC
+            previousStep = step
+            previousBeat = stepNotes.map(\.startBeat).min() ?? Double(step - 1) / 4.0
+        }
+
         let xyStepLocks = lockByStep
             .keys
             .sorted()
@@ -598,7 +687,7 @@ class SequencerModel: ObservableObject {
 
         do {
             try XYExporter.export(
-                templateURL: templateURL,
+                templateData: templateData,
                 outputURL: url,
                 trackIndex: 11,
                 notes: xyNotes,
@@ -613,14 +702,6 @@ class SequencerModel: ObservableObject {
         }
 
         log.info("Exported \(self.notes.count) notes as OP-XY to \(url.lastPathComponent)")
-    }
-
-    private static func repoRootURL() -> URL {
-        // Sources/ChoirController/SequencerModel.swift -> repo root
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
     }
     
     // MARK: - Save / Load
