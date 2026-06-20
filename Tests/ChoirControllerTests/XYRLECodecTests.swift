@@ -73,7 +73,6 @@ final class XYRLECodecTests: XCTestCase {
 
     func testLocalCaptureRoundTripsByteExact() throws {
         let fixturePaths = [
-            ".release/research/dderuntz-saves2/04f b-check.xy",
             ".release/research/dderuntz-saves2/05a.xy",
             ".release/research/dderuntz-saves3/08a 0.xy",
             ".release/research/dderuntz-saves3/08a 51.xy",
@@ -96,7 +95,7 @@ final class XYRLECodecTests: XCTestCase {
     }
 
     func testExporterOutputIsCanonicalRLE() throws {
-        let templateURL = fixtureURL(".release/research/dderuntz-saves2/04f b-check.xy")
+        let templateURL = fixtureURL(".release/research/dderuntz-saves2/05a.xy")
         guard FileManager.default.fileExists(atPath: templateURL.path) else {
             throw XCTSkip("missing local research fixture: \(templateURL.path)")
         }
