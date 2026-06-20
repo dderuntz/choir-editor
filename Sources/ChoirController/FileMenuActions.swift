@@ -10,12 +10,6 @@ private let log = Logger(subsystem: "com.choir-arranger", category: "file")
 class FileMenuActions: NSObject {
     static let shared = FileMenuActions()
     var model: SequencerModel?
-
-    /// OP-XY export is hidden by default until the feature is fully resolved.
-    /// Development can opt in by setting CHOIR_ENABLE_XY_EXPORT=1.
-    static var isXYExportEnabled: Bool {
-        ProcessInfo.processInfo.environment["CHOIR_ENABLE_XY_EXPORT"] == "1"
-    }
     
     // MARK: - NSMenu targets (toolbar file button)
     
@@ -109,7 +103,6 @@ class FileMenuActions: NSObject {
     /// Export as OP-XY project file.
     @discardableResult
     func showExportXYDialog() -> Bool {
-        guard Self.isXYExportEnabled else { return false }
         guard let model else { return false }
         let panel = NSSavePanel()
         panel.title = "Export as OP-XY"
@@ -145,7 +138,6 @@ class FileMenuActions: NSObject {
     }
 
     @objc func exportXY(_ sender: Any?) {
-        guard Self.isXYExportEnabled else { return }
         showExportXYDialog()
     }
     

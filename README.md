@@ -22,6 +22,7 @@ Unzip and drag to Applications. No Xcode or build tools needed.
 - **4-Part Barbershop** — shift-click phoneme chips to enable ensemble harmony
 - **Swedish Language Support** — full UI localization + 823k-word phoneme dictionary
 - **MIDI Export** — standard .mid files with CC data for consonant, vowel, vibrato, reverb
+- **OP-XY Export** — one-click .xy project export for the OP-XY MIDI track with notes and phoneme CC locks
 - **Guided Onboarding** — contextual tips for both Composer and Piano Roll workflows
 - **Dark Mode** — full support across all views
 
